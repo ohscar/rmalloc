@@ -15,15 +15,19 @@ extern "C" {
 
 typedef struct {
     void *ptr;
-    ssize_t size;
+    size_t size;
 } memory_t;
+
+typedef int status_t;
 
 /***************************************************************************/
 
-memory_t *rmalloc(ssize_t size);
-void *rmlock(memory_t *);
-void unlock(memory_t *);
-void free(memory_t *);
+status_t rmalloc(memory_t **, size_t);
+status_t rmlock(memory_t *, void **);
+status_t rmunlock(memory_t *);
+status_t rmfree(memory_t *);
+
+/***************************************************************************/
 
 #ifdef __cplusplus
 }
