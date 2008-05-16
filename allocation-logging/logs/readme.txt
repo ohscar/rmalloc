@@ -12,6 +12,10 @@ files in a directory in the correct order.
 
 The number in parens is the size of the unpacked log directory.
 
+GP (20 Mb)
+===========
+1. Start to GP (stabilize one minute) to exit
+
 Blank (12 Mb)
 ==============
 1. start-to-blank.log
