@@ -1,0 +1,67 @@
+==========================================
+ rmalloc: Relocatable Memory Allocator
+==========================================
+:Author: Mikael Jansson <mail@mikael.jansson.be>
+
+.. contents::
+
+Purpose
+=======
+To write and benchmark a special-purpose allocator that can compact its heap,
+while still being fast enough for usage within the web browser Opera.
+
+What
+====
+The purpose of |rmalloc| is to provide the ability to perform compacting of the
+application heap, by making memory access indirect, e.g.::
+
+    status_t rmalloc(memory_t **, ssize_t);
+    status_t rmlock(memory_t *, void **);
+    status_t rmunlock(memory_t *);
+    status_t rmfree(memory_t *);
+
+Example::
+
+    #define WIDTH 100
+    #define HEIGHT 100
+
+    /* allocate memory for the bitmap */
+    memory_t *bitmap;
+    rmalloc(&bitmap, WIDTH*HEIGHT);
+
+    /* get reference to actual memory */
+    unsigned char *ptr;
+    rmlock(bitmap, (void **)&ptr);
+
+    /* draw pattern */
+    for (y=0; y<HEIGHT; y++)
+        for (x=0; x<WIDTH; x++)
+            ptr[x + y*WIDTH] = x^y;
+
+    /* release pointer and call auxillary code to do something with memory */
+    rmunlock(bitmap);
+    draw_bitmap(bitmap);
+
+    /* done with the bitmap, release allocated memory */
+    rmfree(bitmap);
+
+How
+===
+Three steps, of which the two last ones are iterative: 
+
+#. Gather allocation statistics from real-world usage of Opera
+#. Benchmark current allocators against |rmalloc|, by feeding data from the
+   previous step into the allocators.
+#. Tweak |rmalloc|.
+
+Benchmarking
+~~~~~~~~~~~~~~
+Because of the difference in usage between |rmalloc| and standard allocators,
+the standard allocators will be wrapped such that they can be plugged in as
+direct replacements for |rmalloc|. 
+
+
+.
+|rmalloc| replace:: ``rmalloc``
+
+.. vim:syntax=rst
