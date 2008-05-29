@@ -6,6 +6,6 @@
  * Mikael Jansson <mail@mikael.jansson.be>
  */
 int main(void) {
-
+    rmalloc_init();
 }
  

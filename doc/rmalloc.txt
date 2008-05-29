@@ -45,8 +45,8 @@ Example::
     /* done with the bitmap, release allocated memory */
     rmfree(bitmap);
 
-How
-===
+Meta-How
+==========
 Three steps, of which the two last ones are iterative: 
 
 #. Gather allocation statistics from real-world usage of Opera
@@ -60,8 +60,11 @@ Because of the difference in usage between |rmalloc| and standard allocators,
 the standard allocators will be wrapped such that they can be plugged in as
 direct replacements for |rmalloc|. 
 
+How
+====
+The blocks are stored is a doubly-linked list.
 
-.
+
 |rmalloc| replace:: ``rmalloc``
 
 .. vim:syntax=rst

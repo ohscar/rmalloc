@@ -11,6 +11,8 @@
 extern "C" {
 #endif 
 
+#include <stddef.h>
+
 /***************************************************************************/
 
 typedef struct {
@@ -21,6 +23,9 @@ typedef struct {
 typedef int status_t;
 
 /***************************************************************************/
+
+status_t rmalloc_init(void);
+status_t rmalloc_destroy(void);
 
 status_t rmalloc(memory_t **, size_t);
 status_t rmlock(memory_t *, void **);
