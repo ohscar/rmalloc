@@ -62,7 +62,27 @@ direct replacements for |rmalloc|.
 
 How
 ====
-The blocks are stored is a doubly-linked list.
+Allocation status of a picee of memory is set in memory_block_t::used. An
+allocation sets the value to true, a free sets it to false. 
+Memory blocks are stored together with the allocated spcaes.  Memory handles
+are currently also stored together with the user data. 
+
+There are two options for giving back memory when freeing memory handles:
+
+1. Add a member to memory_t, used, for next collection.
+2. Reserve a place in RAM for storing only memory_ts, on the assumption that
+   there will be a maximal number of memory chunks allocated.
+
+For #2, we need to know the typical memory size requested by the application.
+In general, this is unknown, but as this allocator is going to be used in a
+special-purpose setting, that value cna be found out.
+
+Given the following variables.
+
+:R: Total amount of memory currently available for use by the allocator
+:M: Size of each piece of user-allocated memory
+:D: Overhead (i.e. size of internal data sructures) associated with each
+    user-allocated memory chunk.
 
 
 |rmalloc| replace:: ``rmalloc``

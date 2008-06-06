@@ -11,13 +11,15 @@
 extern "C" {
 #endif 
 
-#include <stddef.h>
+#include <linux/stddef.h>
+#include <linux/types.h>
 
 /***************************************************************************/
 
+struct memory_block_t;
 typedef struct {
-    void *ptr;
-    size_t size;
+    memory_block_t *block;
+    uint8_t locks;
 } memory_t;
 
 typedef int status_t;
