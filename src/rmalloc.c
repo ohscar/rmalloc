@@ -7,12 +7,9 @@
  */
 #include "rmalloc.h"
 #include <stdlib.h>
+#include <stdio.h>
 
-#define RMALLOC_INIT_RAM_SIZE ((1024*1024)*40)
-
-#define RM_OK                   1
-#define RM_ERROR                0
-#define RM_INSUFFICIENT_MEMORY -1
+#define RMALLOC_INIT_RAM_SIZE (1 * 1024*1024)
 
 /****************************************************************************/
 
@@ -23,13 +20,13 @@ static size_t g_ram_size;
 
 /****************************************************************************/
 
-typedef struct {
+struct memory_block_t {
     void *ptr;
     uint8_t used : 1;
     size_t size;
-    struct memory_block_t *previous;
-    struct memory_block_t *next;
-} memory_block_t;
+    memory_block_t *previous;
+    memory_block_t *next;
+};
 
 static memory_block_t *g_root;
 static memory_block_t *g_root_end;
@@ -53,7 +50,7 @@ memory_block_t *mb_alloc(size_t size) {
         mb->ptr = g_top;
         mb->used = 1;
         mb->size = size;
-        mb->previous = g_root_end;;
+        mb->previous = g_root_end;
         mb->next = NULL;
 
         g_top += size;
@@ -70,8 +67,8 @@ memory_block_t *mb_alloc(size_t size) {
  * depend: g_root
  */
 memory_block_t *mb_find(void *ptr) {
-    memory_block_t *root = g_root;
-    for (memory_block_t *root = g_root;
+    memory_block_t *root;
+    for (root = g_root;
          root != NULL && root->ptr != ptr;
          root = root->next);
 
@@ -90,6 +87,12 @@ status_t mb_delete(memory_block_t *mb) {
 }
 
 /****************************************************************************/
+void *rmalloc_ram_end(void) {
+    return g_ram_end;
+}
+void *rmalloc_ram_top(void) {
+    return g_top;
+}
 
 status_t rmalloc_init(void) {
     g_ram_size = RMALLOC_INIT_RAM_SIZE;
@@ -109,6 +112,13 @@ status_t rmalloc_init(void) {
 
 status_t rmalloc_destroy(void) {
      
+}
+
+void rmalloc_print(memory_t *memory) {
+    fprintf(stderr, "* Handle at %d has block at %d of size %d bytes\n",
+            (int)memory-(int)g_ram,
+            (int)(memory->block)-(int)g_ram,
+            memory->block->size);
 }
 
 /* allocate a chunk of memory
@@ -178,14 +188,14 @@ status_t rmlock(memory_t *memory, void **ptr) {
 status_t rmunlock(memory_t *memory) {
     // XXX: Signal an error if unlocked too many times?
     if (memory != NULL && memory->locks != 0) {
-        memory_locks--;
-        return RM_OK,
+        memory->locks--;
+        return RM_OK;
     }
     return RM_ERROR;
 }
 
 status_t rmfree(memory_t *memory) {
-    if (memory != NUL) {
+    if (memory != NULL) {
         memory->block->used = 0;
         memory->locks = 0;
     }
