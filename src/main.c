@@ -23,9 +23,7 @@ int main(void) {
         }
         else
             fprintf(stderr, "Failed allocating %d bytes with %d bytes left.\n",
-                    n,
-                    rmalloc_ram_end()-rmalloc_ram_top());
+                    n, rmalloc_ram_end()-rmalloc_ram_top());
     }
-
 }
  
