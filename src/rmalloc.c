@@ -162,6 +162,7 @@ status_t rmalloc(memory_t **memory, size_t size) {
         if (m->block) {
             m->locks = 0;
             *memory = m;
+            rmalloc_print(*memory);
             return RM_OK;
         } 
         g_top -= sizeof(memory_t);
@@ -169,7 +170,17 @@ status_t rmalloc(memory_t **memory, size_t size) {
         *memory = NULL;
         return RM_ERROR;
     }
+    fprintf(stderr, "Failed allocating %d bytes with %d bytes left.\n",
+            size,
+            g_ram_end-g_top);
     return RM_INSUFFICIENT_MEMORY;
+}
+
+/* yay for naive solutions.
+ */
+status_t rmrealloc(memory_t **new, memory_t **old, size_t size) {
+    rmfree(*old);
+    return rmalloc(new, size);
 }
 
 status_t rmlock(memory_t *memory, void **ptr) {
