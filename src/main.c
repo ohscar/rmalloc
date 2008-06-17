@@ -9,12 +9,19 @@
 
 #include <stdio.h>
 
+#include "logparsed.c"
+
 int main(void) {
     uint8_t *ptr;
     memory_t *memory[10];
     int i, n;
 
     rmalloc_init();
+
+    alloc_test();
+
+    rmalloc_destroy();
+#if 0
     for (i=0; i<10; i++) {
         n = 128*1024;
         if (RM_OK == rmalloc(&memory[i], n)) {
@@ -25,5 +32,6 @@ int main(void) {
             fprintf(stderr, "Failed allocating %d bytes with %d bytes left.\n",
                     n, rmalloc_ram_end()-rmalloc_ram_top());
     }
+#endif
 }
  

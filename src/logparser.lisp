@@ -24,6 +24,9 @@
        id
        (setf (gethash pointer *memory-mappings*) (next-memory-mapping-counter)))))
 
+(defun remove-pointer (pointer)
+  (remhash pointer *memory-mappings*))
+
 (defun replace-pointer (old new)
   "Replace pointer old with new in the mapping, but keep the counter."
   (multiple-value-bind (counter presentp) (gethash old *memory-mappings*)
@@ -67,35 +70,45 @@
                                    ;;           *alloc-sequence*)))
                                    
         (multiple-value-bind (match regs) (scan-to-strings "MEM: 0[Xx]\\w+ free\\((\\w+)\\)" line)
-                             (declare (ignore match))
-                             (when regs
-                                   (push `(free :id ,(pointer->id (aref regs 0)))
-                                         *alloc-sequence*))))
-    (setf *alloc-sequence* (nreverse *alloc-sequence*))
-    nil))
+          (declare (ignore match))
+          (when regs
+            (push `(free :id ,(pointer->id (aref regs 0)))
+                  *alloc-sequence*)
+            (remove-pointer (aref regs 0)))))
+    (setf *alloc-sequence* (nreverse *alloc-sequence*)))
+    nil)
+
+(defun memory-op-to-variable-declaration (op)
+  (case (first op)
+    (malloc (format nil "memory_t *mem_~A;"
+                    (getf (rest op) :id)))
+    (otherwise "")))
 
 (defun memory-op-to-statement (op)
   (case (first op)
-    (malloc (format nil "void *mem_~A = rmalloc(~A);"
-                    (getf (rest op) :id) (getf (rest op) :size)))
-    (free (format nil "rmfree(mem_~A);" (getf (rest op) :id)))
-    (realloc (format nil "mem_~A = rmrealloc(~A, mem_~A);"
+    (malloc (format nil "rmalloc(&mem_~A, ~A);"
                     (getf (rest op) :id)
-                    (getf (rest op) :size)
-                    (getf (rest op) :new-id)))
+                    (getf (rest op) :size)))
+    (free (format nil "rmfree(mem_~A);" (getf (rest op) :id)))
+    (realloc (format nil "rmrealloc(&mem_~A, &mem_~A, ~A);"
+                    (getf (rest op) :new-id)
+                    (getf (rest op) :id)
+                    (getf (rest op) :size)))
     (otherwise "")))
 
 (defun flatten-to-c-file (path)
-  (with-open-file (s path :direction :output
-                          :if-does-not-exist :create
-                          :if-exists :overwrite)
+  (with-open-file (s path :direction :output :if-does-not-exist :create :if-exists :overwrite)
+    (format s "~{~A~^~%~}" (remove-if (lambda (line) (zerop (length line)))
+                                      (mapcar #'memory-op-to-variable-declaration *alloc-sequence*)))
     (format s "
 int alloc_test() {
-~{    ~A~^~%~}
-}" (remove-if (lambda (line) (zerop (length line))) (mapcar #'memory-op-to-statement *alloc-sequence*)))))
+  ~{    ~A~^~%~}
+}" (remove-if (lambda (line) (zerop (length line)))
+            (mapcar #'memory-op-to-statement *alloc-sequence*)))))
 
 ;;;;;;;;;;;;;;
 
-(parse-logs-and-generate-alloc-sequence #P"aftonbladet/start-to-aftonbladet.log")
-(flatten-to-c-file "logparsed.c")
+(defun main ()
+  (parse-logs-and-generate-alloc-sequence #P"aftonbladet/start-to-aftonbladet.log")
+  (flatten-to-c-file "logparsed.c"))
 
