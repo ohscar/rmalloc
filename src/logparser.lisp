@@ -98,17 +98,23 @@
 
 (defun flatten-to-c-file (path)
   (with-open-file (s path :direction :output :if-does-not-exist :create :if-exists :overwrite)
-    (format s "~{~A~^~%~}" (remove-if (lambda (line) (zerop (length line)))
-                                      (mapcar #'memory-op-to-variable-declaration *alloc-sequence*)))
+    (format s "~{~A~^~%~}" (remove-if #'zerop
+                                      (mapcar #'memory-op-to-variable-declaration *alloc-sequence*)
+                                      :key #'length))
     (format s "
 int alloc_test() {
-  ~{    ~A~^~%~}
-}" (remove-if (lambda (line) (zerop (length line)))
-            (mapcar #'memory-op-to-statement *alloc-sequence*)))))
+~{    ~A~^~%~}
+}" (remove-if #'zerop
+              (mapcar #'memory-op-to-statement *alloc-sequence*)
+              :key #'length))))
 
 ;;;;;;;;;;;;;;
 
-(defun main ()
-  (parse-logs-and-generate-alloc-sequence #P"aftonbladet/start-to-aftonbladet.log")
-  (flatten-to-c-file "logparsed.c"))
+;;(defun main ()
+(format t "parsing logs.~%")
+(parse-logs-and-generate-alloc-sequence #P"aftonbladet/start-to-aftonbladet.log")
+
+(format t "flattening logs.~%")
+(flatten-to-c-file "logparsed.c")
+;;)
 
