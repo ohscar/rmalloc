@@ -119,6 +119,11 @@ void rmalloc_print(memory_t *memory) {
             (int)memory-(int)g_ram,
             (int)(memory->block)-(int)g_ram,
             memory->block->size);
+    
+    fprintf(stdout, "(%s :start %d :size %d)\n",
+            memory->block->used ? "alloc" : "free",
+            (int)memory-(int)g_ram,
+            memory->block->size);
 }
 
 /* allocate a chunk of memory
@@ -154,6 +159,10 @@ void rmalloc_print(memory_t *memory) {
  *
  */
 status_t rmalloc(memory_t **memory, size_t size) {
+    double top = (long int)(g_top-g_ram);
+    double end = (long int)(g_ram_end-g_ram);
+    float filling = 100.0*top/end;
+    fprintf(stderr, "%d%% heap fullness\n", (int)filling);
     if (g_top+sizeof(memory_t)+sizeof(memory_block_t)+size < g_ram_end) {
         memory_t *m = (memory_t *)g_top;
         g_top += sizeof(memory_t);
@@ -209,6 +218,8 @@ status_t rmfree(memory_t *memory) {
     if (memory != NULL) {
         memory->block->used = 0;
         memory->locks = 0;
+        rmalloc_print(memory);
     }
     return RM_ERROR;
 }
+
