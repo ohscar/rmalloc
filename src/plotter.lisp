@@ -23,12 +23,12 @@ Idea::
 
 (in-package #:plotter)
 
-(defvar *width* 1200)
-(defvar *height* 800)
+(defvar *width* 700)
+(defvar *height* 700)
 (defvar *x*)
 (defvar *y*)
 (defvar *drawingp* nil)
-(defconstant +memory-size+ (* 8 1024 1024 ))
+(defconstant +memory-size+ (* 48 1024 1024 ))
 (defconstant +input-file+ #P"logdata.pipe")
 (defvar *frame-counter* 0)
 
@@ -89,20 +89,22 @@ FIXME: Make sure to calculate all lines between start-y and end-y.  Better yet, 
      (unless (eql line 'eof)
          (let* ((alloc-data (read-from-string line))
                 (start (getf (rest alloc-data) :start))
-                (size (getf (rest alloc-data) :size)))
+                (size (getf (rest alloc-data) :size))
+                (do-update (zerop (mod (incf *frame-counter*) 500))))
 
           (case (first alloc-data)
                 (alloc (dolist (line (alloc->lines start size))
                         (cl-sdl:draw-line surface (first line) (second line)
                                                   (third line) (fourth line)
                                                   128 0 0
-                                                  :update-p (zerop (mod (incf *frame-counter*) 1000)))
+                                                  :update-p do-update)
                         ;;(format t "ALLOC ~s (~A ~A)~%" line start size)
                         ))
                 (free (dolist (line (alloc->lines start size))
                         (cl-sdl:draw-line surface (first line) (second line)
                                                   (third line) (fourth line)
-                                                  0 128 0)
+                                                  0 128 0
+                                                  :update-p do-update)
                         ;;(format t "FREE ~s (~A ~A)~%" line start size)
                         ))
                         
