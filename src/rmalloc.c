@@ -9,7 +9,13 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#define RMALLOC_INIT_RAM_SIZE (1 * 1024*1024)
+#define RMALLOC_INIT_RAM_SIZE (8 * 1024*1024)
+
+#define RM_ASSERT(x) {uint8_t status = x; if (!status) {fprintf(stderr, "RM_ASSERT(%s) failed!\n", #x);}}
+#define RM_ASSERT_RET(x, err) {uint8_t status = (x); if (!status) {fprintf(stderr, "RM_ASSERT(%s) failed!\n", #x); return err;}}
+
+#define RM_MERGED      0
+#define RM_NOT_MERGED  1
 
 /****************************************************************************/
 
@@ -50,8 +56,12 @@ memory_block_t *mb_alloc(size_t size) {
         mb->ptr = g_top;
         mb->used = 1;
         mb->size = size;
-        mb->previous = g_root_end;
+
         mb->next = NULL;
+        mb->previous = g_root_end;
+        g_root_end->next = mb;
+
+        g_root_end = mb;
 
         g_top += size;
 
@@ -79,12 +89,13 @@ memory_block_t *mb_find(void *ptr) {
 /* delete a memory block, i.e., mark as unused.
  *
  * return: always RM_OK
- * modify: g_root
+ * modify: -
  * depend: -
  */
 status_t mb_delete(memory_block_t *mb) {
     mb->used = 0;
 }
+
 
 /****************************************************************************/
 void *rmalloc_ram_end(void) {
@@ -93,6 +104,26 @@ void *rmalloc_ram_end(void) {
 void *rmalloc_ram_top(void) {
     return g_top;
 }
+
+/* dump debug data about the allocation structures.
+ * specifically, the blocks and the addresses within.
+ */
+void rmalloc_dump(void) {
+    memory_block_t *mb = g_root->next;
+    fprintf(stderr, "rmalloc_dump()\n");
+    while (mb != NULL) {
+        fprintf(stderr, "[%c] %6d %8p->ptr = %8p, end of pointer + memory_t = %8p = next = %8p\n",
+                mb->used ? 'X' : ' ',
+                mb->size,
+                (uint8_t*)mb-g_ram,
+                mb->ptr,
+                (uint8_t*)(mb->ptr+sizeof(memory_t))-g_ram,
+                (uint8_t*)mb->next-g_ram);
+        mb = mb->next;
+    }
+}
+
+
 
 status_t rmalloc_init(void) {
     g_ram_size = RMALLOC_INIT_RAM_SIZE;
@@ -104,8 +135,12 @@ status_t rmalloc_init(void) {
      * memory block's previous will be set to the root end in mb_alloc.
      * Which, for the very first allocation, will be NULL.
      */
-    g_root_end = NULL;
-    g_root = mb_alloc(0);
+    g_root = (memory_block_t *)g_ram; 
+    g_top += sizeof(memory_block_t);
+    g_root->next = NULL;
+    g_root->previous = NULL;
+
+    g_root_end = g_root;
 
     return g_root != NULL ? RM_OK : RM_ERROR;
 }
@@ -155,7 +190,9 @@ void rmalloc_print(memory_t *memory) {
  *      next = 4
  *  
  *  = 4+1+4+4+4+4+4 = 25 for a memory_t. to that comes the size of the memory
- *  buffer
+ *  chunk
+ *
+ *  Layout: memory_t, memory_block_t, chunk
  *
  */
 status_t rmalloc(memory_t **memory, size_t size) {
@@ -184,6 +221,71 @@ status_t rmalloc(memory_t **memory, size_t size) {
             g_ram_end-g_top);
     return RM_INSUFFICIENT_MEMORY;
 }
+
+/* Merge two adjacent (in memory) blocks, i.e.::
+ *
+ *      (a->ptr+1) == b
+ *
+ * As the information related to a memory block and the actual pointer to the
+ * memory block is intertwined, it's not as easy as just bunching together the
+ * two pointers, instead we have to overwrite the memory blocks themselves.
+ * Specifically, block b will be overwritten.
+ *
+ * Make sure both memory blocks are free, i.e., used=0.
+ *
+ * Layout:  memory_t first, then block, then chunk.
+ */
+status_t mb_merge(memory_block_t *a, memory_block_t *b) {
+    RM_ASSERT_RET(!a->used, RM_NOT_MERGED);
+    RM_ASSERT_RET(!b->used, RM_NOT_MERGED);
+
+    /* an easier check for now */
+    /*
+    RM_ASSERT(a->next == b);
+    RM_ASSERT(b->previous == a);
+    */
+    
+    /* are they adjacent? */
+    fprintf(stderr, "%lu+%lu+%lu=%lu matches? %lu\n",
+            a->ptr, a->size, sizeof(memory_t), a->ptr+a->size+sizeof(memory_t), b);
+    /* layout in memory: size bytes memory chunk, memory_t for b, then b. */
+    RM_ASSERT_RET(a->ptr+a->size+sizeof(memory_t) == b, RM_NOT_MERGED);
+
+    a->next = b->next;
+    a->size += b->size + sizeof(memory_t) + sizeof(memory_block_t);
+
+
+    //return RM_NOT_MERGED;
+    return RM_MERGED;
+}
+
+/* start compacting at and after the block addressed by the memory_t */
+void rmalloc_compact(memory_t *memory) {
+    memory_block_t *mb;
+    status_t status;
+    
+    if (memory)
+        mb = memory->block;
+    else
+        mb = g_root;
+    
+    while (mb->next != NULL) {
+        if (!mb->used && !mb->next->used) {
+            void *a = mb;
+            void *b = mb->next;
+            size_t as = mb->size;
+            size_t bs = mb->next->size;
+            status = mb_merge(mb, mb->next);
+            if (status == RM_MERGED) {
+                fprintf(stderr, "Merged %p (%d) and %p (%d) => %d bytes\n",
+                        a, as, b, bs, mb->size);
+            }
+        }
+        mb = mb->next;
+    }
+}
+
+
 
 /* yay for naive solutions.
  */
@@ -216,10 +318,17 @@ status_t rmunlock(memory_t *memory) {
 
 status_t rmfree(memory_t *memory) {
     if (memory != NULL) {
-        memory->block->used = 0;
+        mb_delete(memory->block);
         memory->locks = 0;
         rmalloc_print(memory);
     }
     return RM_ERROR;
 }
 
+const char *rmstatus(status_t s) {
+    switch (s) {
+        case RM_OK: return "OK"; 
+        default:    return "error"; 
+    }
+    return "Unknown";
+}

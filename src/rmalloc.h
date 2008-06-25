@@ -32,15 +32,18 @@ typedef uint8_t status_t;
 
 status_t rmalloc_init(void);
 status_t rmalloc_destroy(void);
+void rmalloc_dump(void);
 void *rmalloc_ram_end(void);
 void *rmalloc_ram_top(void);
 void rmalloc_print(memory_t *);
+void rmalloc_compact(memory_t *);
 
 status_t rmalloc(memory_t **, size_t);
 status_t rmrealloc(memory_t **, memory_t **, size_t);
 status_t rmlock(memory_t *, void **);
 status_t rmunlock(memory_t *);
 status_t rmfree(memory_t *);
+const char *rmstatus(status_t);
 
 /***************************************************************************/
 
