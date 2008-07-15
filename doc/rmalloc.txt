@@ -85,6 +85,23 @@ Given the following variables.
     user-allocated memory chunk.
 
 
+2008-07-14
+===========
+Been sick for the past week, so the time schedule is delayed by one week.
+
+Simple start, double-linked list stores the memory chunks and the info about
+them. User-exposed structure keeps a pointer plus the number of locks held.
+Lot of overhead currently, more efficient to store memory blocks as an array
+to avoid the two pointers that make up the double-linked list.  Optionally,
+could use a single-linked list.   without the link pointers, place the
+structures at the very end of the memory and grow downwards, towards the
+memory (i.e. stack).  this is better than placing them in the beginning,
+because either space will be lost, or too little space is preserved and the
+memory chunks have to be moved around.
+
+a merge of two adjacent free blocks 
+
+
 |rmalloc| replace:: ``rmalloc``
 
 .. vim:syntax=rst
