@@ -99,7 +99,52 @@ memory (i.e. stack).  this is better than placing them in the beginning,
 because either space will be lost, or too little space is preserved and the
 memory chunks have to be moved around.
 
-a merge of two adjacent free blocks 
+a merge of two adjacent free blocks just increases the size of the first block
+to the end of the second block, because memory blocks and chunks are located
+together in memory. moving metadata out to a separate storage area would mean
+it would have to work another way.
+
+conventional allocators try to reuse memory as much as possible, and devise
+clever algorithms to avoid fragmentation as much as possible.  An hypothesis
+is that by disregarding everything "clever", and instead do compacting when
+the heap is full (given a fixed-size heap), a higher level of efficiency can
+be reached. especially when considered that the allocator could be given a
+callback to be called when the heap has reached the lower and higher threshold
+value needed to be able to perform compacting (when the end address of the
+last memory chunk is too close to the end of the heap).
+
+the compacting can be invoked automatically or manually, by the callback indicating this at
+the lower threshold call.  if the manual compacting was selected at the lower
+threshold but none made when the higher threshold callback was invoked, an
+automatic compacting will be done.
+
+banchmarking
+~~~~~~~~~~~~~
+benchmarking rmmalloc will be done by measuring how much memory can be
+allocated before no more memory can be recovered.  when no memory can be
+recovered depends on many things: 
+
+* when alloc() fails, the callee could release other resources so another call
+  to alloc() succeeds.
+* this particular allocation isn't important, and later on in the cycle when
+  possibly more memory has been given back to the allocator by the client
+  application, the next alloc() might very well succeed. 
+
+generally, it is up to the application to decide if a specific alloc()-fail
+is catastrophic or not.  by using heuristics, the application can decide the
+point of no return, i.e., where it doesn't make any sense to contirue trying
+to allocate memory, as there will most likely not be any memory left in the
+heap to allocate.
+
+for benchmarking purposes, one way to perform this heuristics is to measure
+when the number of NULL allocs is higher than the number of non-NULL allocs.
+moreover, because of the indirection used by rmalloc, a regular allocator
+needs to define the lock and unlock operations (as identity, but defined
+nevertheless). finally, the purpose of rmalloc is to be efficient in
+memory-constrained systems, so a fixed heap must be enforced.  Both rmalloc
+and the other malloc (e.g. jemalloc, dlmalloc, ...) wil have to operate under
+these constraints.
+
 
 
 |rmalloc| replace:: ``rmalloc``
