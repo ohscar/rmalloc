@@ -113,10 +113,10 @@ callback to be called when the heap has reached the lower and higher threshold
 value needed to be able to perform compacting (when the end address of the
 last memory chunk is too close to the end of the heap).
 
-the compacting can be invoked automatically or manually, by the callback indicating this at
-the lower threshold call.  if the manual compacting was selected at the lower
-threshold but none made when the higher threshold callback was invoked, an
-automatic compacting will be done.
+the compacting can be invoked automatically or manually, by the callback
+indicating this at the lower threshold call.  if the manual compacting was
+selected at the lower threshold but none made when the higher threshold
+callback was invoked, an automatic compacting will be done.
 
 banchmarking
 ~~~~~~~~~~~~~
@@ -144,6 +144,20 @@ nevertheless). finally, the purpose of rmalloc is to be efficient in
 memory-constrained systems, so a fixed heap must be enforced.  Both rmalloc
 and the other malloc (e.g. jemalloc, dlmalloc, ...) wil have to operate under
 these constraints.
+
+----
+
+Should the never-reuse-free-list method prove too slow, because compacting has to
+happen very often, it's possible to use portions of the buddy allocator, i.e.
+the idea to sort the free list and keep the blocks on size boundaries, that
+is, a list list with each node being double in size from the previous, and
+each "bucket" being another pointer to a linked list with pointers to the free
+slots.  then, free'd memory can be re-used, at the cost of splitting it up
+into the part that's taken and the part that's free, creating an extra memory
+block. a way to not have to do this is to use the entire slot, even though
+it's larger than the requested amount of memory, yielding high internal
+fragmentation.  without testing using proper data, it is not possible to
+verify which method would yield the best results.
 
 
 
