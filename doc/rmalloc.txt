@@ -145,7 +145,10 @@ memory-constrained systems, so a fixed heap must be enforced.  Both rmalloc
 and the other malloc (e.g. jemalloc, dlmalloc, ...) wil have to operate under
 these constraints.
 
-----
+2008-07-20
+==================
+merging blocks on the free list is finished.  next up is performing
+compacting.
 
 Should the never-reuse-free-list method prove too slow, because compacting has to
 happen very often, it's possible to use portions of the buddy allocator, i.e.
@@ -159,8 +162,64 @@ it's larger than the requested amount of memory, yielding high internal
 fragmentation.  without testing using proper data, it is not possible to
 verify which method would yield the best results.
 
+Compacting notification
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+after compacting, specify and implement the callbacks::
+
+    threshold = {LOWER, HIGHER}
+    status_t rmalloc_compact_notify(int threshold);
+
+    typedef status_t (*notify)(int threshold) rmalloc_compact_notify_cb;
+
+The callback determines if the compacting is to happen now by rmalloc, or
+defer until later. A possible reason for defering the compacting to later is
+that the program code could release soon release resources that would make
+compating unnecessary. If the callback decides compacting should not be
+performed at this moment, rmalloc will wait until the HIGHER threshold value
+has been reached.
+
+Typical usage::
+
+    status_t notify(int threshold) {
+        if (threshold == LOWER) {
+            // we're soon about to release a bunch of resources,
+            // so let's ask rmalloc not to compact just yet.
+            // OR:
+            // we are the middle of a time-sensitive operation, so please hold
+            // off doing the compacting now and instead perform as late as
+            // possible, either by ourselves invoking rmalloc_compact(), or by
+            // automatic invocation by rmalloc (however, not any longer than
+            // the point where threshold == HIGHER)
+            // OR:
+            // we will soon spend time in an idle loop, and it would be
+            // beneficial to perform the compacting then instead of now.
+            // we'll manually invoke rmalloc_compact()!
+
+            return RM_NOT_YET;
+        } else { // HIGHER
+            // alright, compacting will happen now.
+        }
+    }
+
+    rmalloc_register_fullness_notify(notify);
+
+Strategies for compacting
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In this first pass, it will not be an incremental compactor.  The reason is
+that compacting should happen when the client is otherwise idle and as such no
+application time is wasted.
+
+Memory block organization
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+Instead of storing the memory blocks (i.e., everything but the storage
+chunks), it might be desirable to store that data in a chunk of memory
+allocated by the system-standard allocator (remember, rmalloc is not meant
+as a replacement for regular malloc()/free() as it it does not have the same
+semantics nor syntax, so client programs must be written specifically to
+support it.)
 
 
 |rmalloc| replace:: ``rmalloc``
 
-.. vim:syntax=rst
+.. vim:syntax=rst:ts=4:sw=4
+
