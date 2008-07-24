@@ -150,15 +150,15 @@ these constraints.
 merging blocks on the free list is finished.  next up is performing
 compacting.
 
-Should the never-reuse-free-list method prove too slow, because compacting has to
-happen very often, it's possible to use portions of the buddy allocator, i.e.
-the idea to sort the free list and keep the blocks on size boundaries, that
-is, a list list with each node being double in size from the previous, and
-each "bucket" being another pointer to a linked list with pointers to the free
-slots.  then, free'd memory can be re-used, at the cost of splitting it up
-into the part that's taken and the part that's free, creating an extra memory
-block. a way to not have to do this is to use the entire slot, even though
-it's larger than the requested amount of memory, yielding high internal
+Should the never-reuse-free-list method prove too slow, because compacting has
+to happen very often, it's possible to use portions of the buddy allocator,
+i.e.  the idea to sort the free list and keep the blocks on size boundaries,
+that is, a list list with each node being double in size from the previous,
+and each "bucket" being another pointer to a linked list with pointers to the
+free slots.  then, free'd memory can be re-used, at the cost of splitting it
+up into the part that's taken and the part that's free, creating an extra
+memory block. a way to not have to do this is to use the entire slot, even
+though it's larger than the requested amount of memory, yielding high internal
 fragmentation.  without testing using proper data, it is not possible to
 verify which method would yield the best results.
 
@@ -218,6 +218,27 @@ as a replacement for regular malloc()/free() as it it does not have the same
 semantics nor syntax, so client programs must be written specifically to
 support it.)
 
+2008-07-24
+============
+The first plan for doing compacting is to start at the beginning and move
+forward in the list and move all used blocks to the beginning.
+
+Happens like this::
+
+    |free|      |free|       |used|       |used|
+    |free|  =>  ------   =>  ------   =>  ------
+    ------      |free|       |free|       |free|
+    |used|      -----        -----        |free|
+                |used|       |free|       
+
+Before splitting, make sure there is enough room to fit in the new used
+block. First, start merging all free blocks, and then go from the first free
+block, and continue grabbing the first used block.  The free block must be
+lagre enough to accomodate both the used block and the metadata for a new used
+block. So, a split_block is neccessary to introduce first.
+  
+  free_size >= sizeof(memory_t)+sizeof(memory_block_t)
+               + size of the used block
 
 |rmalloc| replace:: ``rmalloc``
 

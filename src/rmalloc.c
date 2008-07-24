@@ -254,13 +254,29 @@ status_t mb_merge(memory_block_t *a, memory_block_t *b) {
     a->next = b->next;
     a->size += b->size + sizeof(memory_t) + sizeof(memory_block_t);
 
-
     //return RM_NOT_MERGED;
     return RM_MERGED;
 }
 
+
+/* Shrink a block into a smaller size and save the leftovers.
+ */
+status_t mb_shrink(memory_block_t *block, size_t new_size, memory_block_t **leftover) {
+    // make sure there is space left in the orignal block after it has been
+    // shrunk to new_size
+
+    if (block->size - new_size <
+            sizeof(memory_t) +
+            ) {
+
+    }
+
+}
+
+
 /* start compacting at and after the block addressed by the memory_t */
 void rmalloc_compact(memory_t *memory) {
+    memory_block_t *mb;
     memory_block_t *mb;
     status_t status;
     
@@ -269,6 +285,7 @@ void rmalloc_compact(memory_t *memory) {
     else
         mb = g_root;
     
+    // start by merging adjacent free blocks
     while (mb->next != NULL) {
         if (!mb->used && !mb->next->used) {
             void *a = mb;
@@ -283,8 +300,36 @@ void rmalloc_compact(memory_t *memory) {
         }
         mb = mb->next;
     }
-}
 
+    /* 
+    rmalloc_dump()
+    [ ] 131072     0x1c->ptr = 0xb7585038, end of pointer + memory_t =     0x38 = next =  0x20038
+    [X] 131072  0x20038->ptr = 0xb75a5054, end of pointer + memory_t =  0x20054 = next =  0x40054
+    [X] 131072  0x40054->ptr = 0xb75c5070, end of pointer + memory_t =  0x40070 = next =  0x60070
+    [ ] 131072  0x60070->ptr = 0xb75e508c, end of pointer + memory_t =  0x6008c = next =  0x8008c
+    [X] 131072  0x8008c->ptr = 0xb76050a8, end of pointer + memory_t =  0x800a8 = next =  0xa00a8
+    [X] 131072  0xa00a8->ptr = 0xb76250c4, end of pointer + memory_t =  0xa00c4 = next =  0xc00c4
+    [ ] 262172  0xc00c4->ptr = 0xb76450e0, end of pointer + memory_t =  0xc00e0 = next = 0x1000fc
+    [X] 131072 0x1000fc->ptr = 0xb7685118, end of pointer + memory_t = 0x100118 = next = 0x120118
+    [ ] 131072 0x120118->ptr = 0xb76a5134, end of pointer + memory_t = 0x120134 = next = 0x140134
+    [X] 131072 0x140134->ptr = 0xb76c5150, end of pointer + memory_t = 0x140150 = next = 0x160150
+    [X] 131072 0x160150->ptr = 0xb76e516c, end of pointer + memory_t = 0x16016c = next = 0x18016c
+    [ ] 131072 0x18016c->ptr = 0xb7705188, end of pointer + memory_t = 0x180188 = next = 0x1a0188
+    [X] 131072 0x1a0188->ptr = 0xb77251a4, end of pointer + memory_t = 0x1a01a4 = next = 0x1c01a4
+    [ ] 262172 0x1c01a4->ptr = 0xb77451c0, end of pointer + memory_t = 0x1c01c0 = next = 0x2001dc
+    [X] 131072 0x2001dc->ptr = 0xb77851f8, end of pointer + memory_t = 0x2001f8 = next = 0x2201f8
+    [X] 131072 0x2201f8->ptr = 0xb77a5214, end of pointer + memory_t = 0x220214 = next = 0x240214
+    [ ] 131072 0x240214->ptr = 0xb77c5230, end of pointer + memory_t = 0x240230 = next = 0x260230
+    [X] 131072 0x260230->ptr = 0xb77e524c, end of pointer + memory_t = 0x26024c = next = 0x48a7aff8
+    */
+    
+    // find the first free slot
+    mb = g_root;
+    while (mb->next) {
+    
+    }
+
+}
 
 
 /* yay for naive solutions.
