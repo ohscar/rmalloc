@@ -262,15 +262,17 @@ status_t mb_merge(memory_block_t *a, memory_block_t *b) {
 /* Shrink a block into a smaller size and save the leftovers.
  */
 status_t mb_shrink(memory_block_t *block, size_t new_size, memory_block_t **leftover) {
+
     // make sure there is space left in the orignal block after it has been
     // shrunk to new_size
-
     if (block->size - new_size <
-            sizeof(memory_t) +
-            ) {
+        sizeof(memory_t) + sizeof(memory_block_t)) {
 
+        return RM_CANNOT_SHRINK;
     }
 
+    *leftover = NULL;
+    return RM_OK;
 }
 
 

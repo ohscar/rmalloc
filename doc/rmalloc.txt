@@ -240,6 +240,27 @@ block. So, a split_block is neccessary to introduce first.
   free_size >= sizeof(memory_t)+sizeof(memory_block_t)
                + size of the used block
 
+2008-07-25
+===========
+It's possible that by sharing structure between memory_block_t and
+memory_t, organization would be a bit easier:
+
+    typedef struct {
+        uint8_t locks;
+    } memory_t;
+
+    struct memory_block_t {
+        memory_t memory;
+        void *ptr;
+        uint8_t used : 1;
+        size_t size;
+        memory_block_t *previous;
+        memory_block_t *next;
+    };
+
+The internal protocol would have to cast the public structure into the
+private, otherwise a clean API.
+
 |rmalloc| replace:: ``rmalloc``
 
 .. vim:syntax=rst:ts=4:sw=4
