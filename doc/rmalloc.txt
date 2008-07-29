@@ -243,7 +243,7 @@ block. So, a split_block is neccessary to introduce first.
 2008-07-25
 ===========
 It's possible that by sharing structure between memory_block_t and
-memory_t, organization would be a bit easier:
+memory_t, organization would be a bit easier::
 
     typedef struct {
         uint8_t locks;
@@ -259,7 +259,8 @@ memory_t, organization would be a bit easier:
     };
 
 The internal protocol would have to cast the public structure into the
-private, otherwise a clean API.
+private, which gives you a clean public API at the cost of an internal cast
+(the macro MEMORY_TO_BLOCK(x))
 
 |rmalloc| replace:: ``rmalloc``
 

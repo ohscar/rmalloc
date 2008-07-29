@@ -20,9 +20,7 @@ extern "C" {
 
 /***************************************************************************/
 
-typedef struct memory_block_t memory_block_t;
 typedef struct {
-    memory_block_t *block;
     uint8_t locks;
 } memory_t;
 

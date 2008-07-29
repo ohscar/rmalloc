@@ -14,8 +14,11 @@
 #define RM_ASSERT(x) {uint8_t status = x; if (!status) {fprintf(stderr, "RM_ASSERT(%s) failed!\n", #x);}}
 #define RM_ASSERT_RET(x, err) {uint8_t status = (x); if (!status) {fprintf(stderr, "RM_ASSERT(%s) failed!\n", #x); return err;}}
 
-#define RM_MERGED      0
-#define RM_NOT_MERGED  1
+#define RM_MERGED        0
+#define RM_NOT_MERGED    1
+#define RM_CANNOT_SHRINK 2
+
+#define MEMORY_AS_BLOCK(x) ((memory_block_t *)(x))
 
 /****************************************************************************/
 
@@ -26,19 +29,20 @@ static size_t g_ram_size;
 
 /****************************************************************************/
 
-struct memory_block_t {
+typedef struct memory_block_t {
+    memory_t memory;
     void *ptr;
     uint8_t used : 1;
     size_t size;
-    memory_block_t *previous;
-    memory_block_t *next;
-};
+    struct memory_block_t *previous;
+    struct memory_block_t *next;
+} memory_block_t;
 
 static memory_block_t *g_root;
 static memory_block_t *g_root_end;
 
 static memory_block_t *mb_alloc(size_t size);
-static status_t mb_free(void *ptr);
+static status_t mb_mark_as_free(memory_block_t *mb);
 static memory_block_t *mb_find(void *ptr);
 
 /* push a pointer onto the root
@@ -86,13 +90,13 @@ memory_block_t *mb_find(void *ptr) {
 }
 
 
-/* delete a memory block, i.e., mark as unused.
+/* mark the black as unused.
  *
  * return: always RM_OK
  * modify: -
  * depend: -
  */
-status_t mb_delete(memory_block_t *mb) {
+status_t mb_mark_as_free(memory_block_t *mb) {
     mb->used = 0;
 }
 
@@ -117,13 +121,11 @@ void rmalloc_dump(void) {
                 mb->size,
                 (uint8_t*)mb-g_ram,
                 mb->ptr,
-                (uint8_t*)(mb->ptr+sizeof(memory_t))-g_ram,
+                (uint8_t*)(mb->ptr)-g_ram,
                 (uint8_t*)mb->next-g_ram);
         mb = mb->next;
     }
 }
-
-
 
 status_t rmalloc_init(void) {
     g_ram_size = RMALLOC_INIT_RAM_SIZE;
@@ -150,15 +152,16 @@ status_t rmalloc_destroy(void) {
 }
 
 void rmalloc_print(memory_t *memory) {
+    memory_block_t *block = MEMORY_AS_BLOCK(memory);
     fprintf(stderr, "* Handle at %d has block at %d of size %d bytes\n",
             (int)memory-(int)g_ram,
-            (int)(memory->block)-(int)g_ram,
-            memory->block->size);
+            (int)(block)-(int)g_ram,
+            block->size);
     
     fprintf(stdout, "(%s :start %d :size %d)\n",
-            memory->block->used ? "alloc" : "free",
+            block->used ? "alloc" : "free",
             (int)memory-(int)g_ram,
-            memory->block->size);
+            block->size);
 }
 
 /* allocate a chunk of memory
@@ -171,47 +174,48 @@ void rmalloc_print(memory_t *memory) {
  * layout in memory as follows (with memory growing down the page)::
  *
  * rmalloc(size) => 
- * memory handle    : sizeof(memory_handle_t) + size
- * +- memory block  : sizeof(memory_block_t) + size
- *    +- ptr        : size
- *    +- size       : sizeof(size_t)
- *    +- previous   : sizeof(*)
- *    +- next       : sizeof(*)
- * +- locks         : 1
+ * memory block     : sizeof(memory_block_t) + size
+ * +- memory_t      : sizeof(memory_t)
+ *    +- locks      : 1
+ * +- ptr           : size
+ * +- size          : sizeof(size_t)
+ * +- previous      : sizeof(*)
+ * +- next          : sizeof(*)
  *
  * Assuming a 32-bit architecture:
  *
- *  handle = 4
- *    locks = 1
- *    block = 4
- *      ptr = 4
- *      size = 4 + size
- *      previous = 4
- *      next = 4
+ *  start of memory_block_t 
+ *    (memory_t) locks = 1
+ *    ptr = 4
+ *    size = 4 + size
+ *    previous = 4
+ *    next = 4
  *  
- *  = 4+1+4+4+4+4+4 = 25 for a memory_t. to that comes the size of the memory
+ *  = 1+4+4+4 = 13 for a memory_block_t. to that comes the size of the memory
  *  chunk
  *
- *  Layout: memory_t, memory_block_t, chunk
+ *  Layout: memory_block_t/memory_t, chunk
  *
  */
 status_t rmalloc(memory_t **memory, size_t size) {
+    memory_block_t *block;
     double top = (long int)(g_top-g_ram);
     double end = (long int)(g_ram_end-g_ram);
     float filling = 100.0*top/end;
     fprintf(stderr, "%d%% heap fullness\n", (int)filling);
-    if (g_top+sizeof(memory_t)+sizeof(memory_block_t)+size < g_ram_end) {
+    if (g_top+sizeof(memory_block_t)+size < g_ram_end) {
         memory_t *m = (memory_t *)g_top;
-        g_top += sizeof(memory_t);
+        memory_block_t *mb = MEMORY_AS_BLOCK(m);
+        //g_top += sizeof(memory_block_t);
 
-        m->block = mb_alloc(size);
-        if (m->block) {
+        block = mb_alloc(size);
+        if (block) {
             m->locks = 0;
             *memory = m;
             rmalloc_print(*memory);
             return RM_OK;
         } 
-        g_top -= sizeof(memory_t);
+        g_top -= sizeof(memory_block_t);
 
         *memory = NULL;
         return RM_ERROR;
@@ -246,13 +250,13 @@ status_t mb_merge(memory_block_t *a, memory_block_t *b) {
     */
     
     /* are they adjacent? */
-    fprintf(stderr, "%lu+%lu+%lu=%lu matches? %lu\n",
-            a->ptr, a->size, sizeof(memory_t), a->ptr+a->size+sizeof(memory_t), b);
-    /* layout in memory: size bytes memory chunk, memory_t for b, then b. */
-    RM_ASSERT_RET(a->ptr+a->size+sizeof(memory_t) == b, RM_NOT_MERGED);
+    fprintf(stderr, "%lu+%lu+=%lu matches? %lu\n",
+            a->ptr, a->size, a->ptr+a->size, b);
+    /* layout in memory: a, memory chunk of 'size' bytes, then b. */
+    RM_ASSERT_RET(a->ptr+a->size == b, RM_NOT_MERGED);
 
     a->next = b->next;
-    a->size += b->size + sizeof(memory_t) + sizeof(memory_block_t);
+    a->size += b->size + sizeof(memory_block_t);
 
     //return RM_NOT_MERGED;
     return RM_MERGED;
@@ -265,9 +269,7 @@ status_t mb_shrink(memory_block_t *block, size_t new_size, memory_block_t **left
 
     // make sure there is space left in the orignal block after it has been
     // shrunk to new_size
-    if (block->size - new_size <
-        sizeof(memory_t) + sizeof(memory_block_t)) {
-
+    if (block->size - new_size < sizeof(memory_block_t)) {
         return RM_CANNOT_SHRINK;
     }
 
@@ -279,11 +281,10 @@ status_t mb_shrink(memory_block_t *block, size_t new_size, memory_block_t **left
 /* start compacting at and after the block addressed by the memory_t */
 void rmalloc_compact(memory_t *memory) {
     memory_block_t *mb;
-    memory_block_t *mb;
     status_t status;
     
     if (memory)
-        mb = memory->block;
+        mb = MEMORY_AS_BLOCK(memory);
     else
         mb = g_root;
     
@@ -328,6 +329,7 @@ void rmalloc_compact(memory_t *memory) {
     // find the first free slot
     mb = g_root;
     while (mb->next) {
+        mb = mb->next;
     
     }
 
@@ -342,12 +344,13 @@ status_t rmrealloc(memory_t **new, memory_t **old, size_t size) {
 }
 
 status_t rmlock(memory_t *memory, void **ptr) {
+    memory_block_t *block = MEMORY_AS_BLOCK(memory);
     if (memory != NULL) {
         // XXX: what happens when there are more than 255 locks?
         if (memory->locks < 255)
             memory->locks++;
         
-        *ptr = memory->block->ptr;
+        *ptr = block->ptr;
 
         return RM_OK;
     }
@@ -365,7 +368,7 @@ status_t rmunlock(memory_t *memory) {
 
 status_t rmfree(memory_t *memory) {
     if (memory != NULL) {
-        mb_delete(memory->block);
+        mb_mark_as_free(MEMORY_AS_BLOCK(memory));
         memory->locks = 0;
         rmalloc_print(memory);
     }
