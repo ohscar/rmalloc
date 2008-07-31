@@ -11,8 +11,9 @@
 
 #define RMALLOC_INIT_RAM_SIZE (8 * 1024*1024)
 
-#define RM_ASSERT(x) {uint8_t status = x; if (!status) {fprintf(stderr, "RM_ASSERT(%s) failed!\n", #x);}}
-#define RM_ASSERT_RET(x, err) {uint8_t status = (x); if (!status) {fprintf(stderr, "RM_ASSERT(%s) failed!\n", #x); return err;}}
+#define RM_ASSERT(x) {uint8_t status = x; if (!status) {fprintf(stderr, "[%s:%d] RM_ASSERT(%s) failed!\n", __FILE__, __LINE__, #x);}}
+#define RM_ASSERT_RET(x, err) {uint8_t status = (x); if (!status) {\
+    fprintf(stderr, "[%s:%d] RM_ASSERT_RET(%s) failed!\n", __FILE__, __LINE__, #x); return err;}}
 
 #define RM_MERGED        0
 #define RM_NOT_MERGED    1
@@ -138,6 +139,8 @@ status_t rmalloc_init(void) {
      * Which, for the very first allocation, will be NULL.
      */
     g_root = (memory_block_t *)g_ram; 
+    g_root->ptr = NULL;
+    g_root->size = 0;
     g_top += sizeof(memory_block_t);
     g_root->next = NULL;
     g_root->previous = NULL;
@@ -240,8 +243,8 @@ status_t rmalloc(memory_t **memory, size_t size) {
  * Layout:  memory_t first, then block, then chunk.
  */
 status_t mb_merge(memory_block_t *a, memory_block_t *b) {
-    RM_ASSERT_RET(!a->used, RM_NOT_MERGED);
-    RM_ASSERT_RET(!b->used, RM_NOT_MERGED);
+    RM_ASSERT_RET(a != NULL && !a->used && a->ptr != NULL, RM_NOT_MERGED);
+    RM_ASSERT_RET(b != NULL && !b->used && b->ptr != NULL, RM_NOT_MERGED);
 
     /* an easier check for now */
     /*
@@ -249,17 +252,21 @@ status_t mb_merge(memory_block_t *a, memory_block_t *b) {
     RM_ASSERT(b->previous == a);
     */
     
-    /* are they adjacent? */
-    fprintf(stderr, "%lu+%lu+=%lu matches? %lu\n",
-            a->ptr, a->size, a->ptr+a->size, b);
-    /* layout in memory: a, memory chunk of 'size' bytes, then b. */
-    RM_ASSERT_RET(a->ptr+a->size == b, RM_NOT_MERGED);
+    if (a->size > 0 && b->size > 0) {
+        
+        /* are they adjacent? */
+        fprintf(stderr, "%lu+%lu+=%lu matches? %p\n", a->ptr, a->size, a->ptr+a->size, b);
+        /* layout in memory: a, memory chunk of 'size' bytes, then b. */
+        RM_ASSERT_RET(a->ptr+a->size == b, RM_NOT_MERGED);
 
-    a->next = b->next;
-    a->size += b->size + sizeof(memory_block_t);
+        a->next = b->next;
+        a->size += b->size + sizeof(memory_block_t);
 
-    //return RM_NOT_MERGED;
-    return RM_MERGED;
+        //return RM_NOT_MERGED;
+        return RM_MERGED;
+    }
+
+    return RM_NOT_MERGED;
 }
 
 
@@ -286,8 +293,8 @@ void rmalloc_compact(memory_t *memory) {
     if (memory)
         mb = MEMORY_AS_BLOCK(memory);
     else
-        mb = g_root;
-    
+        mb = g_root->next;
+
     // start by merging adjacent free blocks
     while (mb->next != NULL) {
         if (!mb->used && !mb->next->used) {

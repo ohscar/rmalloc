@@ -262,6 +262,10 @@ The internal protocol would have to cast the public structure into the
 private, which gives you a clean public API at the cost of an internal cast
 (the macro MEMORY_TO_BLOCK(x))
 
+2008-07-30
+===========
+The root block is allocated such that it has a NULL pointer and size == 0.
+
 |rmalloc| replace:: ``rmalloc``
 
 .. vim:syntax=rst:ts=4:sw=4
