@@ -20,6 +20,7 @@
 #define RM_CANNOT_SHRINK 2
 
 #define MEMORY_AS_BLOCK(x) ((memory_block_t *)(x))
+#define BLOCK_AS_MEMORY(x) ((memory_t *)(x))
 
 /****************************************************************************/
 
@@ -270,17 +271,29 @@ status_t mb_merge(memory_block_t *a, memory_block_t *b) {
 }
 
 
-/* Shrink a block into a smaller size and save the leftovers.
+/* Shrink a block into a smaller size and save the leftovers, 
+ * effectively splitting the original block into two.
  */
 status_t mb_shrink(memory_block_t *block, size_t new_size, memory_block_t **leftover) {
+    memory_block_t *leftover_block;
+    int leftover_size;
+
+    RM_ASSERT_RET(BLOCK_AS_MEMORY(block)->locks == 0, RM_CANNOT_SHRINK);
+    RM_ASSERT_RET(block->size > new_size, RM_CANNOT_SHRINK);
 
     // make sure there is space left in the orignal block after it has been
     // shrunk to new_size
-    if (block->size - new_size < sizeof(memory_block_t)) {
+    if (block->size - new_size < sizeof(memory_block_t)) 
         return RM_CANNOT_SHRINK;
-    }
 
-    *leftover = NULL;
+    
+    // XXX: Not done yet?
+    leftover_block = block + sizeof(memory_block_t) + new_size;
+    leftover_block->size = block->size - new_size - sizeof(memory_block_t);
+    
+    block->size = new_size;
+
+    *leftover = leftover_block;
     return RM_OK;
 }
 
