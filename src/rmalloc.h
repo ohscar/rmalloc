@@ -44,7 +44,6 @@ status_t rmfree(memory_t *);
 const char *rmstatus(status_t);
 
 /***************************************************************************/
-
 #ifdef __cplusplus
 }
 #endif
