@@ -23,8 +23,10 @@ extern "C" {
 #define RM_NOT_MERGED    1
 #define RM_CANNOT_SHRINK 2
 
+#define MEMORY_AS_BLOCK_OUT(x) ((memory_block_t **)(&x))
 #define MEMORY_AS_BLOCK(x) ((memory_block_t *)(x))
 #define BLOCK_AS_MEMORY(x) ((memory_t *)(x))
+#define BLOCK_AS_MEMORY_OUT(x) ((memory_t **)(&x))
 
 #define RM_OK                   1
 #define RM_ERROR                0
@@ -43,6 +45,9 @@ typedef struct memory_block_t {
 
 /***************************************************************************/
 
+status_t mb_shrink(memory_block_t *block, size_t new_size, memory_block_t **leftover);
+
+/***************************************************************************/
 
 #ifdef __cplusplus
 }

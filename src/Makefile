@@ -1,4 +1,7 @@
-all: main debug
+all: main tests #debug
+
+tests: tests.c rmalloc.c
+	gcc -o tests tests.c rmalloc.c
 
 main: main.c rmalloc.c
 	gcc -o main main.c rmalloc.c

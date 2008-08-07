@@ -6,6 +6,7 @@
  * Mikael Jansson <mail@mikael.jansson.be>
  */
 #include "rmalloc.h"
+#include "rmalloc_internal.h"
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -135,9 +136,9 @@ status_t rmalloc_destroy(void) {
 
 void rmalloc_print(memory_t *memory) {
     memory_block_t *block = MEMORY_AS_BLOCK(memory);
-    fprintf(stderr, "* Handle at %d has block at %d of size %d bytes\n",
+    fprintf(stderr, "* Handle at relative address %d (%p) with chunk sized %d bytes\n",
             (int)memory-(int)g_ram,
-            (int)(block)-(int)g_ram,
+            memory,
             block->size);
     
     fprintf(stdout, "(%s :start %d :size %d)\n",
@@ -194,7 +195,7 @@ status_t rmalloc(memory_t **memory, size_t size) {
         if (block) {
             m->locks = 0;
             *memory = m;
-            rmalloc_print(*memory);
+            //rmalloc_print(*memory);
             return RM_OK;
         } 
         g_top -= sizeof(memory_block_t);
@@ -253,7 +254,6 @@ status_t mb_merge(memory_block_t *a, memory_block_t *b) {
  * effectively splitting the original block into two.
  */
 status_t mb_shrink(memory_block_t *block, size_t new_size, memory_block_t **leftover) {
-    memory_block_t *leftover_block;
     int leftover_size;
 
     RM_ASSERT_RET(BLOCK_AS_MEMORY(block)->locks == 0, RM_CANNOT_SHRINK);
@@ -266,12 +266,18 @@ status_t mb_shrink(memory_block_t *block, size_t new_size, memory_block_t **left
 
     
     // XXX: Not done yet?
-    leftover_block = block + sizeof(memory_block_t) + new_size;
-    leftover_block->size = block->size - new_size - sizeof(memory_block_t);
+    *leftover = block + sizeof(memory_block_t) + new_size;
+    (*leftover)->size = block->size - new_size - sizeof(memory_block_t);
     
+    fprintf(stderr, "block: %p, block+sizeof(memory_block_t)+new_size = %p, i.e., %d diff.\n",
+                block, (void *)(block+sizeof(memory_block_t)+new_size), sizeof(memory_block_t)+new_size);
+
+    fprintf(stderr, "leftover: %p, leftover - block = %d\n",
+                *leftover, 
+                (*leftover) - block);
+
     block->size = new_size;
 
-    *leftover = leftover_block;
     return RM_OK;
 }
 

@@ -14,6 +14,8 @@ extern "C" {
 #include <stdint.h>
 #include <sys/types.h>
 
+//typedef unsigned long size_t;
+
 #define RM_OK                   1
 #define RM_ERROR                0
 #define RM_INSUFFICIENT_MEMORY -1
