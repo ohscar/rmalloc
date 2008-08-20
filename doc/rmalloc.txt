@@ -71,7 +71,7 @@ There are two options for giving back memory when freeing memory handles:
 
 1. Add a member to memory_t, used, for next collection.
 2. Reserve a place in RAM for storing only memory_ts, on the assumption that
-   there will be a maximal number of memory chunks allocated.
+   there will be a maximal umber of memory chunks allocated.
 
 For #2, we need to know the typical memory size requested by the application.
 In general, this is unknown, but as this allocator is going to be used in a
@@ -265,6 +265,28 @@ private, which gives you a clean public API at the cost of an internal cast
 2008-07-30
 ===========
 The root block is allocated such that it has a NULL pointer and size == 0.
+
+2008-08-18
+===========
+It's probably useful to be able to specify in rmalloc_init() what memory to
+use, e.g.::
+
+    rmalloc_init(RM_USER_SUPPLIED, our_heap);
+    rmalloc_init(RM_SYSTEM_MEMORY, NULL);
+    /* XXX: merged w/ RM_USER_SUPPLIED? */
+    rmalloc_init(RM_SYSTEM_MALLOC, NULL);
+
+
+2008-08-19
+===========
+mb_move(free_block, used_block) moves the data within used_block to
+free_block. free_block.size > used_block.size => free_block is split into
+used_block.size and the leftover block is attached directly to the free block
+(by means of mb_shrink().)   It will also have to update the user-level
+pointers (i.e., memory_t) somehow.. this can be done in a function above
+mb_move(), or inside. For now, it's better to keep it all in one atomic
+operation.
+
 
 |rmalloc| replace:: ``rmalloc``
 

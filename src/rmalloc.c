@@ -127,6 +127,9 @@ status_t rmalloc_init(void) {
 
     g_root_end = g_root;
 
+    fprintf(stderr, "* init: sizeof(memory_block_t): %d, sizeof(memory_t): %d\n",
+            sizeof(memory_block_t), sizeof(memory_t));
+
     return g_root != NULL ? RM_OK : RM_ERROR;
 }
 
@@ -265,8 +268,7 @@ status_t mb_shrink(memory_block_t *block, size_t new_size, memory_block_t **left
         return RM_CANNOT_SHRINK;
 
     
-    // XXX: Not done yet?
-    *leftover = block + sizeof(memory_block_t) + new_size;
+    *leftover = (memory_block_t *)((uint8_t *)block + sizeof(memory_block_t) + new_size);
     (*leftover)->size = block->size - new_size - sizeof(memory_block_t);
     
     fprintf(stderr, "block: %p, block+sizeof(memory_block_t)+new_size = %p, i.e., %d diff.\n",
@@ -276,11 +278,21 @@ status_t mb_shrink(memory_block_t *block, size_t new_size, memory_block_t **left
                 *leftover, 
                 (*leftover) - block);
 
+    // XXX: leftoverblock must be grafted onto the memory list
+
     block->size = new_size;
 
     return RM_OK;
 }
 
+/* Move the data in a used block into a non-used block, possibly shrinking the
+ * free block to the size of the used data.  If the free block is shrunk, the
+ * leftovers is squeezed in directly after the free block.
+ *
+ * free_block.size >= used_block.size
+ */
+void mb_move(memory_block_t *free_block, memory_block_t *used_block) {
+}
 
 /* start compacting at and after the block addressed by the memory_t */
 void rmalloc_compact(memory_t *memory) {
@@ -330,13 +342,6 @@ void rmalloc_compact(memory_t *memory) {
     [X] 131072 0x260230->ptr = 0xb77e524c, end of pointer + memory_t = 0x26024c = next = 0x48a7aff8
     */
     
-    // find the first free slot
-    mb = g_root;
-    while (mb->next) {
-        mb = mb->next;
-    
-    }
-
 }
 
 
