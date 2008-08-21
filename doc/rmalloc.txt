@@ -12,7 +12,7 @@ while still being fast enough for usage within the web browser Opera.
 
 What
 ====
-The purpose of |rmalloc| is to provide the ability to perform compacting of the
+The purpose of rmalloc is to provide the ability to perform compacting of the
 application heap, by making memory access indirect, e.g.::
 
     status_t rmalloc(memory_t **, ssize_t);
@@ -50,15 +50,15 @@ Meta-How
 Three steps, of which the two last ones are iterative: 
 
 #. Gather allocation statistics from real-world usage of Opera
-#. Benchmark current allocators against |rmalloc|, by feeding data from the
+#. Benchmark current allocators against rmalloc, by feeding data from the
    previous step into the allocators.
-#. Tweak |rmalloc|.
+#. Tweak rmalloc.
 
 Benchmarking
 ~~~~~~~~~~~~~~
-Because of the difference in usage between |rmalloc| and standard allocators,
+Because of the difference in usage between rmalloc and standard allocators,
 the standard allocators will be wrapped such that they can be plugged in as
-direct replacements for |rmalloc|. 
+direct replacements for rmalloc. 
 
 How
 ====
@@ -277,8 +277,8 @@ use, e.g.::
     rmalloc_init(RM_SYSTEM_MALLOC, NULL);
 
 
-2008-08-19
-===========
+2008-08-19: mb_move()
+=========================
 mb_move(free_block, used_block) moves the data within used_block to
 free_block. free_block.size > used_block.size => free_block is split into
 used_block.size and the leftover block is attached directly to the free block
@@ -287,8 +287,116 @@ pointers (i.e., memory_t) somehow.. this can be done in a function above
 mb_move(), or inside. For now, it's better to keep it all in one atomic
 operation.
 
+With the curent layout memory_block_t followed directly by the data pointed to
+by ptr (why does the ptr even exist, then?), it's impossible to change
+location of memory blocks without updating the user code, if the layout is to
+stay the same.
 
-|rmalloc| replace:: ``rmalloc``
+Two options, one with a time penalty on compacting (ptr movable), and one with
+an extra indirection (hashed ...) causing a time penalty on handle locking and
+space penalty on the hash table used.
+
+ptr movable
+~~~~~~~~~~~~~~~
+Don't force a layout where the data pointed to by "ptr" has to directly follow
+the memory_block_t, i.e. This affects the shrink and merge operations which
+assume that layout to shrink/merge adjacent blocks
+
+Trade-offs
+-----------
+This will cause the merge operation (but not shrink) to become slower, as
+finding the adjacent free block will not be as easy as following the linked
+list and check for used==0.  In the future, one idea is to keep the
+memory_block_t data separate from the pointers anyway, for example at the end
+of the heap and overallocate to make sure the heap doesn't have to be resized
+all the time when adding each block (24 bytes).  Should this be implemented,
+the former approach would be quite natural.
+
+Hashed memory_t > memory_block_t > ptr
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Underlying memory_block_ts can be moved around freely, but the price to pay is
+a memory_t -> memory_block_t mapping, and that way only the entry in the
+mapping is updated when memory is moved around, and so the current layout can
+be kept.
+
+Trade-offs
+~~~~~~~~~~~
+The extra hash table required to lookup memory_block_t (ptr) will cause a
+second lookup in the hash for each lock(), and in addition the hash table will
+consume memory. This could possible be kept small, for example an uint16_t
+(for a max of 65536 objects, though) as an offset into the list of
+memory_block_ts.
+
+Conclusion
+~~~~~~~~~~~
+Having an extra lookup is probably not a viable option, as the point of the
+allocator is to be memory efficient, and the hash table consumes a lot of
+memory, N * sizeof(void*), where N is the number of objects. Also, it will
+need to be located somewhere in memory. If kept at the beginning (before the
+blocks), it will have to be overallocated (leading to internal fragmentation)
+in order to not move the real memory blocks to move around muchh.
+
+Extra
+~~~~~
+Looking at this closer, I see that there is already a hash table in place,
+because of "ptr" -- it is not neccessary to have in the structure if the
+user memory is located directly after m_b_t in the heap. One solution, placing
+all haeders at the end of the heap, causes problems if we want to shrink/grow
+the heap, because the headers are fixed in place because of the userspace
+mapping.
+
+
+(23:15:33) Jansson: Jo, jag kan lägga den i början på heapen och ha lite
+intern fragmentering, tills jag når objektdelen av heapen, och då får jag
+flytta dem.
+(23:15:50) Peter Wallman: det där var jag inte med på?
+(23:16:34) Jansson: jag använder, säg, heap[0] till
+heap[1024*sizeof(memory_block_t)] för att placera headers på, och direkt efter
+kommer riktig data.
+(23:16:54) Jansson: sedan när någon allokerat >1024 block får man så snällt
+flytta allt minne för att göra plats för N*2 headers.
+(23:17:14) Peter Wallman: ah, du kan ju kompaktera fram mer plats, ja :)
+(23:17:19) Jansson: Jess!
+(23:17:37) Peter Wallman: tja, varför inte.
+(23:18:48) Jansson: Det blir.. skavise..
+bytes_occupied_by_objects/(new_header_count-old_header_count)*sizeof(header)
+memcpy()s
+
+Something like this::
+
+    memcpy(src+size-diff, src+size, diff)
+    memcpy(src+size-diff*2, src+size-diff, diff)
+    memcpy(src+size-diff*3, src+size-diff*2, diff)
+
+
+The alternative is to have the headers in a separate heap. Is it worth it?
+The point was to avoid fragmentation. That heap would increase a lot. Having
+headers in the same heap as the memory would on one be a bit slower when we
+run out of header slots, but on the other hand be entirely self-contained.
+Requires measurement!  One misadvantage of the separate heap is that they
+might run out of memory at different times.
+
+
+en annan idé jag har, kommer inte ihåg om jag berättat om den, är att jag ger
+ifrån mig en notifiering till användaren  om att "nu borde jag börja
+kompaktera, ska jag göra det?" där användaren kan säga "nah." och tömma lite
+cacher och sådär.  om användaren ändå inte gör något så kommer rmalloc ge
+ifrån sig en till notifiering, när det är så lite minne kvar att man /måste/
+kompaktera nu för att det ska gå alls, som inte är valfri.
+
+är det användbart ö.h.?
+(23:34:47) Jansson: (t.ex. kan man tänka sig att Opera säger "nej, kompaktera
+inte nu" när något tungt sker, och så triggar Opera själv det i runslice.)
+(23:35:31) Peter Wallman: spontant: ja
+(23:35:45) Jansson: spontant är det också min tanke, men praktiskt? :-)
+(23:36:00) Jansson: det jag tänkte med det här var att helt och hållet
+amortera undan kompakteringen i operas idleloop.
+(23:36:06) Jansson: och få en raketsnabb allokator.
+(23:36:27) Peter Wallman: ja, det kan vara en ide
+(23:36:37) Jansson: eventuellt göra en inkrementell kompaktering, t.om.
+(23:36:40) Peter Wallman: så fort vi idlar så kör vi lite kompaktering, typ
+(23:36:42) Peter Wallman: precis
+
 
 .. vim:syntax=rst:ts=4:sw=4
 

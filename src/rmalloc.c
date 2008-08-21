@@ -278,20 +278,24 @@ status_t mb_shrink(memory_block_t *block, size_t new_size, memory_block_t **left
                 *leftover, 
                 (*leftover) - block);
 
-    // XXX: leftoverblock must be grafted onto the memory list
-
+    // insert the leftover block into the memory chain.
     block->size = new_size;
+    (*leftover)->next = block->next;
+    (*leftover)->previous = block;
+    block->next = *leftover;
 
     return RM_OK;
 }
 
 /* Move the data in a used block into a non-used block, possibly shrinking the
  * free block to the size of the used data.  If the free block is shrunk, the
- * leftovers is squeezed in directly after the free block.
+ * leftovers is squeezed in directly after the free block (handled by
+ * mb_shrink())
  *
  * free_block.size >= used_block.size
  */
 void mb_move(memory_block_t *free_block, memory_block_t *used_block) {
+    // XXX: what happens with userspace (i.e. memory_t) pointers?
 }
 
 /* start compacting at and after the block addressed by the memory_t */
