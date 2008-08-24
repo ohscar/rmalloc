@@ -16,8 +16,6 @@ extern "C" {
 
 //typedef unsigned long size_t;
 
-typedef uint32_t pointer_size_t;
-
 #define RM_OK                   1
 #define RM_ERROR                0
 #define RM_INSUFFICIENT_MEMORY -1
