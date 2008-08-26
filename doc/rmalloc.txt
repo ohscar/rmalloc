@@ -397,6 +397,110 @@ amortera undan kompakteringen i operas idleloop.
 (23:36:40) Peter Wallman: så fort vi idlar så kör vi lite kompaktering, typ
 (23:36:42) Peter Wallman: precis
 
+2008-08-26: Meeting with Koen
+==================================
+When merging the free blocks on the (implicit in the haeders) free lists, a
+O(n^2) operation is done to find adjacent blocks, that is:
+
+    for h in headers:
+        for h' in headers:
+            if adjacent(h, h'):
+                merge(h, h')
+
+Instead, store in the datablock a pointer to the adjacent free data block's
+header. That way, finding adjacent blocks is a simple matter of iterating the
+list.  If no adjacent block, set to NULL to distinguish left-overs in the
+datablock from an actual pointer.
+
+A tricky situation (relationship by character, not by being on the same line,
+\* denotes used block) that can come up if free data blocks are re-used in
+allocations, i.e. yielding a non-increasing data block order with regard to
+the headers::
+
+    header  data
+     A       A -> B         (store a pointer to B's header)
+     B       B -> null      (no adjacent free block)
+     C      *D              (used block)
+     D       E -> G         (store a pointer to G's header)
+     E       G -> null      (no adjacent free block)
+     F      *F              (used block)
+     G       C -> H         (store a pointer to H's header)
+     H       H -> null      (no adjacent free block)
+     .      *.
+     .       .
+
+Merging
+~~~~~~~~~~~~~~~~
+This is how a faulty algorithm, and my first try, looks like:
+
+1. Start at header(A): follow link to B, merge A and B.
+2. Continue at last used block, header(B) and go to next header (C)
+3. Follow link to C, merge C and H.
+4. Continue at last used block, header(H) and go to next header (.)
+5. ...
+
+The free pair E, G isn't considered!
+
+Thus, each time a link is followed, the "next header" can only be set if the
+free pair's headers are monotonically increasing, i.e. A, B, C, D, ... If
+greater jumps are made, such as C -> H, "next header" must be D!  I'm not sure
+about the time complexity.  First sketch of the merge operation::
+
+    current = root(headers)
+    while current /= end(headers):
+        if free(h):
+            h = current
+            increasing = T
+            while h /= end(headers) and free(h):
+                h' = header(data(h))
+                when free(h'):
+                    h'' = merge(h, h')
+                    if increasing-by-1(h, h'):
+                        when increasing:
+                            current = h'
+                        h = h'
+                    else:
+                        increasing = NIL
+        else:
+            current = next(current)
+                    
+In plain text: when following a link, update the current (top-level) index
+into the header list as long as the linked-to blocks are increasing by one
+header at the time. As soon as blocks are not increasing-by-1, stop updating
+the current pointer. 
+
+Trace of the merge given the table above::
+
+    current = A
+    h = A
+    h' = header(data(A)) = B
+    free(A) and free(B) =>
+        h'' = merge(A, B)
+        increasing-by-1(A, B) =>
+            current = B
+            h = h'
+    B /= end(headers) and free(B) =>
+        h' = header(data(B)) == NIL
+    current = next(current) = C
+    h = C
+    C /= end(headers) and free(C) =>
+        h' = header(data(C)) == H =>
+            h'' = merge(C, H)
+            increasing-by-1(C, H) == NIL =>
+                increasing = NIL
+    current = next(current) = D
+            
+
+Discussion
+~~~~~~~~~~~
+Ends up visiting (some) blocks twice, but hopefully the usual case won't
+have many jumps, which should be possible most of the time: directly after
+compacting blocks can be arranged to fit the order of headers, but after some
+time of re-using free data blocks, this order cannot be guaranteed.
+
+It is probably a good idea to re-use free blocks, even though it means a
+slightly slower malloc (to find a free data block large enough to hold the
+requested size), but compacting happens less frequently.
 
 .. vim:syntax=rst:ts=4:sw=4
 
