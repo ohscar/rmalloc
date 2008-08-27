@@ -443,8 +443,8 @@ The free pair E, G isn't considered!
 
 Thus, each time a link is followed, the "next header" can only be set if the
 free pair's headers are monotonically increasing, i.e. A, B, C, D, ... If
-greater jumps are made, such as C -> H, "next header" must be D!  I'm not sure
-about the time complexity.  First sketch of the merge operation::
+greater jumps are made, such as C -> H, "next header" must be D! First sketch
+of the merge operation::
 
     current = root(headers)
     while current /= end(headers):
@@ -459,6 +459,7 @@ about the time complexity.  First sketch of the merge operation::
                         when increasing:
                             current = h'
                         h = h'
+
                     else:
                         increasing = NIL
         else:
@@ -468,6 +469,9 @@ In plain text: when following a link, update the current (top-level) index
 into the header list as long as the linked-to blocks are increasing by one
 header at the time. As soon as blocks are not increasing-by-1, stop updating
 the current pointer. 
+
+XXX: Set the header's data block pointer to NULL for the (now unused) blocks.
+This should probably be done in the merge() operation.
 
 Trace of the merge given the table above::
 
@@ -498,9 +502,42 @@ have many jumps, which should be possible most of the time: directly after
 compacting blocks can be arranged to fit the order of headers, but after some
 time of re-using free data blocks, this order cannot be guaranteed.
 
+Worst-case behaviour is illustrated by the following merge sequence: 15
+headers, numbered H1-H15 with corresponding free data blocks D1-D15. Note that
+non-adjacent header blocks can very well be pointing at adjacent data blocks!
+In particular, the data block layout looks like this (line-breaking to make it
+easier to read)::
+
+    [D1][D5][D10]
+    [used]
+    [D2][D6][D11]
+    [used]
+    [D3][D7][D12]
+    [used]
+    [D4][D8][D13]
+    [used]
+    [D5][D9][D14]
+    [used]
+    [D15]
+
+The used blocks are not important.
+
+1. Starting with H1, the next header block will be H2. (as header blocks H1
+2. The process is repeated for H3 (6, 11) and H4 (7, 12).
+3. When moving forward to H5, the data block's next free data block pointer is
+   NULL, same for 6 and 7.  
+4. For 8 and 9, proceed with the merge as described in #1.
+5. Blocks 10, 11, 12, 13 and 14 have already been visited.
+6. Finally, block 16.
+
+The total number of operations is 3 x (3 + 2) = 15, i.e. O(n).
+
 It is probably a good idea to re-use free blocks, even though it means a
 slightly slower malloc (to find a free data block large enough to hold the
-requested size), but compacting happens less frequently.
+requested size), but compacting should happen less frequently. Moreover,
+large enough can very well be the exact size or exact size +
+(>= sizeof(memory_block_t*)) to fit the pointer to a possible free adjacent data
+block's header.
 
 .. vim:syntax=rst:ts=4:sw=4
 
