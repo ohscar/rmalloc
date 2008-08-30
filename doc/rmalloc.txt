@@ -71,7 +71,7 @@ There are two options for giving back memory when freeing memory handles:
 
 1. Add a member to memory_t, used, for next collection.
 2. Reserve a place in RAM for storing only memory_ts, on the assumption that
-   there will be a maximal umber of memory chunks allocated.
+   there will be a maximal umber of memory chunks allocated.
 
 For #2, we need to know the typical memory size requested by the application.
 In general, this is unknown, but as this allocator is going to be used in a
@@ -345,22 +345,24 @@ all haeders at the end of the heap, causes problems if we want to shrink/grow
 the heap, because the headers are fixed in place because of the userspace
 mapping.
 
+::
 
-(23:15:33) Jansson: Jo, jag kan lägga den i början på heapen och ha lite
-intern fragmentering, tills jag når objektdelen av heapen, och då får jag
-flytta dem.
-(23:15:50) Peter Wallman: det där var jag inte med på?
-(23:16:34) Jansson: jag använder, säg, heap[0] till
-heap[1024*sizeof(memory_block_t)] för att placera headers på, och direkt efter
-kommer riktig data.
-(23:16:54) Jansson: sedan när någon allokerat >1024 block får man så snällt
-flytta allt minne för att göra plats för N*2 headers.
-(23:17:14) Peter Wallman: ah, du kan ju kompaktera fram mer plats, ja :)
-(23:17:19) Jansson: Jess!
-(23:17:37) Peter Wallman: tja, varför inte.
-(23:18:48) Jansson: Det blir.. skavise..
-bytes_occupied_by_objects/(new_header_count-old_header_count)*sizeof(header)
-memcpy()s
+
+    (23:15:33) Jansson: Jo, jag kan lägga den i början på heapen och ha lite
+    intern fragmentering, tills jag når objektdelen av heapen, och då får jag
+    flytta dem.
+    (23:15:50) Peter Wallman: det där var jag inte med på?
+    (23:16:34) Jansson: jag använder, säg, heap[0] till
+    heap[1024*sizeof(memory_block_t)] för att placera headers på, och direkt efter
+    kommer riktig data.
+    (23:16:54) Jansson: sedan när någon allokerat >1024 block får man så snällt
+    flytta allt minne för att göra plats för N*2 headers.
+    (23:17:14) Peter Wallman: ah, du kan ju kompaktera fram mer plats, ja :)
+    (23:17:19) Jansson: Jess!
+    (23:17:37) Peter Wallman: tja, varför inte.
+    (23:18:48) Jansson: Det blir.. skavise..
+    bytes_occupied_by_objects/(new_header_count-old_header_count)*sizeof(header)
+    memcpy()s
 
 Something like this::
 
@@ -376,26 +378,27 @@ run out of header slots, but on the other hand be entirely self-contained.
 Requires measurement!  One misadvantage of the separate heap is that they
 might run out of memory at different times.
 
+::
 
-en annan idé jag har, kommer inte ihåg om jag berättat om den, är att jag ger
-ifrån mig en notifiering till användaren  om att "nu borde jag börja
-kompaktera, ska jag göra det?" där användaren kan säga "nah." och tömma lite
-cacher och sådär.  om användaren ändå inte gör något så kommer rmalloc ge
-ifrån sig en till notifiering, när det är så lite minne kvar att man /måste/
-kompaktera nu för att det ska gå alls, som inte är valfri.
+    en annan idé jag har, kommer inte ihåg om jag berättat om den, är att jag ger
+    ifrån mig en notifiering till användaren  om att "nu borde jag börja
+    kompaktera, ska jag göra det?" där användaren kan säga "nah." och tömma lite
+    cacher och sådär.  om användaren ändå inte gör något så kommer rmalloc ge
+    ifrån sig en till notifiering, när det är så lite minne kvar att man /måste/
+    kompaktera nu för att det ska gå alls, som inte är valfri.
 
-är det användbart ö.h.?
-(23:34:47) Jansson: (t.ex. kan man tänka sig att Opera säger "nej, kompaktera
-inte nu" när något tungt sker, och så triggar Opera själv det i runslice.)
-(23:35:31) Peter Wallman: spontant: ja
-(23:35:45) Jansson: spontant är det också min tanke, men praktiskt? :-)
-(23:36:00) Jansson: det jag tänkte med det här var att helt och hållet
-amortera undan kompakteringen i operas idleloop.
-(23:36:06) Jansson: och få en raketsnabb allokator.
-(23:36:27) Peter Wallman: ja, det kan vara en ide
-(23:36:37) Jansson: eventuellt göra en inkrementell kompaktering, t.om.
-(23:36:40) Peter Wallman: så fort vi idlar så kör vi lite kompaktering, typ
-(23:36:42) Peter Wallman: precis
+    är det användbart ö.h.?
+    (23:34:47) Jansson: (t.ex. kan man tänka sig att Opera säger "nej, kompaktera
+    inte nu" när något tungt sker, och så triggar Opera själv det i runslice.)
+    (23:35:31) Peter Wallman: spontant: ja
+    (23:35:45) Jansson: spontant är det också min tanke, men praktiskt? :-)
+    (23:36:00) Jansson: det jag tänkte med det här var att helt och hållet
+    amortera undan kompakteringen i operas idleloop.
+    (23:36:06) Jansson: och få en raketsnabb allokator.
+    (23:36:27) Peter Wallman: ja, det kan vara en ide
+    (23:36:37) Jansson: eventuellt göra en inkrementell kompaktering, t.om.
+    (23:36:40) Peter Wallman: så fort vi idlar så kör vi lite kompaktering, typ
+    (23:36:42) Peter Wallman: precis
 
 2008-08-26: Meeting with Koen
 ==================================
@@ -496,7 +499,7 @@ Trace of the merge given the table above::
             
 
 Discussion
-~~~~~~~~~~~
+-----------------
 Ends up visiting (some) blocks twice, but hopefully the usual case won't
 have many jumps, which should be possible most of the time: directly after
 compacting blocks can be arranged to fit the order of headers, but after some
@@ -538,6 +541,127 @@ requested size), but compacting should happen less frequently. Moreover,
 large enough can very well be the exact size or exact size +
 (>= sizeof(memory_block_t*)) to fit the pointer to a possible free adjacent data
 block's header.
+
+2008-08-29: free() and generations
+==================================
+
+Keeping the free list in the data blocks requires the initial free list to be
+setup somewhere, and the natural location to do that is in free(). The data
+blocks need to have both a pointer back to its header, as well as a pointer to
+the next free data block. So, why not perform a merge of the neighbors? This
+can be done in two ways, one where free() is O(1) in time complexity and one
+where free() is O(n) (where n is the number of free blocks) to find the block,
+plus the time to merge two blocks. (Which is also O(1).)  
+
+One piece of information that both approaches need to store is a pointer to
+the next free data block, or finding a block will be O(n) for n = total block
+count. The data blocks need to be inserted inte the list in order.
+
+Pointer at start
+~~~~~~~~~~~~~~~~
+When a data block is freed, the corresponding sets the used flag to 0, and a
+pointer back to the header is stored at the first of the block.
+
+Pointers at both boundaries
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The initial setup is the same as for as the above approach, but with the
+addition of an extra header pointer at the end of the data block.
+The merge operation is done by looking at the current data block's starting
+address minus sizeof(void*) and verifying that the address is in range to be a
+header block, and then following the header block's data block pointer to make
+sure it's unused and pointing to that block's starting addres.  Similarly,
+checking for an unused block is done by looking past the end of the current
+data block. This makes the merge operation O(1), but at the expense of having
+to store one extra pointer.
+
+Discussion
+~~~~~~~~~~
+By adding one pointer, the merge operation can be performed rather fast,
+but with merge() taking O(n) in time, it is not certain that a 50% increase of
+the minimum block size (two pointers to three) is worth the reduction in time
+(a cheap operation in each free() vs a O(n) (n=free block count) block-merge
+in compact()).
+
+A further optimization can be done by making the assumption that there will
+never be more than 2^24 blocks (either used or free) at any one time, and as
+such transforming the direct header block pointer to 3-byte long offset into
+the header block list.  The same thing can be done for the free list, by
+pointing at the free block's header instead of the block itself.
+
+It turns out that this approach makes it possible to rid of the pointor to the
+block's header altogether, as it will always be known by the previous block.
+Moreover, as blocks most likely should be aligned on a memory boundary (not
+addressed here), it's possible that blocks need to be 8 bytes anyway, and
+saving 4 bytes on the extra pointer is pointless. In that case, the list could
+be made doubly linked for a slightly quicker search (e.g. by keeping
+references to 25%, 50% and 75% into the list and perform binary searches in
+those ranges to find the location for the insertion.)
+
+
+2008-08-30: Compacting policies
+====================================
+
+It is possible to make smaller degrees of compacting without much overhead, by
+making note of the state of the free and used blocks. This gives the
+possibility to quickly ("cheaply") move around a few blocks to reduce
+fragmentation without invoking a full compact operation.
+
+Three policies are devised: moving a block yields large amounts of memory;
+moving a block yields less memory but doesn't invoke compact; full compact.
+It's a scale starting from hinting to forceful, and the user is given a choice
+through callbacks to let the allocator know what to do (either by doing what
+the allocator believes should be done, or by postponing the requested action
+into a later point in time when it is more suitable for the client
+application, e.g. an idle loop.)
+
+Large Free
+~~~~~~~~~~~~~
+Keep track of the block whose sum of its own size and direct-neighbor free
+blocks is the largest, and the free blocks large enough to hold the used block
+itself (i.e. without the direct-neighbor free blocks). When the count of such
+free blocks becomes 1, flag a "cleanup" operation.
+
+Expressed in another way (free for blocks marked free, used for blocks marked
+used)::
+
+    lu = exists u  <- used :
+        forall b <- used \ u :
+          size(u)+size(direct-neighbors(u)) >= 
+          size(b)+size(direct-neighbors(b)))
+
+    lfs = forall f <- free : size(f) => size(lu)
+
+    |lfs| > 1 --> |lfs| == 1 ==> flag(cleanup)
+
+Small Free
+~~~~~~~~~~~~~
+Similar to the Large version in implementation, but keeping track of the
+smallest free blocks, denoting the last possible "cheap" operation that can
+free up some memory instead of performing a compacting::
+
+    su = exists u <- used :
+        forall b <- used \ u :
+            size(u)+size(direct-neighbors(b)) <=
+            size(b)+size(direct-neighbors(b))
+
+    sfs = forall f <- free : size(f) >= size(su)
+    
+    |sfs| > 1 --> |sfs| == 1 ==> flag(last-chance)
+
+Force Compact
+~~~~~~~~~~~~~
+This is automatically entered if the user wanted to skip the last-chance when
+it was flagged. 
+
+XXX: Does the user really want to know about the cleanup and last-chance
+states? Shouldn't the allocator always use those if possible? If so, why would
+ever a force-compact happen?
+
+Compacting aims to be incremental, so blocks are moved from the top of the
+heap into the available holes. If no holes are available, blocks are moved
+around to create space (XXX: using which strategy?) to fit the block with the
+highest memory address. This is done so the heap can be shrinked if needed, at
+any given point in time.
 
 .. vim:syntax=rst:ts=4:sw=4
 
