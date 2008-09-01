@@ -44,6 +44,8 @@ while ( $#ARGV >= 0 ) {
 }
 
 $basemem = 0;
+$total_malloc_count = 0;
+$total_free_count = 0;
 
 while (<STDIN>) {
     $line = $_;
@@ -71,11 +73,16 @@ while (<STDIN>) {
 &findmaxsites();
 &findbadalloc();
 
+print STDERR "Live objects at termination: $totalcount\n";
+print STDERR "Total calls to malloc(): $total_malloc_count\n";
+print STDERR "Total calls to free(): $total_free_count\n";
+
 exit 0;
 
 sub malloc {
     my($site, $size, $ptr) = @_;
     my($addr) = eval($ptr);
+    $total_malloc_count++;
     $isallocated{$ptr} = 1;
     $alloc2size{$ptr} = $size;
     $alloc2site{$ptr} = $site;
@@ -103,6 +110,7 @@ sub free {
 	print STDERR "Freeing unallocated data at $ptr from $site\n";
 	return;
     }
+    $total_free_count++;
     $totalsize -= $alloc2size{$ptr};
     $totalcount--;
     $site2size{$alloc2site{$ptr}} -= $alloc2size{$ptr};
