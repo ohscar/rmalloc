@@ -12,15 +12,35 @@
 
 /****************************************************************************/
 
-static uint8_t *g_ram;
-static uint8_t *g_ram_end;
-static uint8_t *g_top; // memory grows up
-static size_t g_ram_size;
+/* g_header_start:HHHHHHHHHHH
+ *                HHHHHHHHHHH
+ *                HHH <- g_header_top
+ * g_data_start:  DDDDDDDDDDD
+ *                DDDDDDDDDDD
+ *                DDDDDDDDDDD
+ *                DDDDDDDDDDD
+ *                DDDDDDDDDDD
+ *                DDDDDDDDDDD
+ *                DDDDDDDD <- g_data_top
+ *                ...........
+ *                ...........
+ *                ...........
+ *                ...........
+ *                ...........
+ * g_ram_end:
+ *
+ */
+static uint8_t *g_ram;              // all available memory
+static uint8_t *g_ram_end;          // g_ram + g_ram_size, constant
+static size_t g_ram_size;           // total size
+static uint8_t *g_header_start;     // start of headers
+static uint8_t *g_header_top;       // location of last header
+static uint8_t *g_header_end;       // end address of headers, exclusive.
+static uint8_t *g_data_start;       // start of data blocks, end of header blocks.
+static uint8_t *g_data_top;         // location of last block. 
+static uint8_t *g_data_end;         // end address of data blocks, exclusive.
 
 /****************************************************************************/
-
-static memory_block_t *g_root;
-static memory_block_t *g_root_end;
 
 static memory_block_t *mb_alloc(size_t size);
 static status_t mb_mark_as_free(memory_block_t *mb);
@@ -28,28 +48,20 @@ static memory_block_t *mb_find(void *ptr);
 
 /* push a pointer onto the root
  *
- * return: the newly allocated block.
- * modify: g_top, g_root_end, g_root
- * depend: -
  */
 memory_block_t *mb_alloc(size_t size) {
     memory_block_t *mb;
-    if (g_top+size+sizeof(memory_block_t) < g_ram_end) {
-        mb = (memory_block_t *)g_top;
-        g_top += sizeof(memory_block_t);
+    if (g_header_top + sizeof(memory_block) < g_header_end &&
+        g_data_top + size < g_data_end) {
+        mb = (memory_block_t *)g_header_top;
 
-        mb->ptr = g_top;
         mb->used = 1;
         mb->size = size;
+        mb->ptr = g_data_top;
 
-        mb->next = NULL;
-        mb->previous = g_root_end;
-        g_root_end->next = mb;
-
-        g_root_end = mb;
-
-        g_top += size;
-
+        g_header_top += sizeof(memory_block_t);
+        g_data_top += size;
+        
         return mb;
     } else
         return NULL;
@@ -57,17 +69,24 @@ memory_block_t *mb_alloc(size_t size) {
 
 /* find a memory block in the list
  *
- * return: the found block or NULL
- * modify: -
- * depend: g_root
  */
 memory_block_t *mb_find(void *ptr) {
-    memory_block_t *root;
-    for (root = g_root;
-         root != NULL && root->ptr != ptr;
-         root = root->next);
+    memory_block_t *block = g_header_start;
+    while (block != NULL && block < g_header_top)
+         block++;
 
-    return root;
+    return block;
+}
+
+/* find a free block of at least the specified size.
+ *
+ */
+memory_block_t *mb_find_free_block(size_t minimum_size) {
+    memory_block_t *block = g_header_start;
+    while (block != NULL && block < g_header_top)
+         block++;
+
+    return block;
 }
 
 
@@ -94,7 +113,7 @@ void *rmalloc_ram_top(void) {
  * specifically, the blocks and the addresses within.
  */
 void rmalloc_dump(void) {
-    memory_block_t *mb = g_root->next;
+    memory_block_t *mb = g_header_start;
     fprintf(stderr, "rmalloc_dump()\n");
     while (mb != NULL) {
         fprintf(stderr, "[%c] %6d %8p->ptr = %8p, end of pointer + memory_t = %8p = next = %8p\n",

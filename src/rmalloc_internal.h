@@ -39,8 +39,6 @@ typedef struct memory_block_t {
     void *ptr;
     uint8_t used : 1;
     size_t size;
-    struct memory_block_t *previous;
-    struct memory_block_t *next;
 } memory_block_t;
 
 /***************************************************************************/
