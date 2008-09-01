@@ -2,6 +2,7 @@
  rmalloc: Relocatable Memory Allocator
 ==========================================
 :Author: Mikael Jansson <mail@mikael.jansson.be>
+:Status: DRAFT
 
 .. contents::
 
@@ -84,6 +85,26 @@ Given the following variables.
 :D: Overhead (i.e. size of internal data sructures) associated with each
     user-allocated memory chunk.
 
+
+Algorithm
+==========
+The definition of each operation is given here in a Python-like pseudo-code.
+
+malloc
+~~~~~~
+
+
+free
+~~~~~
+
+realloc
+~~~~~~~~
+
+init
+~~~~~
+
+destroy
+~~~~~~~~~
 
 2008-07-14
 ===========
@@ -588,7 +609,7 @@ such transforming the direct header block pointer to 3-byte long offset into
 the header block list.  The same thing can be done for the free list, by
 pointing at the free block's header instead of the block itself.
 
-It turns out that this approach makes it possible to rid of the pointor to the
+It turns out that this approach makes it possible to rid of the pointer to the
 block's header altogether, as it will always be known by the previous block.
 Moreover, as blocks most likely should be aligned on a memory boundary (not
 addressed here), it's possible that blocks need to be 8 bytes anyway, and
@@ -619,7 +640,7 @@ Large Free
 Keep track of the block whose sum of its own size and direct-neighbor free
 blocks is the largest, and the free blocks large enough to hold the used block
 itself (i.e. without the direct-neighbor free blocks). When the count of such
-free blocks becomes 1, flag a "cleanup" operation.
+free blocks becomes 1, flag a "hint" cleanup.
 
 Expressed in another way (free for blocks marked free, used for blocks marked
 used)::
@@ -631,7 +652,7 @@ used)::
 
     lfs = forall f <- free : size(f) => size(lu)
 
-    |lfs| > 1 --> |lfs| == 1 ==> flag(cleanup)
+    |lfs| > 1 --> |lfs| == 1 ==> flag(hint)
 
 Small Free
 ~~~~~~~~~~~~~
@@ -646,22 +667,43 @@ free up some memory instead of performing a compacting::
 
     sfs = forall f <- free : size(f) >= size(su)
     
-    |sfs| > 1 --> |sfs| == 1 ==> flag(last-chance)
+    |sfs| > 1 --> |sfs| == 1 ==> flag(advisory)
 
 Force Compact
 ~~~~~~~~~~~~~
-This is automatically entered if the user wanted to skip the last-chance when
+This is automatically entered if the user wanted to skip the advisory when
 it was flagged. 
 
-XXX: Does the user really want to know about the cleanup and last-chance
+XXX: Does the user really want to know about the hint and advisory
 states? Shouldn't the allocator always use those if possible? If so, why would
-ever a force-compact happen?
+ever a force-compact happen?  Default should probably be to perform hint and
+advisory cleanup, unless explicitly stopped by client code.
 
 Compacting aims to be incremental, so blocks are moved from the top of the
 heap into the available holes. If no holes are available, blocks are moved
 around to create space (XXX: using which strategy?) to fit the block with the
 highest memory address. This is done so the heap can be shrinked if needed, at
 any given point in time.
+
+2008-08-31
+===============
+In "The memory fragmentation problem: solved?" (Wilson, oct 97), Lea's malloc
+is shown to have a fragmentation level of about 2%, when removing facts such
+as alignment and headers.  However, this is for applications that allocate on
+the order of 100 KB, among which Espresso is among largest with the
+shortest average lifetime per object.  The theory is that there exists other
+applications where most objects have a considerably shorter lifetime, and
+moreover, the object count is on the order of hundreds of thousands objects.
+In a memory-constrained environment, this might in fact exhibit a behaviour
+that makes fragmentation a bigger issue than shown by Wilson.
+
+For example, from start until Aftonbladet.se is loaded, malloc() is called
+450'000 times and free 350'000 times, i.e. 100'000 live objects in the end.
+
+XXX: More data on how much memory another page with Aftonbladet.se would
+consume, i.e. what data is mostly-static and what data is bound to the page.
+Consider cache.
+
 
 .. vim:syntax=rst:ts=4:sw=4
 
