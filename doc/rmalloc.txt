@@ -88,10 +88,70 @@ Given the following variables.
 
 Algorithm
 ==========
-The definition of each operation is given here in a Python-like pseudo-code.
+Full compact only happens in malloc(), whereas a free will only have the HINT
+or ADVISORY compacting routines!
 
 malloc
-~~~~~~
+~~~~~~~~~~~~
+Allocate a block of memory and return a handle to be used in lock/unlock/free.
+
+:Input: size
+:Output: handle
+
+Definition::
+
+    let header = find-free-block(size)
+    when block-shrink-possible?(header, size):
+        # shrink-block inserts the leftover header in the freelist
+        shrink-block(header, size)
+    return header
+
+         
+find-free-block
+---------------
+Find a free block and resize it appropriately
+
+:Input: size of the sought block
+:Output: header block pointer
+
+Definition::
+
+    let free-header = free-block-list-root
+    do:
+        if block-size(free-header) >= size:
+            return free-header
+    while free-block = next(free-block)
+    
+    # no block found
+    return nil
+
+block-shrink-possible?
+-----------------------
+Yes, if the block has at least minimum-block-size overhead
+
+:Input: header, size
+:Output: boolean
+
+Definition::
+    
+    block-size(header) >= size + minimum-block-size
+
+shrink-block
+------------
+:Input: header, size
+:Oputput: leftover header (original header unchanged)
+
+Definition::
+
+    let leftover = make-header()
+    size(leftover) = block-size(header)-size
+    block-address(leftover) = block-address(header) + size
+
+    # insert the left-over at the correct position in the free list
+    next-free-block-pointer(leftover) = next-free-block-pointer(header)
+    prev-free-block-pointer(leftover) = prev-free-block-pointer(header)
+
+    return leftover
 
 
 free
@@ -102,6 +162,9 @@ realloc
 
 init
 ~~~~~
+Definition::
+
+    free-block-list-root = nil
 
 destroy
 ~~~~~~~~~
