@@ -101,6 +101,19 @@ Allocate a block of memory and return a handle to be used in lock/unlock/free.
 Definition::
 
     let header = find-free-block(size)
+    unless header:
+        # XXX: is it possible to signal the state to the client that can
+        # decide if the compact() should happen instantly or when the client
+        # believes it is appropriate, such as in a idle loop?
+
+        # Perhaps there needs to be heuristics in place to signal a "we must
+        # compact now" notification to the client, which can then
+        # appropriately schedule it? (thus avoiding the "panic-compact" below)
+
+        compact()
+        let header = find-free-block(size)
+        unless header:
+            abort()
     when block-shrink-possible?(header, size):
         # shrink-block inserts the leftover header in the freelist
         shrink-block(header, size)
