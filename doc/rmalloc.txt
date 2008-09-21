@@ -88,57 +88,93 @@ Given the following variables.
 
 Algorithm
 ==========
-Full compact only happens in malloc(), whereas a free will only have the HINT
-or ADVISORY compacting routines!
-
 malloc
 ~~~~~~~~~~~~
 Allocate a block of memory and return a handle to be used in lock/unlock/free.
 
+Out-of-memory detetection (on the client side):
+
+1. malloc() => +compact-required+
+2. compact()
+3. malloc() => +compact-required+
+
+(could be wrapped for convenience)
+
+TODO:
+
+* perform SUGGEST and ADVISORY compacting hint.
+
 :Input: size
 :Output: handle
+:Signals: +compact-required+, +compact-hint-suggest+, +compact-hint-advisory+
 
 Definition::
 
     let header = find-free-block(size)
     unless header:
-        # XXX: is it possible to signal the state to the client that can
-        # decide if the compact() should happen instantly or when the client
-        # believes it is appropriate, such as in a idle loop?
-
-        # Perhaps there needs to be heuristics in place to signal a "we must
-        # compact now" notification to the client, which can then
-        # appropriately schedule it? (thus avoiding the "panic-compact" below)
-
-        compact()
-        let header = find-free-block(size)
-        unless header:
-            abort()
-    when block-shrink-possible?(header, size):
+        # try to make more room for the headers by moving the data
+        if header-list-full-p:
+            unless grow-header-list-size():
+                signal +compact-required+
+            # better now?
+            let header = find-free-block(size)
+            unless header:
+                signal +compact-required+
+            
+    # less internal fragmentation, please
+    when block-shrink-possible-p(header, size):
         # shrink-block inserts the leftover header in the freelist
         shrink-block(header, size)
+    
+
+    # compact hinting
+    # XXX: does it make a difference that it's a snapshot,
+    # instead of looking at the actual transition?
+
+    # suggest
+    let largest-used = find-largest-used-block()
+    let largest-free-blocks = blocks-larger-or-equal-to(smallest-used)
+    if length(largest-free-blocks) == 1:
+        signal +compact-hint-suggest+
+
+    # advisory
+    let smallest-used = find-smallest-used-block()
+    let smallest-free-blocks = blocks-larger-or-equal-to(smallest-used)
+    if length(smallest-free-blocks) == 1:
+        signal +compact-hint-advisory+
+
     return header
 
+dirty-p
+-------
+Is the header used now, or has it been used previously?
+
+:Input: header
+:Output: boolean
+
+Definition::
+
+    pointer(header) != NULL
          
 find-free-block
 ---------------
-Find a free block and resize it appropriately
+Find a free block at least of 'size' bytes
 
 :Input: size of the sought block
 :Output: header block pointer
 
 Definition::
 
-    let free-header = free-block-list-root
+    let free-block = free-block-list-root
     do:
-        if block-size(free-header) >= size:
-            return free-header
+        if block-size(free-block) >= size:
+            return free-block
     while free-block = next(free-block)
     
     # no block found
     return nil
 
-block-shrink-possible?
+block-shrink-possible-p
 -----------------------
 Yes, if the block has at least minimum-block-size overhead
 
@@ -157,6 +193,7 @@ shrink-block
 Definition::
 
     let leftover = make-header()
+
     size(leftover) = block-size(header)-size
     block-address(leftover) = block-address(header) + size
 
@@ -166,9 +203,102 @@ Definition::
 
     return leftover
 
+make-header
+---------------
+Find a clean header, increasing the size of the header block list as required,
+if no clean headers could be found.
+
+:Input: nil
+:Output: header
+
+Definition::
+
+    for header in header-list:
+        # a block currently or previously in use is dirty
+        # and cannot be re-used for new header blocks,
+        # or the data block pointed to would disappear.
+        if not dirty(header):
+            return header
+
+    # no header found
+    # try increasing the size of the header list
+    let last-header = last(header-list)
+    unless grow-header-list-size():
+        abort()
+
+    for header in header-list:
+        if not dirty(header):
+            return header
+    
+    # should have found one, or grow-header-list-size() 
+    # would've failed earlier
+    abort()
+
+grow-header-list-size
+-----------------------
+Increase the number of available clean headers.  Only invoked when there are
+no clean headers for new blocks (e.g. when shrinking a free block).
+
+:Input: nil
+:Output: t if successful, nil if no room (critical condition)
+
+Definition::
+
+    # split until fit
+    let offset = size(header-list)
+    while free-heap-size-at-end + offset + size(header-list) > total-heap-size &&  
+          offset > 0:
+        let ofset = offset / 2
+    
+    if offset == 0:
+        return nil
+
+    memcpy(data-blocks-start, data-blocks-start+offset, data-blocks-length)
+
+    # adjust headers
+    for header in header-list:
+        block-address(header) += offset
+
+    # adjust free blocks
+    let free-block = free-block-list-root
+    do:
+        prev-free-block-pointer(free-block) += offset
+        next-free-block-pointer(free-block) += offset
+    while free-block = next(free-block)
+
+    return t
 
 free
 ~~~~~
+Marks the header as unused and inserts the block in the free list at the
+proper location (always sorted).
+
+TODO:
+
+* keep pointers to 0%, 25%, 50%, 75% and 100% of the list for quicker search.
+
+:Input: memory handle
+:Output: nil
+
+Definition::
+
+    let header = handle-to-header(handle)
+    used(header) = nil
+    let free-block = block-address(header)
+
+    let prev-free = find-previous-free-neighbor(free-block)
+    next-free-block-pointer(free-block) = next-free-block-pointer(prev-free)
+    next-free-block-pointer(prev-block) = free-block
+    prev-free-block-pointer(free-block) = prev-block
+        
+
+find-previous-free-neighbor
+---------------------------
+Find the free block whose address is less than the input block, such that
+the free block's next pointer is larger than the input block.
+
+:Input: header
+:Output: header
 
 realloc
 ~~~~~~~~
@@ -716,7 +846,7 @@ Large Free
 Keep track of the block whose sum of its own size and direct-neighbor free
 blocks is the largest, and the free blocks large enough to hold the used block
 itself (i.e. without the direct-neighbor free blocks). When the count of such
-free blocks becomes 1, flag a "hint" cleanup.
+free blocks becomes 1, flag a "suggest" cleanup.
 
 Expressed in another way (free for blocks marked free, used for blocks marked
 used)::
@@ -728,7 +858,7 @@ used)::
 
     lfs = forall f <- free : size(f) => size(lu)
 
-    |lfs| > 1 --> |lfs| == 1 ==> flag(hint)
+    |lfs| > 1 --> |lfs| == 1 ==> flag(suggest)
 
 Small Free
 ~~~~~~~~~~~~~
@@ -750,9 +880,9 @@ Force Compact
 This is automatically entered if the user wanted to skip the advisory when
 it was flagged. 
 
-XXX: Does the user really want to know about the hint and advisory
+XXX: Does the user really want to know about the suggest and advisory
 states? Shouldn't the allocator always use those if possible? If so, why would
-ever a force-compact happen?  Default should probably be to perform hint and
+ever a force-compact happen?  Default should probably be to perform suggest and
 advisory cleanup, unless explicitly stopped by client code.
 
 Compacting aims to be incremental, so blocks are moved from the top of the
