@@ -911,5 +911,18 @@ consume, i.e. what data is mostly-static and what data is bound to the page.
 Consider cache.
 
 
+2008-10-01: Meeting
+======================
+* prototype the code in Lisp, letting me both reason on the code and have
+  something executable. use arrays of bytes for abstraction.
+* use separate heaps for headers: when increasing the header list it's
+  possible the could be a locked data block in the way.  mmap()-ing in ne
+  blocks for the header list means they could be free'd directly.  max
+  overhead of PAGE_SIZE-1 bytes.
+* use the same idea in data blocks for storing the free-header-list, instead
+  of doing a O(n) lookup to find an appropriate block. Possibly splitting the
+  blocks up in a n^2-ladder w/ a linked list of all headers pointing to blocks
+  of sizes n^2 - (n+1)^2?
+
 .. vim:syntax=rst:ts=4:sw=4
 
