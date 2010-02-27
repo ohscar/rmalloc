@@ -3,6 +3,7 @@
 ==========================================
 :Author: Mikael Jansson <mail@mikael.jansson.be>
 :Status: DRAFT
+:Date: $Date$
 
 .. contents::
 
