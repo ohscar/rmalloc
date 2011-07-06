@@ -1,0 +1,101 @@
+====================================================
+rmalloc: take 2
+====================================================
+Schedule
+========
+Scheduled work session each Wednesday 17:00-20:00.
+
+* July (4): 6 13 20 27
+* August (4): 3 10 17 31 (vacation 24th)
+* September (4): 7 14 21 28
+* October (4): 5 12 19 26
+* November (5): 2 9 16 23 30
+* December (4): 7 14 21 28
+
+Total: 25 sessions a 3h = 75h = 2 weeks of 37,5h
+
+Scheduled work session each Thursday 17:00-20:00.
+
+* August (3): 4 11 18 (vacation 25th)
+* September (5): 1 8 15 22 29
+* October (4): 6 13 20 27
+* November (4): 3 10 17 24
+* December (5): 1 8 15 22 29
+
+Total: 21 sessions a 3h = 63h = 1 2/3 weeks of 37,5h
+
+= 138 hours planned = 3 2/3 weeks full-time
+
+Allocators
+==========
+* First-fit (SLOB, see wikipedia) grabs the first available block. Used in DSLinux.
+* Best-fit grabs the best fitting lbock
+
+Buddy (wikipedia)
+~~~~~~~~~~~~~~~~~~~~~
+* Alloc: Find the smallest 2^k block that is large enough to accomodate the block. If not found, split a larger block in two, until lower limit (2^l = the smallest block size) is found and use that.
+* Free: Free the block of meory, look at the neighbour. If free, combine the blocks.  Continue until a non-free neighbour is found.
+
+Causes internal fragmentation: blocks are too large compared to the requested size.  Not a lot external fragmentation.
+
+Slab (wikipedia)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Used in Linux kernel 2.2, Haiku a2, AmigaOS 4.0 and more.
+
+Pre-allocate objects of different sizes to a slab.  Each slab contains objects of a specific type.  A cache contains many slabs, e.g. a string cache with slabs for different string sizes.  Getting a new object is just a matter of retrieving the object becase it's already initialized.
+
+Slabs have three different states
+
+* empty - all objects marked as free
+* partial - both used and free objects
+* full - all objects on the slab are used
+
+On alloc, if there are no partial slabs in a cache, a new slab is allocated and assigned to the cache. The empty slab is then used to grab the new object.  The slab contains pre-allocated objects.  No internal fragmentation.
+
+Overall plan (revised 2011-07-06)
+===================================
+Naive really does mean naive. Proof-of-concept. No optimization at all.
+
+1. [-] Create *naive* buddy allocator
+
+    1. [-] Read up on how it works
+    2. [-] Naive version doing only allocation. 
+
+        * Fills up memory
+
+    3. [-] Buddy/free
+
+2. [-] Adapt applications for automatic testing and statistics gathering
+
+    * Runs through all applications and produces memory graphs of memory consumed in heap,
+      internal fragmentation, external fragmentation
+
+3. [-] Implement *naive* compacting
+
+    * No holes left in higher memory. Visualize.
+
+4. [-] Implement *naive* generations
+3. [-] Adapt applications for stub lock/unlock/compact steps
+
+    * Not naive. Think through to pool together memory where it has the most effect.
+
+6. [-] Implement *naive* lock/unlock
+
+    * Query allocator on the largest block available
+    * Invent a measure of fragmentation (size of holes vs size of total ram vs size of largest block)
+
+7. [-] Fine-tuning
+
+    * Make it faster *or* compacter (= always have large blocks available) in the benchmarks
+
+2011-07-06: Wednesday week 27 (session #1, week #1)
+=====================================================
+Reading: Buddy allocator, SLAB
+
+* Scheduled time to work on: Wednesday and (from August) Thursday evenings.
+* Roadmap for the work with initial functional requirements.
+
+Next session
+============
+Reading: Upper bound for defragmenting buddy heaps, Memory fragmentation: solved?, Reconsidering custom memory allocation,  Out of Memory Notification in Linux
+
