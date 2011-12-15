@@ -95,7 +95,18 @@ Reading: Buddy allocator, SLAB
 * Scheduled time to work on: Wednesday and (from August) Thursday evenings.
 * Roadmap for the work with initial functional requirements.
 
-Next session
-============
+2011-07-13: Wednesday week 28 (session #2, week #2)
+====================================================
+Nothing. (Jenny)
+
+Next week
+==========
+Start writing code:
+
+1. How does the buddy allocator usually work
+2. Write code to do it.
+
+Future
+=======
 Reading: Upper bound for defragmenting buddy heaps, Memory fragmentation: solved?, Reconsidering custom memory allocation,  Out of Memory Notification in Linux
 
