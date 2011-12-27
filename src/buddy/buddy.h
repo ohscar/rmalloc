@@ -6,14 +6,15 @@
 #define __buddy_H
 
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-void binit(size_t heap_size);
+void binit(uint32_t heap_size);
 void bdestroy();
-void *balloc(size_t n);
+void *balloc(uint32_t n);
 void bfree(void *);
 
 #ifdef __cplusplus
