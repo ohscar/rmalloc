@@ -21,6 +21,7 @@ static int gheap_size = 0;
 #define CI_B_SPLIT 8
 
 typedef struct chunk_item {
+    // two nibbles
     void *a;
     void *b;
     uint8_t flags;
@@ -43,6 +44,11 @@ typedef struct info_item {
 static info_item_t *groot = NULL;
 
 /////////////////////////////////////////////////////////////////////////////
+uint32_t chunk_size(info_item_t *ii)
+// actual size from k
+{
+    return pow(2, ii->k)*MIN_CHUNK_SIZE;
+}
 
 void ci_set_flag(chunk_item_t *item, int flag)
 {
@@ -57,12 +63,6 @@ bool ci_flag(chunk_item_t *item, int flag)
     return item->flags & flag;
 }
 
-
-uint32_t chunk_size(info_item_t *ii)
-// actual size from k
-{
-    return pow(2, ii->k)*MIN_CHUNK_SIZE;
-}
 
 uint32_t up2(uint32_t n)
 // From http://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
@@ -117,6 +117,47 @@ bool ci_b_free(chunk_item_t *ci) {
     return ci->b && !ci_flag(ci, CI_B_USED) && !ci_flag(ci, CI_B_SPLIT);
 }
 
+bool adjacent_nibbles(void *a, void *b, info_item_t *ii) {
+    int n = chunk_size(ii);
+    DEBUG("adjacent? %p vs %p\n", (uint8_t *)a+n, b);
+    return (uint8_t *)a+n == b;
+}
+
+bool merge_nibbles(info_item_t *parent, chunk_item_t *ci1, chunk_item_t *ci2) {
+    // easy case first
+    if (ci1 == ci2) {
+        if (ci_a_free(ci1) && ci_b_free(ci1) &&
+                adjacent_nibbles(ci1->a, ci1->b, parent->smaller)) {
+
+            // find the parent chunk with an A or a B that starts with ci1's A
+            chunk_item_t *chunk = parent->free_list;
+            bool found = false;
+            while (chunk) {
+                DEBUG("merge_nibbles: chunk = %p or %p against %p\n",
+                        chunk->a, chunk->b, ci1->a);
+                if (chunk->a == ci1->a || chunk->b == ci1->a) {
+                    DEBUG("found chunk->a = %p!\n", chunk->a);
+                    found = true;
+                    break;
+                }
+                chunk = chunk->next;
+            }
+            if (found) {
+                ci_clear_flag(chunk, CI_A_SPLIT);
+                ci_clear_flag(chunk, CI_B_SPLIT);
+
+                ci1->a = NULL;
+                ci1->b = NULL;
+                return true;
+            }
+        } 
+    } else {
+        return true;
+    }
+    
+    return false;
+}
+
 chunk_item_t *find_free_chunk(info_item_t *ii)
 // first chunk in the list that has a free a or b, or NULL
 {
@@ -124,8 +165,8 @@ chunk_item_t *find_free_chunk(info_item_t *ii)
     chunk_item_t *prev = chunk;
     bool found = false;
     while (chunk) {
-        DEBUG("find free chunk in k=%d: chunk %p: free a %d, free b %d\n",
-                ii->k, chunk, ci_a_free(chunk), ci_b_free(chunk));
+        //DEBUG("find free chunk in k=%d: chunk %p: free a %d, free b %d\n",
+        //        ii->k, chunk, ci_a_free(chunk), ci_b_free(chunk));
         if (ci_a_free(chunk) || ci_b_free(chunk)) {
             found = true;
             break;

@@ -216,9 +216,11 @@ TEST_F(AllocTest, RequestChunkNLevelInfinite) {
             count++;
         }
         count--;
+        /*
         fprintf(stderr, "%d chunks (of %d) size %dK, k = %d => max %.0f\n",
                 chunk_count(ri->free_list), count, chunk_size(ri)/1024,
                 newk, pow(2, level-1));
+        */
         ASSERT_EQ(pow(2, level-1), count);
 
         // un-discard the chunks in this level
@@ -234,14 +236,19 @@ TEST_F(AllocTest, RequestChunkNLevelInfinite) {
  */
 TEST_F(AllocTest, MergeOneLevel) {
     int level = 2;
-    // this gives us two chunks
+    
     int newk = groot->k - level;
-    chunk_item_t *ci1 = request_chunk(groot, newk);
-    ci_set_flag(ci1, CI_A_USED);
-    ci_set_flag(ci1, CI_B_USED);
-    chunk_item_t *ci = request_chunk(groot, newk);
 
-    ASSERT_NE(ci1, ci);
+    // first, make sure the parent A block is split
+    chunk_item_t *ci = request_chunk(groot, newk);
+    ASSERT_EQ(groot->free_list->flags, CI_A_SPLIT);
+
+    // adjacent nibbles, i.e. ci's A and B
+    merge_nibbles(groot->smaller, ci, ci);
+
+    ASSERT_EQ(groot->smaller->free_list->flags, 0);
+    ASSERT_EQ(ci->a, (void *)NULL);
+    ASSERT_EQ(ci->b, (void *)NULL);
 }
 
 TEST_F(AllocTest, Destroy) {
