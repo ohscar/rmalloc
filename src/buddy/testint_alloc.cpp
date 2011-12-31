@@ -88,24 +88,148 @@ TEST_F(AllocTest, ExtendFreelist) {
 }
 
 TEST_F(AllocTest, FindFreeChunk) {
-    EXPECT_TRUE(false);
+    //EXPECT_TRUE(false);
 }
+
+#define CHUNK_EQUAL(i, p, c) (p->a == c->a || p->b == c->a) && (c->b == (uint8_t *)(c->a)+chunk_size(i))
+
+#define CHUNK_EQUAL_A(i, p, c) {ASSERT_EQ(p->a, c->a); ASSERT_EQ(c->b, (uint8_t *)(c->a)+chunk_size(i));}
+#define CHUNK_EQUAL_B(i, p, c) {ASSERT_EQ(p->b, c->a); ASSERT_EQ(c->b, (uint8_t *)(c->a)+chunk_size(i));}
 
 TEST_F(AllocTest, RequestChunkZeroLevel) {
     chunk_item *ci = request_chunk(groot, groot->k);
     ASSERT_TRUE(ci != NULL);
+    ASSERT_TRUE(ci == groot->free_list);
 }
 
 TEST_F(AllocTest, RequestChunkOneLevel) {
-    chunk_item *ci = request_chunk(groot, groot->k - 1);
+    int newk = groot->k - 1;
+    chunk_item *ci = request_chunk(groot, newk);
     ASSERT_TRUE(ci != NULL);
+    ASSERT_EQ(groot->smaller->k, newk);
+
+    chunk_item_t *chunk = groot->smaller->free_list;
+    ASSERT_EQ(ci, chunk);
+
+    ASSERT_TRUE(CHUNK_EQUAL(groot->smaller, groot->free_list, chunk));
 }
 
-#if 0 
-TEST_F(AllocTest, Destroy) {
-    ASSERT_TRUE(groot != NULL);
-    int n = up2(heap_size);
-    ASSERT_EQ(groot->k, log2(n/MIN_CHUNK_SIZE));
+TEST_F(AllocTest, RequestChunkTwoLevel) {
+    int newk = groot->k - 2;
+    chunk_item *ci = request_chunk(groot, newk);
+
+    ASSERT_TRUE(ci != NULL);
+    ASSERT_EQ(groot->smaller->smaller->k, newk);
+    ASSERT_EQ(ci, groot->smaller->smaller->free_list);
+    ASSERT_TRUE(CHUNK_EQUAL(groot->smaller->smaller, groot->smaller->free_list, groot->smaller->smaller->free_list));
 }
-#endif
+
+TEST_F(AllocTest, RequestChunkBottomLevel) {
+    chunk_item *ci = request_chunk(groot, 0);
+    ASSERT_TRUE(ci != NULL);
+
+    info_item_t *ii = groot;
+    info_item_t *pii = ii;
+    while (ii->smaller) {
+        pii = ii;
+        ii = ii->smaller;
+    }
+
+    // just check the last level
+    ASSERT_TRUE(CHUNK_EQUAL(ii, pii->free_list, ii->free_list));
+}
+
+int chunk_count(chunk_item_t *ci) {
+    if (!ci)
+        return 0;
+    else
+        return 1 + chunk_count(ci->next);
+}
+
+TEST_F(AllocTest, RequestChunkTwoLevelTwice) {
+    int newk = groot->k - 2;
+    chunk_item *ci1 = request_chunk(groot, newk);
+    chunk_item *ci2 = request_chunk(groot, newk);
+    ASSERT_EQ(ci1, ci2);
+
+    ASSERT_EQ(1, chunk_count(groot->smaller->free_list));
+    ASSERT_EQ(1, chunk_count(groot->smaller->smaller->free_list));
+
+    // A used => same chunk
+    ci_set_flag(ci1, CI_A_USED);
+    ci2 = request_chunk(groot, newk);
+    ASSERT_EQ(ci1, ci2);
+    ASSERT_EQ(1, chunk_count(groot->smaller->smaller->free_list));
+
+    // B used => same chunk
+    ci_clear_flag(ci1, CI_A_USED);
+    ci_set_flag(ci1, CI_B_USED);
+    ci2 = request_chunk(groot, newk);
+    ASSERT_EQ(ci1, ci2);
+    ASSERT_EQ(1, chunk_count(groot->smaller->smaller->free_list));
+
+    // A and B used => new chunk
+    ci_set_flag(ci1, CI_A_USED);
+    ci_set_flag(ci1, CI_B_USED);
+    ci2 = request_chunk(groot, newk);
+    ASSERT_NE(ci1, ci2);
+    ASSERT_EQ(2, chunk_count(groot->smaller->smaller->free_list));
+
+    info_item_t *pii = groot->smaller;
+    info_item_t *ii = groot->smaller->smaller;
+
+    ASSERT_EQ(ii->free_list, ci1);
+
+    CHUNK_EQUAL_A(ii, pii->free_list, ci1);
+    CHUNK_EQUAL_B(ii, pii->free_list, ci2);
+}
+
+chunk_item_t *chunk_discard(chunk_item_t *chunk) {
+    ci_set_flag(chunk, CI_A_USED);
+    ci_set_flag(chunk, CI_B_USED);
+    return chunk;
+}
+
+/* allocate each block in each level
+ */
+TEST_F(AllocTest, RequestChunkNLevelInfinite) {
+    int level = 1;
+    int count = 1;
+    int newk = groot->k - level;
+    chunk_item_t *ci = request_chunk(groot, newk);
+    info_item_t *ri = groot->smaller;
+    ASSERT_EQ(ci, ri->free_list);
+
+    for (level=2; level<10; level++) {
+        newk = groot->k - level;
+        chunk_item_t *ci = request_chunk(groot, newk);
+        ri = ri->smaller;
+        ASSERT_EQ(ci, ri->free_list);
+        count = 1;
+        while (ci) {
+            chunk_discard(ci);
+
+            ASSERT_EQ(chunk_count(ri->free_list), count);
+
+            ci = request_chunk(groot, newk);
+            count++;
+        }
+        count--;
+        fprintf(stderr, "%d chunks (of %d) size %dK, k = %d => max %.0f\n",
+                chunk_count(ri->free_list), count, chunk_size(ri)/1024,
+                newk, pow(2, level-1));
+        ASSERT_EQ(pow(2, level-1), count);
+
+        // un-discard the chunks in this level
+        ci = ri->free_list;
+        while (ci) {
+            ci->flags = 0;
+            ci = ci->next;
+        }
+    }
+}
+
+TEST_F(AllocTest, Destroy) {
+    //EXPECT_TRUE(false);
+}
 

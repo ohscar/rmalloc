@@ -7,6 +7,8 @@
 #include <stdlib.h>
 #include <math.h>
 
+#define DEBUG(x...) //fprintf(stderr, x)
+
 static void *gheap = NULL;
 static void *gend = NULL;
 static int gheap_size = 0;
@@ -46,7 +48,7 @@ void ci_set_flag(chunk_item_t *item, int flag)
 {
     item->flags |= flag;
 }
-void ci_reset_flag(chunk_item_t *item, int flag)
+void ci_clear_flag(chunk_item_t *item, int flag)
 {
     item->flags &= ~flag;
 }
@@ -120,14 +122,18 @@ chunk_item_t *find_free_chunk(info_item_t *ii)
 {
     chunk_item_t *chunk = ii->free_list;
     chunk_item_t *prev = chunk;
+    bool found = false;
     while (chunk) {
-        if (ci_a_free(chunk) || ci_b_free(chunk))
+        DEBUG("find free chunk in k=%d: chunk %p: free a %d, free b %d\n",
+                ii->k, chunk, ci_a_free(chunk), ci_b_free(chunk));
+        if (ci_a_free(chunk) || ci_b_free(chunk)) {
+            found = true;
             break;
+        }
 
-        prev = chunk;
         chunk = chunk->next;
     }
-    return prev;
+    return found ? chunk : NULL;
 }
 
 info_item_t *split_chunk_item(info_item_t *ii, chunk_item_t *ci, info_item_t *into)
@@ -135,7 +141,7 @@ info_item_t *split_chunk_item(info_item_t *ii, chunk_item_t *ci, info_item_t *in
 // optionally insert into 'into', NULL to create a new
 // returns: NULL when chunk cannot be split
 {
-    uint32_t n = chunk_size(ii) >> 1;
+    uint32_t n = into == NULL ? chunk_size(ii) >> 1 : chunk_size(into);
     info_item_t *info = into == NULL ? make_info_item(n) : into;
     void *memory;
     int flag;
@@ -143,7 +149,7 @@ info_item_t *split_chunk_item(info_item_t *ii, chunk_item_t *ci, info_item_t *in
         // A free
         memory = ci->a;
         flag = CI_A_SPLIT;
-    } else if (ci->b && !ci_flag(ci, CI_B_USED) && !ci_flag(ci, CI_B_SPLIT)) {
+    } else if (ci_b_free(ci)) {
         // B free
         memory = ci->b;
         flag = CI_B_SPLIT;
@@ -172,24 +178,30 @@ chunk_item_t *request_chunk(info_item_t *root, int targetk)
 // split next available chunk in info block to the k:th item, unless available
 // the info blocks are latched onto root, final block is returned.
 {
+    DEBUG("requesting chunk k %d starting from %d\n", targetk, root->k);
     // do we already have a chunk of size targetk?
     info_item_t *info = root;
     chunk_item_t *ci = NULL;
     while (info->smaller && info->k > targetk)
         info = info->smaller;
-    if (info->k == targetk && (ci = find_free_chunk(info)))
+    if (info->k == targetk && (ci = find_free_chunk(info))) {
+        DEBUG("found free chunk %p in %p, returning.\n", ci, info);
         return ci;
+    }
 
     // find the smallest block that has free chunks
     // note: there can be filled block lines between blocks w/ free chunks
     info_item_t *smallest_block = NULL;
     chunk_item_t *smallest_chunk = NULL;
 
+    info_item_t *block = NULL;
     info_item_t *ii = root;
     chunk_item_t *chunk = ii->free_list;
     do {
         chunk = find_free_chunk(ii);
         if (chunk) {
+            DEBUG("found free chunk %p (flags %d) from block %p at level %d\n",
+                    chunk, chunk->flags, ii, ii->k);
             smallest_block = ii;
             smallest_chunk = chunk;
         }
@@ -198,30 +210,48 @@ chunk_item_t *request_chunk(info_item_t *root, int targetk)
 
     // did we find a spare chunk to split?
     if (smallest_block) {
-        info_item_t *block = smallest_block;
-        chunk_item_t *chunk = smallest_chunk;
+        block = smallest_block;
+        chunk = smallest_chunk;
 
         // continue until sought k is reached
         while (block->k > targetk) {
-            if (block->smaller) 
+            DEBUG("block->k %d > targetk %d\n", block->k, targetk);
+            if (block->smaller) {
+                DEBUG("split, smaller k available under block %p chunk %p flags %d\n",
+                        block, chunk, chunk->flags);
                 split_chunk_item(block, chunk, block->smaller);
+
+                // FIXME: flags = 4 => A is split = OK! we can use b
+            }
             else {
                 // no smaller block available, create a new k block line
                 ii = split_chunk_item(block, chunk, NULL);
-                if (ii)
+                if (ii) {
                     block->smaller = ii;
-                else
+                    DEBUG("split, created a smaller k in block %p chunk %p flags %d\n",
+                            block, chunk, chunk->flags);
+                }
+                else {
+                    fputs("OOM from split chunk.", stderr);
                     // out of memory
                     return NULL;
+                }
             }
+
 
             block = block->smaller;
             chunk = find_free_chunk(block);
+
+            DEBUG("chunk after split, block = %p, chunk = %p (%d)\n", block, chunk, chunk->flags);
         }
         
-    } else
+    } else {
+        fputs("OOM: all parent blocks exhausted\n", stderr);
         // out of memory
         return NULL;
+    }
+
+    DEBUG("chunk after split, returning chunk = %p\n", chunk);
 
     return chunk;
 }
@@ -241,8 +271,8 @@ chunk_item_t *make_root_chunk_item(void *heap)
 void destroy_chunk_item(chunk_item_t *item)
 {
     while (item) {
-        ci_reset_flag(item, CI_A_USED);
-        ci_reset_flag(item, CI_B_USED);
+        ci_clear_flag(item, CI_A_USED);
+        ci_clear_flag(item, CI_B_USED);
         
         chunk_item_t *next = item->next;
         free(item);
