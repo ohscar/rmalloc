@@ -207,6 +207,7 @@ TEST_F(AllocTest, RequestChunkNLevelInfinite) {
         ASSERT_EQ(ci, ri->free_list);
         count = 1;
         while (ci) {
+            // mark as used
             chunk_discard(ci);
 
             ASSERT_EQ(chunk_count(ri->free_list), count);
@@ -227,6 +228,20 @@ TEST_F(AllocTest, RequestChunkNLevelInfinite) {
             ci = ci->next;
         }
     }
+}
+
+/* merge all chunks for a specific k.
+ */
+TEST_F(AllocTest, MergeOneLevel) {
+    int level = 2;
+    // this gives us two chunks
+    int newk = groot->k - level;
+    chunk_item_t *ci1 = request_chunk(groot, newk);
+    ci_set_flag(ci1, CI_A_USED);
+    ci_set_flag(ci1, CI_B_USED);
+    chunk_item_t *ci = request_chunk(groot, newk);
+
+    ASSERT_NE(ci1, ci);
 }
 
 TEST_F(AllocTest, Destroy) {
