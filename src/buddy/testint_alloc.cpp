@@ -244,11 +244,34 @@ TEST_F(AllocTest, MergeOneLevel) {
     ASSERT_EQ(groot->free_list->flags, CI_A_SPLIT);
 
     // adjacent nibbles, i.e. ci's A and B
-    merge_nibbles(groot->smaller, ci, ci);
+    chunk_item_t *adjchunk = merge_nibbles(groot->smaller, ci, ci);
+    ASSERT_TRUE(adjchunk != NULL);
+    ASSERT_EQ(adjchunk->a, ci->a);
 
     ASSERT_EQ(groot->smaller->free_list->flags, 0);
     ASSERT_EQ(ci->a, (void *)NULL);
     ASSERT_EQ(ci->b, (void *)NULL);
+
+    ci = request_chunk(groot, newk);
+
+    ci_set_flag(ci, CI_A_USED);
+    ci_set_flag(ci, CI_B_USED);
+    chunk_item_t *ci2 = request_chunk(groot, newk);
+    ASSERT_NE(ci, ci2);
+
+    // a = used, A = free
+    // a | B - A | b == can merge nibbles B and A
+    ci->flags = 0;
+    ci2->flags = 0;
+
+    int s = chunk_size(groot->smaller->smaller);
+    ASSERT_EQ(ci->b+s, ci2->a);
+
+    // ci's B and ci2's A
+    chunk_item_t *nc = merge_nibbles(groot->smaller, ci, ci2);
+    ASSERT_TRUE(nc != NULL);
+    ASSERT_EQ(nc->a, ci->b);
+
 }
 
 TEST_F(AllocTest, Destroy) {

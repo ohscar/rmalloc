@@ -7,7 +7,8 @@
 #include <stdlib.h>
 #include <math.h>
 
-#define DEBUG(x...) //fprintf(stderr, x)
+#define DEBUG(x...) fprintf(stderr, x)
+char g_error[1024];
 
 static void *gheap = NULL;
 static void *gend = NULL;
@@ -15,10 +16,17 @@ static int gheap_size = 0;
 
 #define MIN_CHUNK_SIZE 4096
 
-#define CI_A_USED 1
+#define CI_A_USED 1 // allocated by client code
 #define CI_B_USED 2
-#define CI_A_SPLIT 4
+#define CI_A_SPLIT 4 // split into child blocks
 #define CI_B_SPLIT 8
+#define CI_A1_ELSEWHERE 16 // this block is a sub-block within another (parent) chunk
+#define CI_A2_ELSEWHERE 32 
+#define CI_B1_ELSEWHERE 64 
+#define CI_B2_ELSEWHERE 128 // FIXME: merge with CI_A_USED?
+#define CI_A_ELSEWHERE (CI_A1_ELSEWHERE|CI_A2_ELSEWHERE)
+#define CI_B_ELSEWHERE (CI_B1_ELSEWHERE|CI_B2_ELSEWHERE)
+#define CI_ELSEWHERE (CI_A_ELSEWHERE|CI_B_ELSEWHERE)
 
 typedef struct chunk_item {
     // two nibbles
@@ -123,13 +131,35 @@ bool adjacent_nibbles(void *a, void *b, info_item_t *ii) {
     return (uint8_t *)a+n == b;
 }
 
-bool merge_nibbles(info_item_t *parent, chunk_item_t *ci1, chunk_item_t *ci2) {
+chunk_item_t *parent_chunk(info_item_t *parent, chunk_item_t *ci) {
+    chunk_item_t *chunk = parent->free_list;
+    while (chunk && ci->a != chunk->a && ci->a != chunk->b) {
+        chunk = chunk->next;
+    }
+    return chunk;
+}
+
+chunk_item_t *add_chunk(info_item_t *parent, chunk_item_t *ci) {
+    chunk_item_t *chunk = parent->free_list;
+    while (chunk->next) {
+        chunk = chunk->next; 
+    }
+    chunk->next = ci;
+
+    return ci;
+}
+
+chunk_item_t *merge_nibbles(info_item_t *parent, chunk_item_t *ci1, chunk_item_t *ci2) {
     // easy case first
     if (ci1 == ci2) {
         if (ci_a_free(ci1) && ci_b_free(ci1) &&
                 adjacent_nibbles(ci1->a, ci1->b, parent->smaller)) {
 
             // find the parent chunk with an A or a B that starts with ci1's A
+            chunk_item_t *pc = parent_chunk(parent, ci1);
+            DEBUG("parent chunk to ci1 (adj.): %p\n", pc);
+
+            /*
             chunk_item_t *chunk = parent->free_list;
             bool found = false;
             while (chunk) {
@@ -143,19 +173,73 @@ bool merge_nibbles(info_item_t *parent, chunk_item_t *ci1, chunk_item_t *ci2) {
                 chunk = chunk->next;
             }
             if (found) {
-                ci_clear_flag(chunk, CI_A_SPLIT);
-                ci_clear_flag(chunk, CI_B_SPLIT);
+            */
 
-                ci1->a = NULL;
-                ci1->b = NULL;
-                return true;
+            if (pc) {
+                pc->flags = 0;
+                destroy_chunk_item(ci1);
+
+                return pc;
             }
         } 
     } else {
-        return true;
+        /* two scenarios:
+         * 1. a B | A' b'
+         * 2. a' B' | A b
+         */
+        DEBUG("a B | A' b': ci1->b+chunk_size = %p, ci2->a = %p, ci1 b free? %d, ci2 a free? %d\n",
+                ci1->b+chunk_size(parent->smaller), ci2->a,
+                ci_b_free(ci1), ci_a_free(ci2));
+        DEBUG("a' B' | A b: ci2->b+chunk_size = %p, ci1->a = %p, ci2 b free? %d, ci1 a free? %d\n",
+                ci2->b+chunk_size(parent->smaller), ci1->a,
+                ci_b_free(ci2), ci_a_free(ci1));
+
+        if (ci_b_free(ci1) && ci_a_free(ci2) && ci1->b+chunk_size(parent->smaller) == ci2->a) {
+            chunk_item_t *pc1 = parent_chunk(parent, ci1);
+            chunk_item_t *pc2 = parent_chunk(parent, ci2);
+            DEBUG("parent chunk 1 & 2 = %p, %p.\n", pc1, pc2);
+            if (pc1 && pc2) {
+                // left to right
+                if (ci1->a == pc1->a)
+                    ci_set_flag(pc1, CI_A2_ELSEWHERE);
+                else if (ci1->a == pc1->b)
+                    ci_set_flag(pc1, CI_B2_ELSEWHERE);
+
+                if (ci2->a == pc1->a)
+                    ci_set_flag(pc2, CI_A1_ELSEWHERE);
+                else if (ci2->a == pc2->b)
+                    ci_set_flag(pc2, CI_B1_ELSEWHERE);
+
+                chunk_item_t *chunk = make_chunk_item();
+                chunk->a = ci1->b;
+                chunk->b = NULL;
+                return add_chunk(parent, chunk);
+            }
+        } else if (ci_b_free(ci2) && ci_a_free(ci1) && ci2->b+chunk_size(parent->smaller) == ci1->a) {
+            chunk_item_t *pc1 = parent_chunk(parent, ci1);
+            chunk_item_t *pc2 = parent_chunk(parent, ci2);
+            if (pc1 && pc2) {
+                // left to right
+                if (ci2->a == pc1->a)
+                    ci_set_flag(pc2, CI_A2_ELSEWHERE);
+                else if (ci2->a == pc2->b)
+                    ci_set_flag(pc2, CI_B2_ELSEWHERE);
+
+                if (ci1->a == pc1->a)
+                    ci_set_flag(pc1, CI_A1_ELSEWHERE);
+                else if (ci1->a == pc1->b)
+                    ci_set_flag(pc1, CI_B1_ELSEWHERE);
+
+                chunk_item_t *chunk = make_chunk_item();
+                chunk->a = ci2->b;
+                chunk->b = NULL;
+                return add_chunk(parent, chunk);
+            }
+        }
+
     }
     
-    return false;
+    return NULL;
 }
 
 chunk_item_t *find_free_chunk(info_item_t *ii)
@@ -273,7 +357,7 @@ chunk_item_t *request_chunk(info_item_t *root, int targetk)
                             block, chunk, chunk->flags);
                 }
                 else {
-                    fputs("OOM from split chunk.", stderr);
+                    sprintf(g_error, "OOM from split chunk.");
                     // out of memory
                     return NULL;
                 }
@@ -287,7 +371,7 @@ chunk_item_t *request_chunk(info_item_t *root, int targetk)
         }
         
     } else {
-        fputs("OOM: all parent blocks exhausted\n", stderr);
+        sprintf(g_error, "OOM: all parent blocks exhausted\n");
         // out of memory
         return NULL;
     }
@@ -309,7 +393,18 @@ chunk_item_t *make_root_chunk_item(void *heap)
     return ci;
 }
 
-void destroy_chunk_item(chunk_item_t *item)
+void destroy_chunk_items(chunk_item_t *root)
+{
+    while (item) {
+        ci_clear_flag(item, CI_A_USED);
+        ci_clear_flag(item, CI_B_USED);
+        
+        chunk_item_t *next = item->next;
+        free(item);
+        item = next;
+    }
+}
+void destroy_chunk_items(chunk_item_t *root)
 {
     while (item) {
         ci_clear_flag(item, CI_A_USED);
@@ -321,10 +416,10 @@ void destroy_chunk_item(chunk_item_t *item)
     }
 }
 
-void destroy_info_item(info_item_t *item)
+void destroy_info_items(info_item_t *item)
 {
     while (item) {
-        destroy_chunk_item(item->free_list);
+        destroy_chunk_items(item->free_list);
 
         info_item_t *next = item->smaller;
         free(item);
