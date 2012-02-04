@@ -11,6 +11,8 @@
 /* memory layout:
  * - header list grows from top of stack and downwards
  * - objects grow from bottom of stack and upwards
+ * - TODO: switch around, such that the stack always grows from bottom? that
+ *   way, the heap could be grown.
  *
  * header:
  * - lock type: unlocked = 0, locked = 1, weak = 2

@@ -5,11 +5,10 @@
 /* header, see compact.h
  */
 
-#define HEADER_UNUSED       0
-#define HEADER_FREE_BLOCK   1
-#define HEADER_UNLOCKED     2
-#define HEADER_LOCKED       3
-#define HEADER_WEAK_LOCKED  4
+#define HEADER_FREE_BLOCK   0
+#define HEADER_UNLOCKED     1
+#define HEADER_LOCKED       2
+#define HEADER_WEAK_LOCKED  3
 
 typedef struct {
     void *memory;
@@ -30,39 +29,47 @@ void *g_memory_bottom;
 void *g_memory_top;
 uint32_t g_memory_size;
 
-// top since the headers shrink in memory
-#define HEADER_MAP_SIZE 64
-header_t *g_header_top;
-header_t *g_header_bottom;
-uint8_t g_header_free_map[HEADER_MAP_SIZE];
-int g_header_items_per_bit;
-char g_header_bitmap_free_index[256];
-
 // not sorted
 free_memory_block_t *g_free_list_root;
 free_memory_block_t *g_free_list_end;
 
 /* header */
+// headers grow down in memory
+header_t *g_header_top;
+header_t *g_header_bottom;
 
+header_t *g_free_header_root;
+header_t *g_free_header_end; // always NULL as its last element.
+
+// code
+
+bool header_is_unused(header_t *header) {
+    return header && header->memory == NULL;
+}
+
+header_t *header_set_unused(header_t *header) {
+
+    // 1. root == NULL => end == NULL; root = end = header;
+    // 2. root == end => end->memory = header; end = header
+    // 3. root != end => end->memory = header; end = header
+
+    if (!g_free_header_root) {
+        g_free_header_root = header;
+        g_free_header_end = header;
+    } else {
+        g_free_header_end->memory = header;
+        g_free_header_end = header;
+    }
+
+    header->memory = NULL;
+    return header;
+}
 /* find first free header. which is always the *next* header.
  */
 header_t *header_find_free() {
-#if 0 // FUTURE WORK check header free bitmap for 0-bits.
-    // optimization: unroll?
-    int pos = -1;
-    int byte = 0;
-    for (int i=0; i<HEADER_MAP_SIZE; ++) {
-        uint8_t freemap = g_header_free_map[i];
-        if (freemap != 0xFF) {
-            pos = g_header_bitmap_free_index[freemap];
-            byte = i;
-            break;
-        }
-    }
-#endif
     header_t *h = g_header_top;
     while (h >= g_header_bottom) {
-        if (h->flags == HEADER_UNUSED)
+        if (header_is_unused(h))
             return h;
         h--;
     }
@@ -82,14 +89,6 @@ header_t *header_new() {
         header->flags = HEADER_UNLOCKED;
         header->memory = NULL;
     }
-    return header;
-}
-
-header_t *header_set_unused(header_t *header) {
-    header->flags = HEADER_UNUSED;
-    header->memory = NULL;
-    header->size = 0;
-
     return header;
 }
 
@@ -244,7 +243,9 @@ void cinit(void *heap, uint32_t size) {
     g_free_list_root = NULL;
     g_free_list_end = NULL;
 
-    g_header_items_per_bit = 64;
+    g_free_header_root = NULL;
+    g_free_header_end = NULL;
+
     g_header_top = (header_t *)((uint32_t)heap + size);
     g_header_bottom = g_header_top;
 

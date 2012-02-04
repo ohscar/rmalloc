@@ -33,6 +33,7 @@ TEST_F(AllocTest, Init) {
 TEST_F(AllocTest, HeaderFindFree) {
     header_t *h = header_find_free();
     h->flags = HEADER_UNLOCKED;
+    h->memory = (void *)1;
     ASSERT_TRUE(h != NULL);
     h = header_find_free();
     ASSERT_TRUE(h == NULL);
@@ -40,9 +41,15 @@ TEST_F(AllocTest, HeaderFindFree) {
     ASSERT_EQ(g_header_bottom, g_header_top);
 }
 
+void test_header_set_used(header_t *h) {
+    h->flags = HEADER_UNLOCKED;
+    h->memory = (void *)1;
+}
+
 TEST_F(AllocTest, HeaderNew) {
     header_t *h = header_find_free();
     h->flags = HEADER_UNLOCKED;
+    h->memory = (void *)1;
     ASSERT_TRUE(h != NULL);
     h = header_find_free();
     ASSERT_TRUE(h == NULL);
@@ -51,9 +58,12 @@ TEST_F(AllocTest, HeaderNew) {
     ASSERT_TRUE(h != NULL);
     ASSERT_TRUE(h == g_header_bottom);
 
+    // discard it so the next test's calculation will be correct
+    test_header_set_used(h);
+
     int limit = 30000;
     for (int i=0; i<limit; i++) {
-        header_new();
+        test_header_set_used(header_new());
     }
 
     ASSERT_EQ(h, &g_header_bottom[limit]);
@@ -146,8 +156,7 @@ TEST_F(AllocTest, FreeAndMergeSimple) {
     ASSERT_TRUE(g_free_list_end == block5);
 
     ASSERT_EQ(end3, (uint8_t *)f2->memory+f2->size);
-    ASSERT_TRUE(f3->memory == NULL);
-    ASSERT_EQ(f3->flags, HEADER_UNUSED);
+    ASSERT_TRUE(header_is_unused(f3));
 
     // didn't touch anything else did we?
     ASSERT_TRUE(block5->header == f5);
