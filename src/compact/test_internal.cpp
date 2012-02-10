@@ -25,9 +25,11 @@ protected:
 };
 
 TEST_F(AllocTest, Init) {
-    ASSERT_EQ(g_memory_bottom, storage);
+    ASSERT_EQ(g_memory_bottom, (void *)(uint8_t *)storage + g_free_block_slot_count*sizeof(free_memory_block_t *));
     ASSERT_EQ(g_memory_top, g_memory_bottom);
-    ASSERT_EQ((void *)g_header_top, (void *)((uint32_t)g_memory_bottom+heap_size));
+    ASSERT_EQ((void *)g_header_top, (void *)((uint32_t)g_free_block_slots+heap_size));
+    ASSERT_EQ((void *)g_free_block_slots, (uint8_t *)g_memory_bottom - g_free_block_slot_count*sizeof(free_memory_block_t *));
+    ASSERT_EQ(g_free_block_slot_count, log2_(heap_size));
 }
 
 TEST_F(AllocTest, HeaderFindFree) {
@@ -124,14 +126,11 @@ TEST_F(AllocTest, FreeAndMergeSimple) {
     h5 = cmalloc(size);
     h = cmalloc(size);
 
-    ASSERT_TRUE(g_free_list_root == NULL);
-    ASSERT_TRUE(g_free_list_end == NULL);
     header_t *f2 = (header_t *)h2;
     cfree(h2);
 
     free_memory_block_t *block2 = block_from_header(f2);
-    ASSERT_TRUE(g_free_list_root == block2);
-    ASSERT_TRUE(g_free_list_end == block2);
+    ASSERT_TRUE(g_free_block_slots[log2_(f2->size)] == block2);
     ASSERT_TRUE(block2->header == f2);
     ASSERT_TRUE(block2->next == NULL);
 
@@ -140,20 +139,14 @@ TEST_F(AllocTest, FreeAndMergeSimple) {
 
     free_memory_block_t *block5 = block_from_header(f5);
 
-    ASSERT_TRUE(g_free_list_root == block2);
-    ASSERT_TRUE(block2->next == block5);
-    ASSERT_TRUE(g_free_list_end == block5);
+    ASSERT_EQ(g_free_block_slots[log2_(f5->size)], block5);
+    ASSERT_TRUE(block5->next == block2);
     ASSERT_TRUE(block5->header == f5);
-    ASSERT_TRUE(block5->next == NULL);
 
     // killing off h3 means merging with h2!
     header_t *f3 = (header_t *)h3;
     uint8_t *end3 = (uint8_t *)f3->memory + f3->size;
     cfree(h3);
-    
-    // shall be the same.
-    ASSERT_TRUE(g_free_list_root == block2);
-    ASSERT_TRUE(g_free_list_end == block5);
 
     ASSERT_EQ(end3, (uint8_t *)f2->memory+f2->size);
     ASSERT_TRUE(header_is_unused(f3));
@@ -183,16 +176,16 @@ TEST_F(AllocTest, FreeAndMergeEverySecond) {
     }
 
     int free_blocks = 0;
-    free_memory_block_t *free_block = g_free_list_root;
-    while (free_block != g_free_list_end) {
-        free_memory_block_t *this_block = block_from_header(free_block->header);
-        ASSERT_EQ(this_block, free_block);
+    for (int i=0; i<g_free_block_slot_count; i++) {
+        free_memory_block_t *free_block = g_free_block_slots[i];
+        while (free_block != NULL) {
+            free_memory_block_t *this_block = block_from_header(free_block->header);
+            ASSERT_EQ(this_block, free_block);
+            free_blocks++;
 
-        free_block = free_block->next;
-        free_blocks++;
+            free_block = free_block->next;
+        }
     }
-    if (g_free_list_end != g_free_list_root)
-        free_blocks++;
 
     ASSERT_EQ(free_blocks, count/2);
 }
@@ -243,14 +236,16 @@ TEST_F(AllocTest, FreeOneMergeTwo) {
     }
 
     int free_blocks = 0;
-    free_memory_block_t *free_block = g_free_list_root;
-    while (free_block != g_free_list_end) {
-        //printf("first checking block %d at header %p memory %p\n", free_blocks, free_block->header, free_block->header->memory);
-        free_block = free_block->next;
-        free_blocks++;
+    for (int i=0; i<g_free_block_slot_count; i++) {
+        free_memory_block_t *free_block = g_free_block_slots[i];
+        while (free_block != NULL) {
+            free_memory_block_t *this_block = block_from_header(free_block->header);
+            ASSERT_EQ(this_block, free_block);
+            free_blocks++;
+
+            free_block = free_block->next;
+        }
     }
-    if (g_free_list_end != g_free_list_root)
-        free_blocks++;
 
     // this is supposed to merge with the already freed blocks. there will be
     // exactly the same number of free blocks before and after.
@@ -263,18 +258,14 @@ TEST_F(AllocTest, FreeOneMergeTwo) {
 
     int free_size = 0;
     int free_blocks_after = 0;
-    free_block = g_free_list_root;
-    while (free_block != g_free_list_end) {
+    free_memory_block_t *free_block = g_free_block_slots[log2_(size)];
+    while (free_block != NULL) {
         free_size += free_block->header->size;
+        free_blocks_after++;
         //printf("second checking block %d at header %p memory %p\n", free_blocks_after, free_block->header, free_block->header->memory);
         ASSERT_EQ(free_block->header->size, size*2);
 
         free_block = free_block->next;
-        free_blocks_after++;
-    }
-    if (g_free_list_end != g_free_list_root) {
-        free_blocks_after++;
-        free_size += free_block->header->size;
     }
 
     ASSERT_EQ(free_size, free_blocks*size*2);
