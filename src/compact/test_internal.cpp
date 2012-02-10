@@ -284,6 +284,36 @@ TEST_F(AllocTest, FreeOneMergeTwo) {
     uint32_t total = stat_total_free_list();
     printf("total free list size = %u kb (%u mb)\n", total/1024, total/1048576);
 }
+
+
+// alloc, free, free later, alloc, free, free later
+// the free later are freed at a later pass.
+// compact
+TEST_F(AllocTest, RandomAllocFreeCompact) {
+    const int maxsize = 128*1024;
+    int largest = 0;
+
+    bool done = false;
+    while (!done) {
+        int size = rand()%maxsize;
+        handle_t *h = cmalloc(size);
+
+        if (h == NULL) {
+            done = true;
+            break;
+        }
+        if (largest < size)
+            largest = size;
+
+        // free by 20% probability
+        if (rand()%5 == 0) {
+            cfree(h);
+        }
+    }
+    printf("largest block allocated %d kb\n", largest/1024);
+
+    compact();
+}
 #if 0
 TEST_F(AllocTest, MakeInfoItem) {
     int n = up2(20000);

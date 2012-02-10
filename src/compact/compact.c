@@ -1,27 +1,7 @@
 #include "compact.h"
+#include "compact_internal.h"
 #include <stdio.h>
 #include <stdlib.h>
-
-/* header, see compact.h
- */
-
-#define HEADER_FREE_BLOCK   0
-#define HEADER_UNLOCKED     1
-#define HEADER_LOCKED       2
-#define HEADER_WEAK_LOCKED  3
-
-typedef struct {
-    void *memory;
-    int size;
-    int flags;
-} header_t;
-
-/* free memory block, see compact.h
- */
-typedef struct free_memory_block_t {
-    header_t *header;
-    struct free_memory_block_t *next; // null if no next block.
-} free_memory_block_t;
 
 /* memory layout
  */
@@ -37,6 +17,7 @@ free_memory_block_t *g_free_list_end;
 // headers grow down in memory
 header_t *g_header_top;
 header_t *g_header_bottom;
+header_t *g_header_highest_block; // lastly allocated (usually)
 
 header_t *g_free_header_root;
 header_t *g_free_header_end; // always NULL as its last element.
@@ -99,6 +80,9 @@ free_memory_block_t *block_from_header(header_t *header) {
 }
 
 header_t *block_new(int size) {
+    // TODO: look at the first and last free block and alloc out of that in case it
+    // fits?
+
     // minimum size for later use in free list: header pointer, next pointer
     if (size < 8)
         size = 8;
@@ -114,7 +98,9 @@ header_t *block_new(int size) {
     h->memory = g_memory_top;
     h->flags = HEADER_UNLOCKED;
 
+    // FIXME: this won't work if we start looking in the free list for blocks!
     g_memory_top = (uint8_t *)g_memory_top + size;
+    g_header_highest_block = h;
 
     return h;
 }
@@ -133,7 +119,10 @@ header_t *block_free(header_t *header) {
     free_memory_block_t *prevblock = (free_memory_block_t *)header->memory - 1;
     if (prevblock >= g_memory_bottom) {
         // is it a valid header?
-        if (prevblock->header >= g_header_bottom && prevblock->header <= g_header_top && prevblock->header->flags == HEADER_FREE_BLOCK) {
+        if (prevblock->header >= g_header_bottom
+            && prevblock->header <= g_header_top
+            && prevblock->header->flags == HEADER_FREE_BLOCK) {
+
             // does it point to the same block?
             if ((uint8_t *)prevblock->header->memory + prevblock->header->size == header->memory) {
                 // yup, merge previous and this block
@@ -230,8 +219,107 @@ uint32_t stat_total_free_list() {
 
 /* compacting */
 void compact() {
+    /* the super-greedy find first block algorithm!
+     *
+     * since block_new() is silly, we want to move as much out of the way from
+     * the end of our memory block space. let's do so!
+     */
 
-    // TODO
+    // find the largest free block that also starts fairly early
+    // cut-off point at 50%? make that a configurable variable to be testable
+    // in benchmarks!
+    free_memory_block_t *largest_block = g_free_list_root;
+    free_memory_block_t *largest_block_prev = g_free_list_root;
+    free_memory_block_t *block = g_free_list_root, *prev = NULL;
+    void *lowfree = block->header->memory, *highfree = block->header->memory;
+    float cutoff_ratio = 0.5;
+    void *cutoff = NULL;
+
+    // find the boundaries of the memory blocks
+    while (block) {
+        if (block->header->memory < lowfree)
+            lowfree = block->header->memory;
+
+        if (block->header->memory > highfree)
+            highfree = block->header->memory;
+
+        block = block->next;
+    }
+
+    cutoff = (void *)((uint32_t)lowfree + (uint32_t)(((uint8_t *)highfree-(uint8_t *)lowfree)*cutoff_ratio));
+
+    block = g_free_list_root;
+    prev = g_free_list_root;
+
+    while (block) {
+        if (block->header->size > largest_block->header->size && block->header->memory < cutoff) {
+            largest_block_prev = prev;
+            largest_block = block;
+        } 
+
+        prev = block;
+        block = block->next;
+    }
+
+    // Panic. Can't happen, unless above is wrong. Which it isn't...?
+    if (largest_block_prev->next != largest_block)
+        fprintf(stderr, "******************* PREV->next != BLOCK!!! (%p -> %p)\n", largest_block_prev, largest_block);
+
+    uint32_t size = (uint8_t *)highfree - (uint8_t *)lowfree;
+    printf("free block range: lowest %p to highest %p (%d K) with cutoff %p\n", lowfree, highfree, size/1024, cutoff);
+    printf("best suited free block at %p (%d kb from lowest) of size %d kb\n", largest_block->header->memory, ((uint32_t)largest_block->header->memory - (uint32_t)lowfree)/1024, largest_block->header->size/1024);
+
+    // we have the largest free block.
+    // memory grows up: look for highest addresses that will fit.
+    header_t *h = g_header_top;
+    header_t *highest = g_header_top;
+    while (h != g_header_bottom) {
+        if (h->flags == HEADER_UNLOCKED /* || h->flags == HEADER_WEAK_LOCKED */
+            && h->memory > highest->memory && h->size <= largest_block->header->size) {
+            // a winner!
+
+            printf("larger header h %d, size %d kb, memory %p\n", h->flags, h->size/1024, h->memory);
+
+            highest = h;
+        } else
+            printf("smaller header h %d, size %d kb, memory %p\n", h->flags, h->size/1024, h->memory);
+
+        h--;
+    }
+
+    // 1. copy the used block to the free block.
+    // 2. point the used block header to the free header's starting address
+    // 3a. if free block minus used block larger than sizeof(free_memory_block)
+    //     * adjust the free header's start adress and size
+    // 3b. if free header less than sizeof(free_memory_block_t):
+    //     * add that space to the used block (internal fragmentation)
+    //     * mark free block as unused
+    //     * point the free block's previous block's next to point to the free block's next block
+
+    // 1. copy the used block to the free block.
+    header_t *free_header = largest_block->header;
+    free_memory_block_t *largest_block_next = largest_block->next;
+
+    printf("moving block %p (size %d kb) to free block %p (size %d kb)\n", highest->memory, highest->size/1024, free_header->memory, free_header->size/1024);
+
+    memcpy(free_header->memory, highest->memory, highest->size);
+
+    // 2. point the used block header to the free header's starting address
+    highest->memory = free_header->memory;
+    
+    // 3a. if free header larger than sizeof(free_memory_block)
+    int diff = free_header->size - highest->size;
+    if (diff >= sizeof(free_memory_block_t)) {
+        free_header->memory = (void *)(uint8_t *)free_header->memory + highest->size;
+        free_header->size = diff;
+    } else {
+        // 3b. if free header less than sizeof(free_memory_block_t):
+        highest->size = free_header->size;
+        header_set_unused(free_header);
+
+        largest_block_prev->next = largest_block_next;
+    } 
+
 }
 
 /* client code */
@@ -248,6 +336,7 @@ void cinit(void *heap, uint32_t size) {
 
     g_header_top = (header_t *)((uint32_t)heap + size);
     g_header_bottom = g_header_top;
+    g_header_highest_block = NULL;
 
     header_set_unused(g_header_top);
 
@@ -255,6 +344,8 @@ void cinit(void *heap, uint32_t size) {
 }
 
 void cdestroy() {
+    // nop.
+    return;
 }
 
 handle_t *cmalloc(int size) {
