@@ -19,7 +19,6 @@ short g_free_block_slot_count; // log2(heap_size)
 // headers grow down in memory
 header_t *g_header_top;
 header_t *g_header_bottom;
-header_t *g_header_highest_block; // lastly allocated (usually)
 
 header_t *g_free_header_root;
 header_t *g_free_header_end; // always NULL as its last element.
@@ -87,6 +86,127 @@ header_t *header_new() {
     return header;
 }
 
+/* free block list */
+
+/* insert item at the appropriate location.
+ * don't take into consideration that it can exist elsewhere
+ */
+void freeblock_insert(free_memory_block_t *block) {
+    int k = log2_(block->header->size);
+    free_memory_block_t *b = g_free_block_slots[k];
+    g_free_block_slots[k] = block;
+    if (b)
+        block->next = b;
+}
+
+/* splits up a block by size.
+ * returns rest iff rest-size >= sizeof(free_memory_block_t)
+ */
+free_memory_block *freeblock_shrink(free_memory_block_t *block, uint32_t size) {
+    if (!block)
+        return NULL;
+
+    if (block->header->size - size < sizeof(free_memory_block_t))
+        return NULL;
+
+    header_t *h = header_new();
+    if (!h)
+        return NULL;
+
+    h->memory = (uint8_t *)block->header->memory + size;
+    h->size = block->header->size - size;
+    block->header->size = size;
+
+    free_memory_block_t *b = block_from_header(h);
+
+    // note: block has no next pointer.
+    b->header = h;
+    return b;
+}
+
+/* look for a block of the appropriate size in the 2^k list.
+ *
+ * any block that are larger than the slot's size will be moved upon traversal!
+ */
+handle_t *freeblock_find(uint32_t size) {
+    // there can be blocks of 2^k <= n < 2^(k+1)
+    int target_k = log2_(size);
+    int k = target_k;
+   
+    // any blocks of >= upper_size will be moved be de-linked and moved to the
+    // appropriate slot
+    int upper_size = 1<<(k+1);
+
+    // does this slot have any free blocks?
+    free_memory_block *block = g_free_block_slots[k];
+    while (!block && k < g_free_block_slot_count) {
+        // nope, move up to the next block
+        k++;
+        upper_size = 1<<(k+1);
+        block = g_free_block_slots[k];
+    }
+    if (!block) 
+        return NULL;
+
+    // in case we don't find an apropriately sized lock, but do find a larger
+    // block
+    free_memory_block_t *fallback_block = NULL;
+    free_memory_block_t *prevblock = block;
+
+    // alright, we've found ourselves a list to search in.
+    //
+    // 1. k == target_k
+    // 1a. large block => remove from list, move to correct location,
+    // remember location, next block.
+    // 1b. ok block => remove from list, return block
+    //
+    // 2. k > target_k
+    // 2a. all blocks are large => remove from list, shrink, move shrinked,
+    // return block
+    if (k == target_k) {
+        while (block != NULL) {
+            // remove from list:
+            // if it's too large, then remove it anyway
+            // if it's oK, then remove it since it'll be used
+            if (block == g_free_block_slots[k])
+                g_free_block_slots[k] = block->next;
+            else
+                prevblock->next = block->next;
+
+            if (block->header->size > upper_size) {
+                freeblock_insert(block);
+                fallback_block = block;
+            } else {
+                return block;
+            }
+
+            prevblock = block;
+            block = block->next;
+        }
+        
+        // rats, no block found? use the fallback block.
+        int fallback_k = log2_(fallback_block->header->size);
+        g_free_block_slots[fallback_k] = fallback_block->next;
+
+        free_memory_block_t *rest = freeblock_shrink(fallback_block, size);
+        if (rest)
+            freeblock_insert(rest);
+
+        return fallback_block;
+
+    } else if (k > target_k) {
+        // we know this is the first block
+        g_free_block_slots[k] = block->next;
+        free_memory_block_t *rest = freeblock_shrink(block, size);
+        if (rest)
+            freeblock_insert(rest);
+        return block;
+    }
+
+    printf("this must never happen. i'm confused.\n");
+    return NULL;
+}
+
 /* memory block */
 
 free_memory_block_t *block_from_header(header_t *header) {
@@ -94,29 +214,35 @@ free_memory_block_t *block_from_header(header_t *header) {
 }
 
 header_t *block_new(int size) {
-    // TODO: look at the first and last free block and alloc out of that in case it
-    // fits?
-
     // minimum size for later use in free list: header pointer, next pointer
     if (size < sizeof(free_memory_block_t))
         size = sizeof(free_memory_block_t);
 
-    if ((uint8_t *)g_memory_top+size >= (uint8_t *)g_header_bottom)
-        return NULL;
+    if ((uint8_t *)g_memory_top+size <= (uint8_t *)g_header_bottom) {
+        header_t *h = header_new();
+        if (!h)
+            return NULL;
 
-    header_t *h = header_new();
-    if (!h)
-        return NULL;
+        // just grab off the top
+        h->size = size;
+        h->memory = g_memory_top;
+        h->flags = HEADER_UNLOCKED;
 
-    h->size = size;
-    h->memory = g_memory_top;
-    h->flags = HEADER_UNLOCKED;
+        g_memory_top = (uint8_t *)g_memory_top + size;
 
-    // FIXME: this won't work if we start looking in the free list for blocks!
-    g_memory_top = (uint8_t *)g_memory_top + size;
-    g_header_highest_block = h;
-
-    return h;
+        return h;
+    } else {
+        // nope. look through existing blocks
+        handle_t *h = freeblock_find(size);
+        // okay, we're *really* out of memory
+        if (!h)
+            return NULL;
+        
+        // if required
+        freeblock_trim(h);
+        
+        return h;
+    }
 }
 
 /* 1. mark the block's header as free
@@ -201,7 +327,7 @@ header_t *block_free(header_t *header) {
     block->header = header;
     block->next = NULL;
 
-    // insert into free size block list
+    // insert into free size block list, at the start.
     int index = log2_(header->size);
     free_memory_block_t *current = g_free_block_slots[index];
     if (current) {
@@ -348,8 +474,11 @@ void compact() {
 void cinit(void *heap, uint32_t size) {
     g_memory_size = size;
 
+    // +1 to round up. e.g. log2(15)==3
+    // => 0, 1, 2, but later log2(13) would map to 3!
+    // in practice, will there be such a large block?
+    g_free_block_slot_count = log2_(size) + 1; 
     g_free_block_slots = (free_memory_block_t **)heap;
-    g_free_block_slot_count = log2_(size);
     memset((void *)g_free_block_slots, 0, sizeof(free_memory_block_t *)*g_free_block_slot_count);
 
     g_memory_bottom = (void *)((uint32_t)heap + (uint32_t)(g_free_block_slot_count * sizeof(free_memory_block_t *)));
@@ -360,7 +489,6 @@ void cinit(void *heap, uint32_t size) {
 
     g_header_top = (header_t *)((uint32_t)heap + size);
     g_header_bottom = g_header_top;
-    g_header_highest_block = NULL;
 
     header_set_unused(g_header_top);
 
