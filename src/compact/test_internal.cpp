@@ -29,7 +29,7 @@ TEST_F(AllocTest, Init) {
     ASSERT_EQ(g_memory_top, g_memory_bottom);
     ASSERT_EQ((void *)g_header_top, (void *)((uint32_t)g_free_block_slots+heap_size));
     ASSERT_EQ((void *)g_free_block_slots, (uint8_t *)g_memory_bottom - g_free_block_slot_count*sizeof(free_memory_block_t *));
-    ASSERT_EQ(g_free_block_slot_count, log2_(heap_size));
+    ASSERT_EQ(g_free_block_slot_count, log2_(heap_size)+1); // to accomodate 2^(k+1) sized blocks
 }
 
 TEST_F(AllocTest, HeaderFindFree) {
@@ -48,6 +48,7 @@ void test_header_set_used(header_t *h) {
     h->memory = (void *)1;
 }
 
+#if  0
 TEST_F(AllocTest, HeaderNew) {
     header_t *h = header_find_free();
     h->flags = HEADER_UNLOCKED;
@@ -76,6 +77,7 @@ TEST_F(AllocTest, HeaderNew) {
     header_t *h2 = header_new();
     ASSERT_EQ(h, h2);
 }
+#endif
 
 // verify that memory top increases and header bottom decreases
 TEST_F(AllocTest, MallocGrowsMemoryHeaders) {
@@ -284,7 +286,10 @@ TEST_F(AllocTest, RandomAllocFreeCompact) {
     const int maxsize = 128*1024;
     int largest = 0;
 
+    uint32_t allocated = 0;
+
     bool done = false;
+    int count = 0;
     while (!done) {
         int size = rand()%maxsize;
         handle_t *h = cmalloc(size);
@@ -293,15 +298,21 @@ TEST_F(AllocTest, RandomAllocFreeCompact) {
             done = true;
             break;
         }
+        count++;
+        allocated += size;
         if (largest < size)
             largest = size;
 
-        // free by 20% probability
-        if (rand()%5 == 0) {
+        // free by 50% probability
+        if (rand()%2 == 0) {
+            header_t *f = (header_t *)h;
+            allocated -= f->size;
             cfree(h);
         }
     }
-    printf("largest block allocated %d kb\n", largest/1024);
+
+    freeblock_print();
+    printf("largest block allocated %d kb, total allocated before death = %lu (%d kb) in %d allocs, free block hits = %d (allocated %d kb), total heap size %d kb, %d kb free in free list, %d bytes free above top\n", largest/1024, allocated, allocated/1024, count,g_free_block_hits, g_free_block_alloc/1024, heap_size/1024, stat_total_free_list()/1024, ((uint8_t*)g_header_bottom-(uint8_t*)g_memory_top));
 
     compact();
 }
