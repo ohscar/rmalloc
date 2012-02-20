@@ -21,6 +21,7 @@ uint32_t g_free_block_alloc = 0;
 // headers grow down in memory
 header_t *g_header_top;
 header_t *g_header_bottom;
+header_t *g_header_root; // linked list
 
 header_t *g_free_header_root;
 header_t *g_free_header_end; // always NULL as its last element.
@@ -39,15 +40,23 @@ uint32_t log2_(uint32_t n)
 /* header */
 
 bool header_is_unused(header_t *header) {
+    // FIXME: Make use of g_free_header_root / g_free_header_end -- linked
+    // list. grab the first element, relink?
+    //
+    // if memory <= g_header_top && memory >= g_header_bottom, then it is also
+    // unused.
+    //
     return header && header->memory == NULL;
 }
 
 header_t *header_set_unused(header_t *header) {
+    //fprintf(stderr, "header_set_unused (%d kb)\n", header->size/1024);
 
     // 1. root == NULL => end == NULL; root = end = header;
     // 2. root == end => end->memory = header; end = header
     // 3. root != end => end->memory = header; end = header
 
+#if 0
     if (!g_free_header_root) {
         g_free_header_root = header;
         g_free_header_end = header;
@@ -55,13 +64,18 @@ header_t *header_set_unused(header_t *header) {
         g_free_header_end->memory = header;
         g_free_header_end = header;
     }
+#endif
 
     header->memory = NULL;
+    // note: do not reset the next pointer. once it's in the list, it should
+    // stay there.
     return header;
 }
 /* find first free header. which is always the *next* header.
  */
 header_t *header_find_free() {
+    // FIXME: make use of g_free_header_root! the first element is always the
+    // one to use?
     header_t *h = g_header_top;
     while (h >= g_header_bottom) {
         if (header_is_unused(h))
@@ -71,19 +85,27 @@ header_t *header_find_free() {
     return NULL;
 }
 
-header_t *header_new() {
+header_t *header_new(bool insert_in_list) {
     header_t *header = header_find_free();
     if (!header) {
-        g_header_bottom--;
-        if ((void *)g_header_bottom <= g_memory_top)
-            header = NULL;
-        else
+        if (g_header_bottom-1 > g_memory_top) {
+            g_header_bottom--;
             header = g_header_bottom;
+        } else
+            header = NULL;
     }
     if (header) {
         header->flags = HEADER_UNLOCKED;
         header->memory = NULL;
-        header->next = NULL;
+
+        if (insert_in_list && header->next == NULL && header != g_header_root) {
+            header->next = g_header_root;
+
+            //fprintf(stderr, "g_header_root = %p, next = %p, header = %p -then- ", g_header_root, g_header_root->next, header);
+            g_header_root = header;
+            //fprintf(stderr, "g_header_root = %p, next = %p, header = %p\n", g_header_root, g_header_root->next, header);
+        }
+
     }
     return header;
 }
@@ -100,8 +122,8 @@ header_t *block_new(int size) {
     if (size < sizeof(free_memory_block_t))
         size = sizeof(free_memory_block_t);
 
-    if ((uint8_t *)g_memory_top+size <= (uint8_t *)g_header_bottom) {
-        header_t *h = header_new();
+    if ((uint8_t *)g_memory_top+size < (uint8_t *)g_header_bottom) {
+        header_t *h = header_new(true);
         if (!h)
             return NULL;
 
@@ -116,15 +138,68 @@ header_t *block_new(int size) {
     } else {
         // nope. look through existing blocks
         header_t *h = freeblock_find(size);
+
         // okay, we're *really* out of memory
         if (!h)
             return NULL;
+
+        h->flags = HEADER_UNLOCKED;
 
         g_free_block_hits++;
         g_free_block_alloc += size;
 
         return h;
     }
+}
+
+void freeblock_print() {
+    for (int i=0; i<g_free_block_slot_count; i++) {
+        fprintf(stderr, "%d / %d bytes / %d kb: ", i, 1<<i, (1<<i)/1024);
+        free_memory_block_t *b = g_free_block_slots[i];
+        while (b) {
+            fprintf(stderr, "{%p size %d kb} ", b, b->header->size/1024);
+            b = b->next;
+        }
+        fprintf(stderr, "\n");
+    }
+}
+
+bool freeblock_exists_memory(void *ptr) {
+    for (int i=0; i<g_free_block_slot_count; i++) {
+        free_memory_block_t *b = g_free_block_slots[i];
+        while (b) {
+            if (b->header->memory == ptr)
+                return true;
+
+            b = b->next;
+        }
+    }
+    return false;
+}
+
+bool freeblock_exists(free_memory_block_t *block) {
+    for (int i=0; i<g_free_block_slot_count; i++) {
+        free_memory_block_t *b = g_free_block_slots[i];
+        while (b) {
+            if (b == block)
+                return true;
+
+            b = b->next;
+        }
+    }
+    return false;
+}
+bool freeblock_checkloop(free_memory_block_t *block) {
+    free_memory_block_t *a = block;
+    while (block != NULL) {
+        block = block->next;
+        if (block == a) {
+            fprintf(stderr, "loop in memory block %p slot %d\n", block, log2_(block->header->size));
+            abort();
+            return true;
+        }
+    }
+    return false;
 }
 
 /* 1. mark the block's header as free
@@ -137,6 +212,7 @@ header_t *block_free(header_t *header) {
 
     bool in_free_list = false;
 
+#if 0 // TODO: Future work, looks buggy.
     // are there blocks before this one?
     free_memory_block_t *prevblock = (free_memory_block_t *)header->memory - 1;
     if (prevblock >= g_memory_bottom) {
@@ -147,10 +223,12 @@ header_t *block_free(header_t *header) {
 
             // does it point to the same block?
             if ((uint8_t *)prevblock->header->memory + prevblock->header->size == header->memory) {
+                //fprintf(stderr, "merging previous block %p with block %p\n", prevblock, block_from_header(header));
+
                 // yup, merge previous and this block
                 prevblock->header->size += header->size;
 
-                //printf("merging block headers %p and %p at memory %p and %p to new size %d\n", header, prevblock->header, header->memory, prevblock->header->memory, prevblock->header->size);
+                fprintf(stderr, "merging block headers %p and %p at memory %p and %p to new size %d\n", header, prevblock->header, header->memory, prevblock->header->memory, prevblock->header->size);
 
                 // kill off the current block
                 header_set_unused(header);
@@ -170,6 +248,7 @@ header_t *block_free(header_t *header) {
             }
         }
     }
+#endif
 
 #if 0 // TODO: Future work - needs a prev pointer!
     // are there blocks after this one?
@@ -199,15 +278,55 @@ header_t *block_free(header_t *header) {
     if (in_free_list)
         return header;
 
-    // alright, no previous or next block to merge with
+    // alright, no previous or next block to merge with.
     // update the free list
     free_memory_block_t *block = block_from_header(header);
+    //fprintf(stderr, "block from header in free(): %p\n", block);
 
     // header's tracking a block in the free list
     header->flags = HEADER_FREE_BLOCK;
 
-    block->header = header;
-    block->next = NULL;
+    // FIXME: block->header = header won't do?
+    /* crash at the line below.
+     *
+     * output from gdb:
+     * (gdb) print block
+     * $8 = (free_memory_block_t *) 0x90909088
+     *
+     * which is just the *contents* of block. That's wrong. Block should point
+     * to the address!
+     *
+     * also, header is wrong to begin with:
+     *
+     * (gdb) print header
+     * $12 = (header_t *) 0xaecf0498
+     * (gdb) print header->memory
+     * $13 = (void *) 0x48484848
+     * (gdb) print header->size
+     * $14 = 1212696648
+     * (gdb) 
+     * (gdb) print g_header_bottom
+     * $16 = (header_t *) 0xaecf0498 <-- same as header
+     * (gdb) print g_memory_top
+     * $17 = (void *) 0xaecf0179
+     */
+
+    // FIXME: I want to change the values of 'block'. should not that be
+    // block->foo = 42?  or do I have to memcpy()
+    //
+    // after a block is freed and the free_memory_block_t is written 
+    free_memory_block_t b;
+    b.header = header;
+    b.next = NULL;
+    memcpy((void *)block, (void *)&b, sizeof(free_memory_block_t));
+
+    ///block->header = header;
+    //block->next = NULL;
+
+    if (block->header->size + (uint8_t *)block->header->memory >= (void *)g_header_bottom)
+        abort();
+
+    //fprintf(stderr, "block_free(): block = %p, block->header = %p (header = %p) size %d memory %p\n", block, block->header, header, block->header->size, block->header->memory);
 
     // insert into free size block list, at the start.
     int index = log2_(header->size);
@@ -226,6 +345,12 @@ header_t *block_free(header_t *header) {
     g_free_block_slots[index]->next = current;
     //fprintf(stderr, "block_free(), current = %p g_free_block_slots[%d] = %p next = %p block = %p\n", current, index, g_free_block_slots[index], g_free_block_slots[index]->next, block);
 
+
+    // FIXME: crashes here. at some point, this block is overwritten, i.e.
+    // it's been used even though it's freed. Try disabling cfree()'s prev block merge?
+
+    //freeblock_checkloop(g_free_block_slots[index]);
+    freeblock_checkloop(block);
 
 #if 0 // FUTURE WORK for forward merges
     // insert duplicate back-pointers for large blocks
@@ -246,11 +371,20 @@ header_t *block_free(header_t *header) {
  * don't take into consideration that it can exist elsewhere
  */
 void freeblock_insert(free_memory_block_t *block) {
+
+    if (block->header->size + (uint8_t *)block->header->memory >= (void *)g_header_bottom)
+        abort();
+
     int k = log2_(block->header->size);
 
+    /*
     free_memory_block_t *b = g_free_block_slots[k];
     g_free_block_slots[k] = block;
     g_free_block_slots[k]->next = b;
+    */
+    block->next = g_free_block_slots[k];
+    g_free_block_slots[k] = block;
+
 #if 0
     if (b) {
         g_free_block_slots[k]->next = b;
@@ -269,7 +403,7 @@ void freeblock_insert(free_memory_block_t *block) {
  * input:  [                        block]
  * output: [     rest|              block]
  */
-free_memory_block_t *freeblock_shrink(free_memory_block_t *block, uint32_t size) {
+free_memory_block_t *freeblock_shrink_with_header(free_memory_block_t *block, header_t *h, uint32_t size) {
     if (!block)
         return NULL;
 
@@ -277,17 +411,25 @@ free_memory_block_t *freeblock_shrink(free_memory_block_t *block, uint32_t size)
     if (diff < sizeof(free_memory_block_t))
         return NULL;
 
-    header_t *h = header_new();
-    if (!h)
-        return NULL;
+    if (!h) {
+        h = header_new(true);
+        if (h == NULL)
+            return NULL;
+    }
+
+    if (size > block->header->size)
+        abort();
 
     if (h == block->header)
-        fprintf(stderr, "freeblock_shrink, new header %p same as block header %p - error!\n", h, block->header);
+        fprintf(stderr, "ERROR: freeblock_shrink, new header %p same as block header %p\n", h, block->header);
 
+    fprintf(stderr, "freeblockshrink: address of block->memory = %p with size = %d, address of block = %p == %p (or error!)\n", block->header->memory, block->header->size, block, (uint8_t *)block->header->memory + block->header->size - sizeof(free_memory_block_t));
+
+    h->flags = HEADER_FREE_BLOCK;
     h->memory = block->header->memory;
     h->size = diff;
 
-    block->header->memory = (uint8_t *)block->header->memory + size;
+    block->header->memory = (uint8_t *)block->header->memory + diff;
     block->header->size = size;
 
     //fprintf(stderr, "freeblock_shrink, h memory %p size %d block h memory %p size %p\n", h->memory, h->size, block->header->memory, block->header->size);
@@ -296,25 +438,19 @@ free_memory_block_t *freeblock_shrink(free_memory_block_t *block, uint32_t size)
     b->next = NULL; 
     b->header = h;
 
+    fprintf(stderr, "    3. freeblockshrink withheader h: %p  %d  %p  %d\n", h, h->size, h->memory, h->flags);
+
     if (b == block)
-        fprintf(stderr, "freeblock_shrink, new block %p (memory %p size %d) old block %p (memory %p size %d)\n",
+        fprintf(stderr, "ERROR: freeblock_shrink, new block %p (memory %p size %d) old block %p (memory %p size %d)\n",
                 b, b->header->memory, b->header->size,
                 block, block->header->memory, block->header->size);
 
     return b;
 }
-
-void freeblock_print() {
-    for (int i=0; i<g_free_block_slot_count; i++) {
-        fprintf(stderr, "%d / %d bytes / %d kb: ", i, 1<<i, (1<<i)/1024);
-        free_memory_block_t *b = g_free_block_slots[i];
-        while (b) {
-            fprintf(stderr, "{%p size %d kb} ", b, b->header->size/1024);
-            b = b->next;
-        }
-        fprintf(stderr, "\n");
-    }
+free_memory_block_t *freeblock_shrink(free_memory_block_t *block, uint32_t size) {
+    return freeblock_shrink_with_header(block, NULL, size);
 }
+
 
 /* look for a block of the appropriate size in the 2^k list.
  *
@@ -322,101 +458,152 @@ void freeblock_print() {
  */
 header_t *freeblock_find(uint32_t size) {
     // there can be blocks of 2^k <= n < 2^(k+1)
-    int target_k = log2_(size);
+    int target_k = log2_(size)+1;
     int k = target_k;
    
     // any blocks of >= upper_size will be moved be de-linked and moved to the
     // appropriate slot
     int upper_size = 1<<(k+1);
 
-    // does this slot have any free blocks?
-    free_memory_block_t *block = g_free_block_slots[k];
-    while (!block && k < g_free_block_slot_count) {
-        // nope, move up to the next block
-        k++;
-        upper_size = 1<<(k+1);
-        block = g_free_block_slots[k];
-    }
-    if (!block) 
-        return NULL;
-
-    // in case we don't find an apropriately sized lock, but do find a larger
-    // block
+    free_memory_block_t *block = NULL;
+    free_memory_block_t *found_block = NULL;
     free_memory_block_t *fallback_block = NULL;
-    free_memory_block_t *prevblock = block;
-    free_memory_block_t *nextblock = block;
 
-    // alright, we've found ourselves a list to search in.
-    //
-    // 1. k == target_k
-    // 1a. large block => remove from list, move to correct location,
-    // remember location, next block.
-    // 1b. ok block => remove from list, return block
-    //
-    // 2. k > target_k
-    // 2a. all blocks are large => remove from list, shrink, move shrinked,
-    // return block
-    //fprintf(stderr, "freeblock_find(%d).\n", size);
-    //freeblock_print();
-    if (k == target_k) {
-        //fprintf(stderr, "k == target_k = %d\n", k);
-        while (block != NULL) {
-            // remove from list:
-            // if it's too large, then remove it anyway
-            // if it's oK, then remove it since it'll be used
-            if (block == g_free_block_slots[k])
-                g_free_block_slots[k] = block->next;
-            else
-                prevblock->next = block->next;
+    // slot too large, need to do a full scan.
+    if (k == g_free_block_slot_count) {
+        k--;
+        block = g_free_block_slots[k];
+        free_memory_block_t *prevblock = block, *nextblock = block;
+        while (block) {
+            if (block->header->size >= size) {
+                // found the block. remove it from the list.
+                if (block == g_free_block_slots[k])
+                    g_free_block_slots[k] = block->next;
+                else
+                    prevblock->next = block->next;
 
-            // current next block. when moved, the next block will point to
-            // something else...
-            nextblock = block->next;
-
-            if (block->header->size > upper_size) {
-                freeblock_insert(block);
-                //fprintf(stderr, "moved target %d / %p size %d kb (%d kb to %d kb) (marked as fallback)\n", k, block, block->header->size/1024, (1<<k)/1024, upper_size/1024, log2_(block->header->size));
-                //freeblock_print();
-
-                fallback_block = block;
-            } else {
-                //fprintf(stderr, "OK go, found block %p size %d kb slot %d\n", block, block->header->size/1024, k);
-                return block->header;
+                found_block = block;
+                break; 
             }
 
-            // XXX: is prevblock sane if the block has been moved?
             prevblock = block;
-            block = nextblock;
+            block = block->next;
         }
-        
-        // rats, no block found? use the fallback block.
+    } else {
+        // k is within the bounds of the slots
+
+        // does this slot have any free blocks?
+        block = g_free_block_slots[k];
+        //fprintf(stderr, "freeblock_find() block at %d = %p (at pos %p)\n", k, block, &block);
+        while (!block && k < g_free_block_slot_count) {
+            // nope, move up to the next block
+            k++;
+            if (k < g_free_block_slot_count) {
+                upper_size = 1<<(k+1);
+                block = g_free_block_slots[k];
+                //fprintf(stderr, "freeblock_find() block at %d = %p (at pos %p)\n", k, block, &block);
+            } 
+        }
+
+        if (block) {
+            while (block) {
+                // yeah, there's a block here. it's also guaranteed to fit.
+                free_memory_block_t *prevblock = block, *nextblock = block;
+                
+                // first, remove the item from list.
+                if (block == g_free_block_slots[k])
+                    g_free_block_slots[k] = block->next;
+                else
+                    prevblock->next = block->next;
+
+                fprintf(stderr,"* %p -> %p (%c)?\n", block, block->header, (uint32_t)block->header&0x000000FF);
+
+                if (block->header->size > upper_size) {
+                    // current next block. when moved, the next block will point to something else.
+                    nextblock = block->next;
+                    prevblock = block;
+
+                    freeblock_insert(block);
+
+                    fallback_block = block;
+
+                    block = nextblock;
+                } else {
+                    //fprintf(stderr, "OK go, found block %p size %d kb slot %d\n", block, block->header->size/1024, k);
+                    found_block = block;
+                    break;
+                }
+            }
+        } else {
+            // didn't find anything. do a full scan of the actual sized-k.
+            k = log2_(size);
+            upper_size = 1<<(k+1);
+
+            fprintf(stderr, "freeblock_find(%d) scanning in %d\n", size, k);
+
+            block = g_free_block_slots[k];
+            while (block) {
+                // yeah, there's a block here. it's also guaranteed to fit.
+                free_memory_block_t *prevblock = block, *nextblock = block;
+
+                fprintf(stderr,"* %p -> %p (%c)?\n", block, block->header, (uint32_t)block->header&0x000000FF);
+
+                if (block->header->size >= size) {
+                    // first, remove the item from list.
+                    if (block == g_free_block_slots[k])
+                        g_free_block_slots[k] = block->next;
+                    else
+                        prevblock->next = block->next;
+                
+                    // then figure out what to do with the block
+                    if (block->header->size > upper_size) {
+                        // current next block. when moved, the next block will point to something else.
+                        nextblock = block->next;
+                        prevblock = block;
+
+                        freeblock_insert(block);
+
+                        fallback_block = block;
+
+                        block = nextblock;
+                    } else if (block->header->size >= size) {
+                        //fprintf(stderr, "OK go, found block %p size %d kb slot %d\n", block, block->header->size/1024, k);
+                        found_block = block;
+                        break;
+                    } 
+                }
+
+                prevblock = block;
+                block = block->next;
+            }
+        }
+    }
+
+    if (found_block) {
+        // resize & insert
+        free_memory_block_t *rest = freeblock_shrink(found_block, size);
+        if (rest)
+            freeblock_insert(rest);
+
+        return found_block->header;
+    } else if (fallback_block) {
+        // rats, no block found.
         int fallback_k = log2_(fallback_block->header->size);
+
+        // since we just inserted the fallback block, we know that it's
+        // placed at the very start of this slot.  remove it by relinking the
+        // slot, and use it.
         g_free_block_slots[fallback_k] = fallback_block->next;
 
         //fprintf(stderr, "No go, using fallback block %p of %d kb\n", fallback_block, fallback_block->header->size/1024);
-
         free_memory_block_t *rest = freeblock_shrink(fallback_block, size);
         if (rest)
             freeblock_insert(rest);
 
         return fallback_block->header;
-
-    } else if (k > target_k) {
-        //fprintf(stderr, "overshot %d to %d, found block %p size %d kb, shrinking to size %d kb\n", target_k, k, block, block->header->size/1024, size/1024);
-        // we know this is the first block, so remove block from the list.
-        g_free_block_slots[k] = block->next;
-        free_memory_block_t *rest = freeblock_shrink(block, size);
-        if (rest) {
-            //fprintf(stderr, "shrunk into %p (header %p) with rest %p (header %p)\n", block, block->header, rest, rest->header);
-            freeblock_insert(rest);
-        }
-
-        //freeblock_print();
-
-        return block->header;
     }
-
-    printf("this must never happen. i'm confused.\n");
+    
+    // no block found.
     return NULL;
 }
 
@@ -425,17 +612,297 @@ uint32_t stat_total_free_list() {
     uint32_t total = 0;
     for (int i=0; i<g_free_block_slot_count; i++) {
         free_memory_block_t *b = g_free_block_slots[i];
+        free_memory_block_t *a = b;
         while (b != NULL) {
             total += b->header->size;
             b = b->next;
+            if (a == b) {
+                fprintf(stderr, "stat_total_free_list(), panic - found a loop in slot %d item %p!\n", i, a);
+                freeblock_print();
+            }
         }
     }
     return total;
 }
 
+void header_sort_all() {
+    g_header_root = header__sort(g_header_root, header__cmp);
+}
+
 /* compacting */
 void compact() {
+
+    /* 1. sort header list
+     * 2. grab first block and slide it.
+     * ...?
+     */
+
+    header_sort_all();
+    
+    /*
+     * debug printouts
+     */
+
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define WITH_ITER(h, init, body...) {header_t *h = init; while (h != NULL) {body; h = h->next;}}
+
+    // decide smallest block size for printing
+    uint32_t smallest=1<<31, largest=0, total=0;
+    WITH_ITER(h, g_header_root,
+        if (h->flags == HEADER_FREE_BLOCK) {
+            if (h->size < smallest)
+                smallest = h->size;
+            if (h->size > largest)
+                largest = h->size;
+            total += h->size;
+        }
+    )
+
+    // print map
+    WITH_ITER(h, g_header_root, 
+        int count = MAX(1, h->size/1024);
+        for (int i=0; i<count; i++) {
+            if (i==0)
+                fputc('O', stderr);
+            else
+            if (h->flags == HEADER_FREE_BLOCK)
+                fputc('_', stderr);
+            else if (h->flags == HEADER_UNLOCKED)
+                fputc('|', stderr);
+            else if (h->flags == HEADER_LOCKED)
+                fputc('X', stderr);
+        }
+    ) fputc('\n', stderr);
+
+    WITH_ITER(h, g_header_root,
+        fprintf(stderr, "%d kb %s\n", h->size, h->flags == HEADER_FREE_BLOCK ? "free" : "used");
+    )
+    fprintf(stderr, "largest free block %d kb vs total size %d kb yields coherence %.4f, relative coherence %.4f\n",
+            largest, total, 1.0-(float)largest/(float)total, 1.0-(float)smallest/(float)largest);
+
+    /* compacting */
+
+    /* make one pass.
+     *
+     * a(f)->b(f)->c(f)->d(u)->e(u)->f(u)->g(x/u)
+     * =>
+     * a(nil)->b(nil)->[d..f]->c(f)->g(x/u)
+     *
+     * This means we need to find:
+     *  - first free
+     *  - last free
+     *  - first used
+     *  - last used
+     *  - next
+     *
+     * set unused of affected headers,
+     * link last free-1 to first free
+     * link last free to last free
+     *
+     */
+
+    header_t *root_header = g_header_root;
+    header_t *prev = root_header;
+
+repeat:
+    if (!root_header) {
+        fprintf(stderr, "******************** compact done\n");
+        // print map
+        WITH_ITER(h, g_header_root, 
+            int count = MAX(1, h->size/1024);
+            for (int i=0; i<count; i++) {
+                if (i==0)
+                    fputc('O', stderr);
+                else
+                if (h->flags == HEADER_FREE_BLOCK)
+                    fputc('_', stderr);
+                else if (h->flags == HEADER_UNLOCKED)
+                    fputc('|', stderr);
+                else if (h->flags == HEADER_LOCKED)
+                    fputc('X', stderr);
+            }
+        ) fputc('\n', stderr);
+
+        return;
+    }
+
+    header_t *h = root_header;
+
+    while (h && h->flags != HEADER_FREE_BLOCK) {
+        prev = h;
+        h = h->next;
+    }
+
+    // free blocks: first and last.
+    header_t *first_free = h;
+    header_t *last_free = h;
+    int total_free = 0;
+    while (h && h->flags == HEADER_FREE_BLOCK) {
+        last_free = h;
+        total_free += h->size;
+        h = h->next;
+    }
+
+    if (!h) {fprintf(stderr, "no free blocks\n"); root_header = NULL; goto repeat;}
+
+    // fast forward to used blocks, skipping over any non-used blocks
+    while (h && h->flags != HEADER_UNLOCKED) {
+        fprintf(stderr, "while != HEADER_UNLOCKED: %p flags %d\n", h, h->flags);
+        h = h->next;
+    }
+
+    if (!h) {fprintf(stderr, "no fast forwarded blocks\n"); root_header = NULL; goto repeat;}
+
+    header_t *first_used = h;
+    header_t *last_used = h;
+    int total_used = 0;
+    bool adjacent = true;
+    if (last_free->next != first_used)
+        adjacent = false;
+
+    while (h && h->flags == HEADER_UNLOCKED) {
+        if (adjacent) {
+            fprintf(stderr, "while == HEADER_UNLOCKED: %p flags %d, size %d\n", h, h->flags, h->size);
+            total_used += h->size;
+            last_used = h;
+            h = h->next;
+        } else {
+            // must move, can't just push down
+            // XXX: Correct?
+            if (total_used + h->size <= total_free) {
+                fprintf(stderr, "while == HEADER_UNLOCKED: %p flags %d, size %d\n", h, h->flags, h->size);
+                total_used += h->size;
+                last_used = h;
+                h = h->next;
+            } else
+                break;
+        }
+    }
+
+    if (!h) {fprintf(stderr, "no unlocked blocks\n"); root_header = NULL; goto repeat;}
+
+    fprintf(stderr, "total used = %d, total free = %d\n"
+            "first - last free = %p - %p, first - last used = %p - %p\n", total_used, total_free,
+            first_free, last_free, first_used, last_used);
+
+    /* ok, we now have a range of free blocks and a range of used blocks.
+     *
+     * if adjacent, just push them back.
+     * if not adjacent, do other tricky magic.
+     */
+    if (adjacent) {
+        smallest = 1024;
+        /*
+        fprintf(stderr, "before move: \n");
+        header_t *h = prev->next;
+        while (h && h != last_used->next) {
+            int count = MAX(1024, h->size/smallest);
+            for (int i=0; i<count; i++) {
+                if (h->flags == HEADER_FREE_BLOCK) fputc('_', stderr);
+                else if (h->flags == HEADER_UNLOCKED) fputc('|', stderr);
+                else if (h->flags == HEADER_LOCKED) fputc('X', stderr);
+            }
+
+            h = h->next;
+        }
+        fprintf(stderr, "\n");
+        */
+
+
+        // easy case, just push everything back.
+        void *to_addr = first_free->memory;
+        void *from_addr = first_used->memory;
+
+        // null out free headers
+        h = first_free;
+        while (h != last_free->next) {
+            header_set_unused(h);
+            h = h->next;
+        }
+
+        // relink into place
+        if (prev == g_header_root) {
+            g_header_root->next = first_used;
+        } else
+            prev->next = first_used;
+
+        header_t *new_free = header_new(false);
+        new_free->size = total_free;
+        new_free->memory = (uint8_t *)first_free->memory + total_used;
+        new_free->next = last_used->next;
+        new_free->flags = HEADER_FREE_BLOCK;
+        last_used->next = new_free;
+
+        fprintf(stderr, "moving memory from %p to %p size %d\n", from_addr, to_addr, total_used);
+        //memmove(to_addr, from_addr, total_used);
+
+        /*
+        fprintf(stderr, "after move: \n");
+        h = prev->next;
+        while (h && h != new_free->next) {
+            int count = MAX(1024, h->size/smallest);
+            for (int i=0; i<count; i++) {
+                if (h->flags == HEADER_FREE_BLOCK)
+                    fputc('_', stderr);
+                else if (h->flags == HEADER_UNLOCKED)
+                    fputc('|', stderr);
+                else if (h->flags == HEADER_LOCKED)
+                    fputc('X', stderr);
+            }
+
+            h = h->next;
+        }
+        fprintf(stderr, "\n");
+        */
+
+        prev = last_used;
+        root_header = prev->next;
+    }
+
+    goto repeat;
+
+
+#if 0
+    int offset = (uint8_t *)first_used->memory - (uint8_t *)first_free->memory;
+    free_memory_block_t block = {last_free, NULL};
+    header_t h2;
+    fprintf(stderr, "offset = %d (free size = %d kb, used size = %d kb)\n", offset, free_size/1024, used_size/1024);
+    memmove(first_used->);
+#endif
+
+
+    // first_used - last_used of the blocks that can be moved.
+    // 0. shrink last free block to appropriate size
+    // 1. memmove()
+    // 2. adjust offset of used block headers
+    // 3. kill free headers
+    // 4. done!
+
+    // rebuild free list
+    memset((void *)g_free_block_slots, 0, sizeof(free_memory_block_t *) * g_free_block_slot_count);
+
+    WITH_ITER(h, g_header_root,
+        if (!h->memory || h->flags != HEADER_FREE_BLOCK) {
+            h = h->next;
+            continue;
+        }
+
+        if (h->size >= sizeof(free_memory_block_t)) {
+            int k = log2_(h->size);
+            free_memory_block_t *block = block_from_header(h);
+            if (g_free_block_slots[k] == NULL)
+                g_free_block_slots[k] = block;
+            else {
+                block->next = g_free_block_slots[k];
+                g_free_block_slots[k] = block;
+            }
+        }
+    )
+    
 }
+
+
+
 #if 0
 void compact() {
     /* the super-greedy find first block algorithm!
@@ -561,6 +1028,8 @@ void cinit(void *heap, uint32_t size) {
 
     g_header_top = (header_t *)((uint32_t)heap + size);
     g_header_bottom = g_header_top;
+    g_header_root = g_header_top;
+    g_header_root->next = NULL;
 
     header_set_unused(g_header_top);
 
@@ -585,10 +1054,14 @@ void cfree(handle_t *h) {
 void *clock(handle_t *h) {
     header_t *f = (header_t *)h;
     f->flags = HEADER_LOCKED;
+
+    return f->memory;
 }
 void *cweaklock(handle_t *h) {
     header_t *f = (header_t *)h;
-    f->flags = HEADER_WEAK_LOCKED;;
+    f->flags = HEADER_WEAK_LOCKED;
+    
+    return f->memory;
 }
 
 void cunlock(handle_t *h) {
