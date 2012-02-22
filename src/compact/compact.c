@@ -212,7 +212,6 @@ header_t *block_free(header_t *header) {
 
     bool in_free_list = false;
 
-#if 0 // TODO: Future work, looks buggy.
     // are there blocks before this one?
     free_memory_block_t *prevblock = (free_memory_block_t *)header->memory - 1;
     if (prevblock >= g_memory_bottom) {
@@ -248,7 +247,6 @@ header_t *block_free(header_t *header) {
             }
         }
     }
-#endif
 
 #if 0 // TODO: Future work - needs a prev pointer!
     // are there blocks after this one?
@@ -571,10 +569,10 @@ header_t *freeblock_find(uint32_t size) {
                         found_block = block;
                         break;
                     } 
+                } else {
+                    prevblock = block;
+                    block = block->next;
                 }
-
-                prevblock = block;
-                block = block->next;
             }
         }
     }
