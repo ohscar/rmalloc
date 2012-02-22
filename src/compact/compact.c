@@ -189,6 +189,20 @@ bool freeblock_exists(free_memory_block_t *block) {
     }
     return false;
 }
+
+void freeblock_assert_sane(free_memory_block_t *block) {
+    if (block != block_from_header(block->header)) {
+        int diff;
+        if ((uint8_t *)block > (uint8_t *)block_from_header(block->header))
+            diff = (uint8_t *)block - (uint8_t *)block_from_header(block->header);
+        else
+            diff = (uint8_t *)block_from_header(block->header) - (uint8_t *)block;
+
+        fprintf(stderr, "freeblock_assert_sane(%p size %d): diff %d bytes\n", block, block->header->size, diff);
+        abort();
+    }
+}
+
 bool freeblock_checkloop(free_memory_block_t *block) {
     free_memory_block_t *a = block;
     while (block != NULL) {
@@ -202,6 +216,23 @@ bool freeblock_checkloop(free_memory_block_t *block) {
     return false;
 }
 
+void freeblock_verify_lower_size() {
+    for (int k=0; k<g_free_block_slot_count; k++) {
+        free_memory_block_t *b = g_free_block_slots[k];
+        int size = 1<<k;
+        while (b) {
+            if (b->header->size < size) {
+                fprintf(stderr, "\nfreeblock_verify_lower_size(): block %p at mem %p at k=%d has size %d < %d\n",
+                        b, b->header->memory, k, b->header->size, size);
+
+                abort();
+            }
+
+            b = b->next;
+        }
+    }
+}
+
 /* 1. mark the block's header as free
  * 2. insert block info
  * 3. extend the free list
@@ -210,8 +241,15 @@ header_t *block_free(header_t *header) {
     if (!header || header->flags == HEADER_FREE_BLOCK)
         return header;
 
+    freeblock_verify_lower_size();
+
     bool in_free_list = false;
 
+    // FIXME: merge with previous block places blocks in a too small slot.
+
+    // TODO: merge cannot work, period, since the block is already in the free list
+    // and thus has the incorrect address.
+#if 0
     // are there blocks before this one?
     free_memory_block_t *prevblock = (free_memory_block_t *)header->memory - 1;
     if (prevblock >= g_memory_bottom) {
@@ -224,10 +262,10 @@ header_t *block_free(header_t *header) {
             if ((uint8_t *)prevblock->header->memory + prevblock->header->size == header->memory) {
                 //fprintf(stderr, "merging previous block %p with block %p\n", prevblock, block_from_header(header));
 
+                fprintf(stderr, "\nmerging block headers %p (%d bytes) and %p (%d bytes)  to new size %d, block %p\n", header, header->size, prevblock->header, prevblock->header->size, prevblock->header->size+header->size, block_from_header(prevblock->header));
+
                 // yup, merge previous and this block
                 prevblock->header->size += header->size;
-
-                fprintf(stderr, "merging block headers %p and %p at memory %p and %p to new size %d\n", header, prevblock->header, header->memory, prevblock->header->memory, prevblock->header->size);
 
                 // kill off the current block
                 header_set_unused(header);
@@ -237,7 +275,11 @@ header_t *block_free(header_t *header) {
 
                 // put the extended block info in place at the end
                 free_memory_block_t *endblock = block_from_header(header);
-                memcpy(endblock, prevblock, sizeof(free_memory_block_t));
+                endblock->header = header;
+                endblock->next = prevblock->next;
+                //memcpy(endblock, prevblock, sizeof(free_memory_block_t));
+
+                freeblock_assert_sane(endblock);
 
                 // it's already in the free list, no need to insert it again.
                 in_free_list = true;
@@ -247,6 +289,7 @@ header_t *block_free(header_t *header) {
             }
         }
     }
+#endif
 
 #if 0 // TODO: Future work - needs a prev pointer!
     // are there blocks after this one?
@@ -329,11 +372,13 @@ header_t *block_free(header_t *header) {
     // insert into free size block list, at the start.
     int index = log2_(header->size);
 
-    /*
+    if (block->header->size != header->size)
+        abort();
+
     block->next = g_free_block_slots[index];
     g_free_block_slots[index] = block;
-    */
 
+    /*
     free_memory_block_t *current = g_free_block_slots[index];
     //if (g_free_block_slots[index] && g_free_block_slots[index]->next) fprintf(stderr, "block_free(), current = %p g_free_block_slots[%d] = %p next = %p block = %p\n", current, index, g_free_block_slots[index], g_free_block_slots[index]->next, block);
     //else fprintf(stderr, "block_free(), current = %p g_free_block_slots[%d] = %p block = %p\n", current, index, g_free_block_slots[index], block);
@@ -342,6 +387,7 @@ header_t *block_free(header_t *header) {
     //fprintf(stderr, "block_free(), current = %p g_free_block_slots[%d] = %p block = %p\n", current, index, g_free_block_slots[index], block);
     g_free_block_slots[index]->next = current;
     //fprintf(stderr, "block_free(), current = %p g_free_block_slots[%d] = %p next = %p block = %p\n", current, index, g_free_block_slots[index], g_free_block_slots[index]->next, block);
+    */
 
 
     // FIXME: crashes here. at some point, this block is overwritten, i.e.
@@ -383,6 +429,8 @@ void freeblock_insert(free_memory_block_t *block) {
     block->next = g_free_block_slots[k];
     g_free_block_slots[k] = block;
 
+    freeblock_verify_lower_size();
+
 #if 0
     if (b) {
         g_free_block_slots[k]->next = b;
@@ -420,6 +468,8 @@ free_memory_block_t *freeblock_shrink_with_header(free_memory_block_t *block, he
 
     if (h == block->header)
         fprintf(stderr, "ERROR: freeblock_shrink, new header %p same as block header %p\n", h, block->header);
+
+    freeblock_assert_sane(block);
 
     fprintf(stderr, "freeblockshrink: address of block->memory = %p with size = %d, address of block = %p == %p (or error!)\n", block->header->memory, block->header->size, block, (uint8_t *)block->header->memory + block->header->size - sizeof(free_memory_block_t));
 
@@ -467,6 +517,8 @@ header_t *freeblock_find(uint32_t size) {
     free_memory_block_t *found_block = NULL;
     free_memory_block_t *fallback_block = NULL;
 
+    freeblock_verify_lower_size();
+
     // slot too large, need to do a full scan.
     if (k == g_free_block_slot_count) {
         k--;
@@ -504,33 +556,30 @@ header_t *freeblock_find(uint32_t size) {
         }
 
         if (block) {
-            free_memory_block_t *prevblock = block, *nextblock = block;
-            while (block) {
-                // yeah, there's a block here. it's also guaranteed to fit.
-                
-                // first, remove the item from list.
-                if (block == g_free_block_slots[k])
-                    g_free_block_slots[k] = block->next;
-                else
-                    prevblock->next = block->next;
+            // yeah, there's a block here. it's also guaranteed to fit.
+            
+            // remove the item from list.
+            block = g_free_block_slots[k];
+            g_free_block_slots[k] = block->next;
 
-                fprintf(stderr,"* %p -> %p (%c)?\n", block, block->header, (uint32_t)block->header&0x000000FF);
+            fprintf(stderr,"*1. %p -> %p (%c)?\n", block, block->header, (uint32_t)block->header&0x000000FF);
 
-                if (block->header->size > upper_size) {
-                    // current next block. when moved, the next block will point to something else.
-                    nextblock = block->next;
-                    prevblock = block;
+            if (block->header->size > upper_size) {
+                // current next block. when moved, the next block will point to something else.
+                free_memory_block_t *nextblock = block->next;
+                fallback_block = block;
 
-                    freeblock_insert(block);
+                freeblock_insert(block);
 
-                    fallback_block = block;
-
-                    block = nextblock;
-                } else {
-                    //fprintf(stderr, "OK go, found block %p size %d kb slot %d\n", block, block->header->size/1024, k);
-                    found_block = block;
-                    break;
+                block = nextblock;
+            } else {
+                if (block->header->size < size) {
+                    fprintf(stderr, "block %p too small (%d vs %d) in slot %d vs actual k = %d\n",
+                            block, block->header->size, size, k, log2_(size));
+                    abort();
                 }
+
+                found_block = block;
             }
         } else {
             // didn't find anything. do a full scan of the actual sized-k.
@@ -542,37 +591,61 @@ header_t *freeblock_find(uint32_t size) {
             block = g_free_block_slots[k];
             free_memory_block_t *prevblock = block, *nextblock = block;
             while (block) {
-                // yeah, there's a block here. it's also guaranteed to fit.
+                // there's a block here. it's also guaranteed to fit.
 
-                fprintf(stderr,"* %p -> %p (%c)?\n", block, block->header, (uint32_t)block->header&0x000000FF);
+                fprintf(stderr,"*2. %p -> %p (%c) size %d (%s)?\n", block, block->header, (uint32_t)block->header&0x000000FF, block->header->size, block->header->size >= size ? "yes" : "no");
 
+#if 1 // does not work, freeblock_insert()
                 if (block->header->size >= size) {
-                    // first, remove the item from list.
-                    if (block == g_free_block_slots[k])
-                        g_free_block_slots[k] = block->next;
-                    else
-                        prevblock->next = block->next;
-                
-                    // then figure out what to do with the block
-                    if (block->header->size > upper_size) {
-                        // current next block. when moved, the next block will point to something else.
-                        nextblock = block->next;
-                        prevblock = block;
+                    // remove from the root? (easier)
+                    if (g_free_block_slots[k] == block) {
+                        // figure out what to do with the block
+                        if (block->header->size > upper_size) {
+                            fprintf(stderr, "-> root, too large, moving %p, next = %p.\n", block, block->next);
+                            fallback_block = block;
+                            g_free_block_slots[k] = block->next;
 
-                        freeblock_insert(block);
+                            freeblock_insert(block);
 
-                        fallback_block = block;
+                            block = g_free_block_slots[k];
+                            fprintf(stderr, "->-> block = %p\n", block);
+                        } else {
+                            // found it!
+                            fprintf(stderr, "-> root, correct size.\n");
+                            found_block = block;
+                            g_free_block_slots[k] = block->next;
+                            break;
+                        }
+                    } else {
+                        // not at root. (trickier)
 
-                        block = nextblock;
-                    } else if (block->header->size >= size) {
-                        //fprintf(stderr, "OK go, found block %p size %d kb slot %d\n", block, block->header->size/1024, k);
-                        found_block = block;
-                        break;
+                        // figure out what to do with the block
+                        if (block->header->size > upper_size) {
+                            fprintf(stderr, "-> not root, too large, moving %p, next = %p.\n", block, block->next);
+                            fallback_block = block;
+
+                            nextblock = block->next;
+                            prevblock->next = nextblock;
+
+                            freeblock_insert(block);
+
+                            block = nextblock;
+                            fprintf(stderr, "->-> block = %p\n", block);
+
+                            if (prevblock->next != block) abort();
+                        } else {
+                            // found it!
+                            fprintf(stderr, "-> not root, correct size.\n");
+                            prevblock->next = block->next;
+                            found_block = block;
+                            break;
+                        }
                     } 
                 } else {
                     prevblock = block;
                     block = block->next;
                 }
+#endif
             }
         }
     }
