@@ -506,9 +506,9 @@ header_t *freeblock_find(uint32_t size) {
         }
 
         if (block) {
+            free_memory_block_t *prevblock = block, *nextblock = block;
             while (block) {
                 // yeah, there's a block here. it's also guaranteed to fit.
-                free_memory_block_t *prevblock = block, *nextblock = block;
                 
                 // first, remove the item from list.
                 if (block == g_free_block_slots[k])
@@ -542,9 +542,9 @@ header_t *freeblock_find(uint32_t size) {
             fprintf(stderr, "freeblock_find(%d) scanning in %d\n", size, k);
 
             block = g_free_block_slots[k];
+            free_memory_block_t *prevblock = block, *nextblock = block;
             while (block) {
                 // yeah, there's a block here. it's also guaranteed to fit.
-                free_memory_block_t *prevblock = block, *nextblock = block;
 
                 fprintf(stderr,"* %p -> %p (%c)?\n", block, block->header, (uint32_t)block->header&0x000000FF);
 
