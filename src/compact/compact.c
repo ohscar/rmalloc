@@ -728,13 +728,14 @@ void compact() {
             total += h->size;
         }
     )
+        fprintf(stderr, "\n");
 
     // print map
     WITH_ITER(h, g_header_root, 
         int count = MAX(1, h->size/1024);
         for (int i=0; i<count; i++) {
             if (i==0)
-                fputc('O', stderr);
+                fputc(h->flags == HEADER_FREE_BLOCK ? 'o' : 'O', stderr);
             else
             if (h->flags == HEADER_FREE_BLOCK)
                 fputc('_', stderr);
@@ -783,7 +784,7 @@ repeat:
             int count = MAX(1, h->size/1024);
             for (int i=0; i<count; i++) {
                 if (i==0)
-                    fputc('O', stderr);
+                    fputc(h->flags == HEADER_FREE_BLOCK ? 'o' : 'O', stderr);
                 else
                 if (h->flags == HEADER_FREE_BLOCK)
                     fputc('_', stderr);
@@ -800,6 +801,7 @@ repeat:
     header_t *h = root_header;
 
     while (h && h->flags != HEADER_FREE_BLOCK) {
+        fprintf(stderr, "resetting prev.\n");
         prev = h;
         h = h->next;
     }
@@ -831,9 +833,11 @@ repeat:
     if (last_free->next != first_used)
         adjacent = false;
 
+    bool found_used_block = false;
     while (h && h->flags == HEADER_UNLOCKED) {
         if (adjacent) {
             fprintf(stderr, "while == HEADER_UNLOCKED: %p flags %d, size %d\n", h, h->flags, h->size);
+            found_used_block = true;
             total_used += h->size;
             last_used = h;
             h = h->next;
@@ -842,6 +846,7 @@ repeat:
             // XXX: Correct?
             if (total_used + h->size <= total_free) {
                 fprintf(stderr, "while == HEADER_UNLOCKED: %p flags %d, size %d\n", h, h->flags, h->size);
+                found_used_block = true;
                 total_used += h->size;
                 last_used = h;
                 h = h->next;
@@ -850,7 +855,9 @@ repeat:
         }
     }
 
-    if (!h) {fprintf(stderr, "no unlocked blocks\n"); root_header = NULL; goto repeat;}
+    fprintf(stderr, "first_used = %p, last_used = %p, found_used_block = %d\n", first_used, last_used, found_used_block);
+
+    if (!found_used_block) {fprintf(stderr, "no unlocked blocks\n"); root_header = NULL; goto repeat;}
 
     fprintf(stderr, "total used = %d, total free = %d\n"
             "first - last free = %p - %p, first - last used = %p - %p\n", total_used, total_free,
@@ -879,40 +886,14 @@ repeat:
         fprintf(stderr, "\n");
         */
 
-
-        // easy case, just push everything back.
-        void *to_addr = first_free->memory;
-        void *from_addr = first_used->memory;
-
-        // null out free headers
+        fprintf(stderr, "before move: \n");
         h = first_free;
-        while (h != last_free->next) {
-            header_set_unused(h);
-            h = h->next;
-        }
-
-        // relink into place
-        if (prev == g_header_root) {
-            g_header_root->next = first_used;
-        } else
-            prev->next = first_used;
-
-        header_t *new_free = header_new(false);
-        new_free->size = total_free;
-        new_free->memory = (uint8_t *)first_free->memory + total_used;
-        new_free->next = last_used->next;
-        new_free->flags = HEADER_FREE_BLOCK;
-        last_used->next = new_free;
-
-        fprintf(stderr, "moving memory from %p to %p size %d\n", from_addr, to_addr, total_used);
-        //memmove(to_addr, from_addr, total_used);
-
-        /*
-        fprintf(stderr, "after move: \n");
-        h = prev->next;
-        while (h && h != new_free->next) {
-            int count = MAX(1024, h->size/smallest);
+        while (h && h != last_used->next) {
+            int count = MAX(1, h->size/1024);
             for (int i=0; i<count; i++) {
+                if (i==0)
+                    fputc(h->flags == HEADER_FREE_BLOCK ? 'o' : 'O', stderr);
+                else
                 if (h->flags == HEADER_FREE_BLOCK)
                     fputc('_', stderr);
                 else if (h->flags == HEADER_UNLOCKED)
@@ -923,8 +904,136 @@ repeat:
 
             h = h->next;
         }
-        fprintf(stderr, "\n");
-        */
+        fprintf(stderr, "\n--------------------------------------\n");
+
+
+        // easy case, just push everything back.
+        void *from_addr = first_used->memory;
+        void *to_addr = first_free->memory;
+        int offset = (uint8_t *)from_addr - (uint8_t *)to_addr;
+
+        // null out free headers
+        h = first_free;
+        while (h != last_free->next) {
+            header_set_unused(h);
+            h = h->next;
+        }
+
+        /* relinking A..F free, 0..9 used
+         *
+         * [prev] -> A B C D -> 0 1 2 3 -> ...
+         * =>
+         * [prev] -> 0 1 2 3 -> E
+         *
+         * E is A..D merged.
+         *
+         * if prev = root, then root = A, else prev->next = A
+         */
+
+        // relink into place
+        if (prev == g_header_root) {
+            //g_header_root->next = first_used;
+            g_header_root = first_used;
+            prev = g_header_root;
+        } else
+            prev->next = first_used;
+        // chomp any free blocks following last_used
+        header_t *extra_free_header = last_used->next;
+        fprintf(stderr, "can I chomp data? %d\n", extra_free_header->flags);
+        int extra_free_size = 0;
+        while (extra_free_header && extra_free_header->flags == HEADER_FREE_BLOCK) {
+            /*
+            int count = MAX(1, extra_free_header->size/1024);
+            for (int i=0; i<count; i++) {
+                if (i==0)
+                    fputc(extra_free_header->flags == HEADER_FREE_BLOCK ? 'o' : 'O', stderr);
+                else
+                if (extra_free_header->flags == HEADER_FREE_BLOCK)
+                    fputc('_', stderr);
+                else if (extra_free_header->flags == HEADER_UNLOCKED)
+                    fputc('|', stderr);
+                else if (extra_free_header->flags == HEADER_LOCKED)
+                    fputc('X', stderr);
+            }
+            fprintf(stderr, "\n\n");
+            */
+
+            fprintf(stderr, "chomping %d bytes\n", extra_free_header->size);
+            extra_free_size += extra_free_header->size;
+            header_set_unused(extra_free_header);
+            extra_free_header = extra_free_header->next;
+        }
+        fprintf(stderr, "no more chomping, header %p is flag %d\n", extra_free_header, extra_free_header ? extra_free_header->flags : 0);
+
+        // produce new free header, move into place
+        header_t *new_free = header_new(false);
+        new_free->memory = (uint8_t *)to_addr + total_used;
+        if (extra_free_size) {
+            new_free->size = total_free + extra_free_size;
+            new_free->next = extra_free_header;
+        } else {
+            new_free->size = total_free;
+            new_free->next = last_used->next;
+        }
+        new_free->flags = HEADER_FREE_BLOCK;
+        last_used->next = new_free;
+
+        // move used blocks
+        fprintf(stderr, "moving memory from %p to %p size %d, offset %d (total_free %d + extra_free %d = new free size %d)\n", from_addr, to_addr, total_used, offset, total_free, extra_free_size, new_free->size);
+        memmove(to_addr, from_addr, total_used);
+
+        // offset used headers
+        h = first_used;
+        while (h != last_used->next) {
+            h->memory = (uint8_t *)h->memory - offset;
+            h = h->next;
+        }
+
+        if (prev == g_header_root)
+            h = prev;
+        else
+            h = prev->next;
+
+        fprintf(stderr, "after move (starting from %p, new_free->next = %p): \n", h, new_free->next);
+
+        //h = first_used;
+        while (h && h != new_free->next) {
+            //fprintf(stderr, "h = %p\n", h);
+            int count = MAX(1, h->size/1024);
+            for (int i=0; i<count; i++) {
+                if (i==0)
+                    fputc(h->flags == HEADER_FREE_BLOCK ? 'o' : 'O', stderr);
+                else
+                if (h->flags == HEADER_FREE_BLOCK)
+                    fputc('_', stderr);
+                else if (h->flags == HEADER_UNLOCKED)
+                    fputc('|', stderr);
+                else if (h->flags == HEADER_LOCKED)
+                    fputc('X', stderr);
+                else
+                    fputc('?', stderr);
+            }
+
+            h = h->next;
+        }
+        fprintf(stderr, "\n--------------------------------------\n");
+
+        fprintf(stderr, "full map:\n");
+        // print map
+        WITH_ITER(h, g_header_root, 
+            int count = MAX(1, h->size/1024);
+            for (int i=0; i<count; i++) {
+                if (i==0)
+                    fputc(h->flags == HEADER_FREE_BLOCK ? 'o' : 'O', stderr);
+                else
+                if (h->flags == HEADER_FREE_BLOCK)
+                    fputc('_', stderr);
+                else if (h->flags == HEADER_UNLOCKED)
+                    fputc('|', stderr);
+                else if (h->flags == HEADER_LOCKED)
+                    fputc('X', stderr);
+            }
+        ) fprintf(stderr, "\n\n");
 
         prev = last_used;
         root_header = prev->next;
