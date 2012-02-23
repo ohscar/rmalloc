@@ -832,8 +832,13 @@ TEST_F(AllocTest, WriteCompactData) {
                 fputc('.', stderr);
                 uint8_t *foo2 = (uint8_t *)f2->memory;
                 char filler = filling[f2->size % maxfill];
-                for (int i=0; i<f2->size; i++)
+                for (int i=0; i<f2->size; i++) {
+                    if (foo2[i] != filler) 
+                        fprintf(stderr, "\nByte at %d: '%c' != '%c', header %p (offset %d), size %d, block %p\n",
+                                i, foo2[i], filler, f2, g_header_top-f2, f2->size, block_from_header(f2));
+
                     ASSERT_EQ(foo2[i], filler);
+                }
             }
             f2--;
         }
@@ -848,8 +853,12 @@ TEST_F(AllocTest, WriteCompactData) {
         if (f && f->memory && f->flags == HEADER_UNLOCKED) {
             uint8_t *foo = (uint8_t *)f->memory;
             char filler = filling[f->size % maxfill];
-            for (int i=0; i<f->size; i++)
+            for (int i=0; i<f->size; i++) {
+                    if (foo[i] != filler) 
+                        fprintf(stderr, "\nByte at %d: '%c' != '%c', header %p (offset %d) block %p\n",
+                                i, foo[i], filler, f, g_header_top-f, block_from_header(f));
                 ASSERT_EQ(foo[i], filler);
+            }
         }
         
         f--;
