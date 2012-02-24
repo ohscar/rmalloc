@@ -2,6 +2,7 @@
 #include "compact_internal.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 
 /* memory layout
  */
@@ -701,7 +702,7 @@ void header_sort_all() {
 }
 
 /* compacting */
-void compact() {
+void compact(int maxtime) {
 
     /* 1. sort header list
      * 2. grab first block and slide it.
@@ -776,9 +777,20 @@ void compact() {
     header_t *root_header = g_header_root;
     header_t *prev = root_header;
 
+    struct timespec start_time;
+    clock_gettime(CLOCK_MONOTONIC, &start_time);
 repeat:
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    int diff = now.tv_sec*1000 + now.tv_nsec/1000000 - start_time.tv_sec*1000 - start_time.tv_nsec/1000000;
+
+    if (maxtime && diff >= maxtime) {
+        fprintf(stderr, "Compact timeout: %d ms\n", diff);
+        return;
+    } 
+
     if (!root_header) {
-        fprintf(stderr, "******************** compact done\n");
+        fprintf(stderr, "******************** compact done in %d ms\n", diff);
         // print map
         WITH_ITER(h, g_header_root, 
             int count = MAX(1, h->size/1024);
@@ -939,7 +951,7 @@ repeat:
             prev->next = first_used;
         // chomp any free blocks following last_used
         header_t *extra_free_header = last_used->next;
-        fprintf(stderr, "can I chomp data? %d\n", extra_free_header->flags);
+        fprintf(stderr, "can I chomp data? %s\n", extra_free_header ? (extra_free_header->flags == HEADER_FREE_BLOCK ? "yes" : "no") : "no");
         int extra_free_size = 0;
         while (extra_free_header && extra_free_header->flags == HEADER_FREE_BLOCK) {
             /*

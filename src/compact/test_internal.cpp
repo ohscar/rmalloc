@@ -428,7 +428,7 @@ TEST_F(AllocTest, RandomAllocFreeFreeHalf) {
     fprintf(stderr, "largest block allocated %d kb, total allocated before death = %lu (%d kb) in %d allocs, free block hits = %d (allocated %d kb), total heap size %d kb, %d kb free in free list, %d bytes free above top\n", largest/1024, allocated, allocated/1024, count,g_free_block_hits, g_free_block_alloc/1024, heap_size/1024, stat_total_free_list()/1024, ((uint8_t*)g_header_bottom-(uint8_t*)g_memory_top));
     freeblock_print();
 
-    compact();
+    compact(200);
     return;
 
     header_t *h = g_header_top;
@@ -460,7 +460,7 @@ TEST_F(AllocTest, RandomAllocFreeFreeHalf) {
         h = h->next;
     }
 
-    compact();
+    compact(200);
 }
 
 
@@ -762,7 +762,7 @@ TEST_F(SmallAllocTest, WriteCompactData4) {
         //fprintf(stderr, "used headers %d unused headers %d total %d percent %d\n", used_h, unused_h, used_h+unused_h, unused_h*100.0/(used_h+unused_h));
     }
 
-    compact();
+    compact(0);
 
     fprintf(stderr, "Verifying data: ");
     header_t *f = g_header_top;
@@ -818,7 +818,7 @@ TEST_F(SmallAllocTest, WriteCompactData4Fix) {
     ALLOC(29299, true);
     ALLOC(73455, false);
 
-    compact();
+    compact(200);
 
     fprintf(stderr, "Verifying data: ");
     f = g_header_top;
@@ -868,7 +868,7 @@ TEST_F(SmallAllocTest, WriteCompactData5Fix) {
     ALLOC(4432, true);
     ALLOC(108400, true);
 
-    compact();
+    compact(200);
 
     fprintf(stderr, "Verifying data: ");
     f = g_header_top;
@@ -956,7 +956,7 @@ TEST_F(AllocTest, WriteCompactData) {
 
     }
 
-    compact();
+    compact(200);
 
     header_t *f = g_header_top;
     while (f >= g_header_bottom) {
@@ -1741,7 +1741,7 @@ TEST_F(AllocTest, UserFragmentedAllocSuccess) {
         Bfree(allocs[count]->memory);
     }
 
-    bcompact(1);
+    //bcompact(1);
 
     memory_handle_t *h = Balloc(MIN_CHUNK_SIZE*2);
     if (h) 
