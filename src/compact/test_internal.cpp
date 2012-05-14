@@ -4,7 +4,7 @@
 
 #define MB(x) 1024*1024*x
 #define KB(x) 1024*x
-int heap_size = MB(16); // was 16
+int heap_size = MB(32); // was 16
 int heap_size_small = MB(1);
 
 class SmallAllocTest : public ::testing::Test {
@@ -15,6 +15,7 @@ protected:
     ~SmallAllocTest() {
     }
     void SetUp() {
+        fprintf(stderr, "* Heap size %d\n", heap_size_small);
         cinit(storage, heap_size_small);
         srand(time(NULL));
     }
@@ -33,6 +34,7 @@ protected:
     ~AllocTest() {
     }
     void SetUp() {
+        fprintf(stderr, "* Heap size %d\n", heap_size);
         cinit(storage, heap_size);
         srand(time(NULL));
     }
@@ -704,6 +706,8 @@ TEST_F(AllocTest, CompactLock) {
     //const int maxsize = 256*1024; // yes rand
     //const int maxsize = 384*1024; // yes rand
     //const int maxsize = 320*1024; // yes rand
+    //const int maxsize = 1024*1024; // yes rand
+
     int largest = 0;
 
     uint32_t allocated = 0;
@@ -712,9 +716,51 @@ TEST_F(AllocTest, CompactLock) {
     int maxfill = strlen(filling);
 
     time_t t;
-    time(&t);
 
-    t = 1330581720; const int maxsize=128*1024;
+    //time(&t); const int maxsize=1024*1024;
+    //t = 1330835020; const int maxsize=1024*1024;
+    //t = 1330835020; const int maxsize=1024*1024;
+    t = 1330820285; const int maxsize=512*1024; // heap_size = 32M -- actual crash!
+
+    //t = 1330783009; const int maxsize = 2097152; // crash! 32mb heap
+
+#if 0
+    t = 1330820285; const int maxsize=512*1024; // heap_size = 32M -- SIGSEGV!
+
+ALLOC(511813, false);
+******************** compact started.
+O
+Program received signal SIGSEGV, Segmentation fault.
+0x0804c56e in compact (maxtime=0) at compact.c:748
+748         WITH_ITER(h, g_header_root,
+(gdb) bt
+#0  0x0804c56e in compact (maxtime=0) at compact.c:748
+#1  0x080533f9 in AllocTest_CompactLock_Test::TestBody (this=0x808f4a8) at test_internal.cpp:825
+#2  0x080788f8 in void testing::internal::HandleExceptionsInMethodIfSupported<testing::Test, void>(testing::Test*, void (testing::Test::*)(), char const*) ()
+#3  0x08071128 in testing::Test::Run() ()
+#4  0x080711f1 in testing::TestInfo::Run() ()
+#5  0x08071317 in testing::TestCase::Run() ()
+#6  0x0807159e in testing::internal::UnitTestImpl::RunAllTests() ()
+#7  0x08078508 in bool testing::internal::HandleExceptionsInMethodIfSupported<testing::internal::UnitTestImpl, bool>(testing::internal::UnitTestImpl*, bool (testing::internal::UnitTestImpl::*)(), char const*) ()
+#8  0x0807078a in testing::UnitTest::Run() ()
+#9  0x0804b27c in main ()
+(gdb) print h->memory
+$7 = (void *) 0x4f4f4f4f
+(gdb) print * (uint8_t *)h->memory
+Cannot access memory at address 0x4f4f4f4f
+(gdb) print h
+$8 = (header_t *) 0xb7cf0848
+(gdb) print h->size
+$9 = 401999
+(gdb)
+$ python
+>>> chr(0x4f)
+'O'
+>>>
+#endif
+
+
+    //t = 1330581720; const int maxsize=128*1024;
 
     //t = 1330343837; // OK!
     //t = 1330504491; // OK!
@@ -724,12 +770,15 @@ TEST_F(AllocTest, CompactLock) {
     //
     //t = 1330507693; //  ok with 320 kb
 
+    //t = 1330738161;  const int maxsize = 1024*1024; // heap_size 256 CRASH!
+    
     srand(t);
 
-    fprintf(stderr, "*** Testing with seed %d\n", t);
+    fprintf(stderr, "*** Testing with seed %d maxsize %d\n", t, maxsize);
 
     bool done = false;
     int count = 0;
+    int blocks_before=0, blocks_after=0;
     while (!done) {
         int size = rand()%maxsize;
         handle_t *h = cmalloc(size);
@@ -739,7 +788,7 @@ TEST_F(AllocTest, CompactLock) {
 
         if (h == NULL) {
             done = true;
-            fprintf(stderr, "false);\n");
+            fprintf(stderr, "false); // out of memory: h = NULL\n");
             break;
         }
 
@@ -747,18 +796,35 @@ TEST_F(AllocTest, CompactLock) {
         //fprintf(stderr, "allocated %d in header %p (flags %d at %p) filling with %d %c", size, f, f->flags, f->memory, f->size, filler);
 
         uint8_t *foo = (uint8_t *)clock(h);
-        for (int i=0; i<f->size; i++)
+        if ((int)f == 0xb7cf0848) {
+            fprintf(stderr, " 0xb7cf0848 locked memory = %p, f->memory = %p of size %d (requested size %d)\n", foo, f->memory, f->size, size);
+        }
+
+        for (int i=0; i<f->size; i++) {
             foo[i] = filler;
+            if (f->size != size) {
+                fprintf(stderr, "(inside loop %d) 0xb7cf0848 locked memory = %p, f->memory = %p of size %d (requested size %d)\n", i, foo, f->memory, f->size, size);
+                abort();
+            }
+        }
         cunlock(h);
+
+        if ((int)f == 0xb7cf0848) {
+            fprintf(stderr, " 0xb7cf0848 locked memory = %p, f->memory = %p of size %d (requested size %d)\n", foo, f->memory, f->size, size);
+            abort();
+        }
 
         count++;
         allocated += size;
         if (largest < size)
             largest = size;
 
+        blocks_before++;
+
         // free by 50% probability
         if (rand()%2 == 0) {
             allocated -= f->size;
+            blocks_before--;
 
             //fprintf(stderr, "free %p size %d (slot %d)\n", block_from_header(f), f->size, log2_(f->size));
             //freeblock_print();
@@ -813,6 +879,10 @@ TEST_F(AllocTest, CompactLock) {
     fprintf(stderr, "Verifying data: ");
     header_t *f = g_header_top;
     while (f >= g_header_bottom) {
+        if (f && f->memory)
+            if (f->flags == HEADER_UNLOCKED || f->flags == HEADER_LOCKED)
+                blocks_after++;
+
         if (f && f->memory && f->flags == HEADER_UNLOCKED) {
             uint8_t *foo = (uint8_t *)f->memory;
             char filler = filling[f->size % maxfill];
@@ -822,8 +892,12 @@ TEST_F(AllocTest, CompactLock) {
         
         f--;
     }
+    ASSERT_EQ(blocks_before, blocks_after);
     fprintf(stderr, "OK!\n");
 
+}
+
+TEST_F(SmallAllocTest, HeaderListSort) {
 }
 
 
@@ -849,6 +923,7 @@ TEST_F(SmallAllocTest, CompactLock1) {
     //t = 1330507550; // NOT ok with 256 kb
     //
     //t = 1330507693; //  ok with 320 kb
+    //t = 1330606627;
 
     srand(t);
 

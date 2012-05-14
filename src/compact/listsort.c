@@ -46,18 +46,39 @@
 
 int header__cmp(void *a, void *b) {
 
+    header_t *x = (header_t *)a;
+    header_t *y = (header_t *)b;
+
+#if 0 // TODO: FUTURE WORK
+    // Does not work, don't know why.
+
+    // merge blocks next to each other.
+    if (x->flags == HEADER_FREE_BLOCK && y->flags == HEADER_FREE_BLOCK) {
+        if ((unsigned char *)x->memory + x->size == y->memory) {
+            y->memory = NULL;
+            x->size += y->size;
+            fprintf(stderr, "* sort: x->y: merging %p and %p\n", x, y);
+        } else if ((unsigned char *)y->memory + y->size == x->memory) {
+            x->memory = NULL;
+            y->size += x->size;
+            fprintf(stderr, "* sort: y->x: merging %p and %p\n", y, x);
+        }
+    }
+#endif
+
     // a - b => 0..N (a < b = -1, a == b = 0, a > b = 1)
     // We want to get at the highest addresses first to slide down top,
     // i.e. b - a (b < a = -1, a==b = 0, b > a = 1
     // since memory == NULL equals unused, they'll nicely appear at the end
     // automatically
 
-    if (((header_t *)a)->memory == NULL)
+
+    if (x->memory == NULL)
         return 1;
-    else if (((header_t *)b)->memory == NULL)
+    else if (y->memory == NULL)
         return -1;
     else
-        return ((header_t *)a)->memory - ((header_t *)b)->memory;
+        return x->memory - y->memory;
 }
 
 /*
