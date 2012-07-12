@@ -717,46 +717,37 @@ TEST_F(AllocTest, CompactLock) {
 
     time_t t;
 
-    //time(&t); const int maxsize=1024*1024;
+    time(&t); const int maxsize=512*1024;
     //t = 1330835020; const int maxsize=1024*1024;
     //t = 1330835020; const int maxsize=1024*1024;
-    t = 1330820285; const int maxsize=512*1024; // heap_size = 32M -- actual crash!
 
-    //t = 1330783009; const int maxsize = 2097152; // crash! 32mb heap
+    //t = 1330820285; const int maxsize=512*1024; // heap_size = 32M -- OK!
+    //t = 1330783009; const int maxsize = 2097152; // crash! 32mb heap -- OK!
+    //t = 1330809470; const int maxsize = 1048576; // crash 32M, run #2039 -- OK!
+    // t = 1330785742; const int maxsize = 524288; // crash 32M, run #1590 -- OK!
+    //t = 1330820285; const int maxsize = 524288; // crash 32M, run #5050 -- OK!
+
+    //t = 1337020745; const int maxsize = 512*1024; // crash
 
 #if 0
-    t = 1330820285; const int maxsize=512*1024; // heap_size = 32M -- SIGSEGV!
 
-ALLOC(511813, false);
-******************** compact started.
-O
-Program received signal SIGSEGV, Segmentation fault.
-0x0804c56e in compact (maxtime=0) at compact.c:748
-748         WITH_ITER(h, g_header_root,
-(gdb) bt
-#0  0x0804c56e in compact (maxtime=0) at compact.c:748
-#1  0x080533f9 in AllocTest_CompactLock_Test::TestBody (this=0x808f4a8) at test_internal.cpp:825
-#2  0x080788f8 in void testing::internal::HandleExceptionsInMethodIfSupported<testing::Test, void>(testing::Test*, void (testing::Test::*)(), char const*) ()
-#3  0x08071128 in testing::Test::Run() ()
-#4  0x080711f1 in testing::TestInfo::Run() ()
-#5  0x08071317 in testing::TestCase::Run() ()
-#6  0x0807159e in testing::internal::UnitTestImpl::RunAllTests() ()
-#7  0x08078508 in bool testing::internal::HandleExceptionsInMethodIfSupported<testing::internal::UnitTestImpl, bool>(testing::internal::UnitTestImpl*, bool (testing::internal::UnitTestImpl::*)(), char const*) ()
-#8  0x0807078a in testing::UnitTest::Run() ()
-#9  0x0804b27c in main ()
-(gdb) print h->memory
-$7 = (void *) 0x4f4f4f4f
-(gdb) print * (uint8_t *)h->memory
-Cannot access memory at address 0x4f4f4f4f
-(gdb) print h
-$8 = (header_t *) 0xb7cf0848
-(gdb) print h->size
-$9 = 401999
-(gdb)
-$ python
->>> chr(0x4f)
-'O'
->>>
+maxsize = 512k, heap = 32m
+t = 1337326578
+
+ALLOC(10399, true); // header 0xb74ea778 memory 0xb74e7d0e
+freeblock_find(297430) scanning in 18
+freeblock_find: block->header->size 461605 >= (requested) size 297430
+-> root, correct size.
+-> shrinking found_block (header 0xb74ea9d8 size 461605) to new size 297430
+== header_new() = (nil)
+    2. couldn't allocate new header.
+-> after shrinkage, found_block size 461605, returning header 0xb74ea9d8
+ALLOC(297430, test_internal.cpp:812: Failure
+Value of: f->size
+  Actual: 461605
+Expected: size
+Which is: 297430
+
 #endif
 
 
@@ -771,6 +762,7 @@ $ python
     //t = 1330507693; //  ok with 320 kb
 
     //t = 1330738161;  const int maxsize = 1024*1024; // heap_size 256 CRASH!
+
     
     srand(t);
 
@@ -796,23 +788,23 @@ $ python
         //fprintf(stderr, "allocated %d in header %p (flags %d at %p) filling with %d %c", size, f, f->flags, f->memory, f->size, filler);
 
         uint8_t *foo = (uint8_t *)clock(h);
-        if ((int)f == 0xb7cf0848) {
-            fprintf(stderr, " 0xb7cf0848 locked memory = %p, f->memory = %p of size %d (requested size %d)\n", foo, f->memory, f->size, size);
-        }
+
+        // XXX: Test again but add "&& size < sizeof(header_t), because in all
+        // other cases f->size === size!!!
+        //bool initial_diff = f->size != size;
+        bool initial_same_size = f->size == size;
+
+        if (size >= sizeof(header_t))
+            ASSERT_GE(f->size, size);
 
         for (int i=0; i<f->size; i++) {
             foo[i] = filler;
-            if (f->size != size) {
-                fprintf(stderr, "(inside loop %d) 0xb7cf0848 locked memory = %p, f->memory = %p of size %d (requested size %d)\n", i, foo, f->memory, f->size, size);
+            if (f->size != size && initial_same_size) {
+                fprintf(stderr, "(inside loop %d) 0xb7cf0848 locked memory = %p, f->memory = %p of size %d (requested size %d), initial same size %d\n", i, foo, f->memory, f->size, size, initial_same_size);
                 abort();
             }
         }
         cunlock(h);
-
-        if ((int)f == 0xb7cf0848) {
-            fprintf(stderr, " 0xb7cf0848 locked memory = %p, f->memory = %p of size %d (requested size %d)\n", foo, f->memory, f->size, size);
-            abort();
-        }
 
         count++;
         allocated += size;
