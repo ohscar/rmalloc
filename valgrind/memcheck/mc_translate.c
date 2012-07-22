@@ -4145,6 +4145,8 @@ void do_shadow_Store ( MCEnv* mce,
    Char*    hname = NULL;
    IRConst* c;
 
+   //VG_(printf)("do_shadow_Store: addr = %p\n", (void *)addr);
+
    tyAddr = mce->hWordTy;
    mkAdd  = tyAddr==Ity_I32 ? Iop_Add32 : Iop_Add64;
    tl_assert( tyAddr == Ity_I32 || tyAddr == Ity_I64 );
@@ -5285,6 +5287,253 @@ static Bool checkForBogusLiterals ( /*FLAT*/ IRStmt* st )
 }
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+/* mikaelj *******************************************************************************************/
+
+#define MAX_DSIZE    512
+
+typedef
+   IRExpr 
+   IRAtom;
+
+typedef 
+   enum { Event_Ir, Event_Dr, Event_Dw, Event_Dm }
+   EventKind;
+
+typedef
+   struct {
+      EventKind  ekind;
+      IRAtom*    addr;
+      Int        size;
+   }
+   Event;
+
+/* Up to this many unnotified events are allowed.  Must be at least two,
+   so that reads and writes to the same address can be merged into a modify.
+   Beyond that, larger numbers just potentially induce more spilling due to
+   extending live ranges of address temporaries. */
+#define N_EVENTS 4
+
+/* Maintain an ordered list of memory events which are outstanding, in
+   the sense that no IR has yet been generated to do the relevant
+   helper calls.  The SB is scanned top to bottom and memory events
+   are added to the end of the list, merging with the most recent
+   notified event where possible (Dw immediately following Dr and
+   having the same size and EA can be merged).
+
+   This merging is done so that for architectures which have
+   load-op-store instructions (x86, amd64), the instr is treated as if
+   it makes just one memory reference (a modify), rather than two (a
+   read followed by a write at the same address).
+
+   At various points the list will need to be flushed, that is, IR
+   generated from it.  That must happen before any possible exit from
+   the block (the end, or an IRStmt_Exit).  Flushing also takes place
+   when there is no space to add a new event.
+
+   If we require the simulation statistics to be up to date with
+   respect to possible memory exceptions, then the list would have to
+   be flushed before each memory reference.  That's a pain so we don't
+   bother.
+
+   Flushing the list consists of walking it start to end and emitting
+   instrumentation IR for each event, in the order in which they
+   appear. */
+
+static Event events[N_EVENTS];
+static Int   events_used = 0;
+
+// approximation to not print all loads
+extern void *g_memory_start;
+extern void *g_memory_end;
+
+static VG_REGPARM(2) void trace_instr(Addr addr, SizeT size)
+{
+   //VG_(printf)("I  %08lx,%lu\n", addr, size);
+}
+
+static VG_REGPARM(2) void trace_load(Addr addr, SizeT size)
+{
+    if (addr >= (unsigned int)g_memory_start && addr+size < (unsigned int)g_memory_end)
+#if OUTPUT_FORMAT == HUMAN
+       VG_(printf)(" L %08lx,%lu\n", addr, size);
+#else
+       VG_(printf)(">>> L %lu %lu\n", (unsigned int)addr, size);
+#endif
+}
+
+static VG_REGPARM(2) void trace_store(Addr addr, SizeT size)
+{
+    if (addr >= (unsigned int)g_memory_start && addr+size < (unsigned int)g_memory_end)
+#if OUTPUT_FORMAT == HUMAN
+       VG_(printf)(" S %08lx,%lu\n", addr, size);
+#else
+       VG_(printf)(">>> S %lu %lu\n", (unsigned int)addr, size);
+#endif
+}
+
+static VG_REGPARM(2) void trace_modify(Addr addr, SizeT size)
+{
+    if (addr >= (unsigned int)g_memory_start && addr+size < (unsigned int)g_memory_end)
+#if OUTPUT_FORMAT == HUMAN
+       VG_(printf)(" M %08lx,%lu\n", addr, size);
+#else
+       VG_(printf)(">>> M %lu %lu\n", (unsigned int)addr, size);
+#endif
+}
+
+
+static void flushEvents(IRSB* sb)
+{
+   Int        i;
+   Char*      helperName;
+   void*      helperAddr;
+   IRExpr**   argv;
+   IRDirty*   di;
+   Event*     ev;
+
+   for (i = 0; i < events_used; i++) {
+
+      ev = &events[i];
+      
+      // Decide on helper fn to call and args to pass it.
+      switch (ev->ekind) {
+         case Event_Ir: helperName = "trace_instr";
+                        helperAddr =  trace_instr;  break;
+
+         case Event_Dr: helperName = "trace_load";
+                        helperAddr =  trace_load;   break;
+
+         case Event_Dw: helperName = "trace_store";
+                        helperAddr =  trace_store;  break;
+
+         case Event_Dm: helperName = "trace_modify";
+                        helperAddr =  trace_modify; break;
+         default:
+            tl_assert(0);
+      }
+
+      // Add the helper.
+      argv = mkIRExprVec_2( ev->addr, mkIRExpr_HWord( ev->size ) );
+      di   = unsafeIRDirty_0_N( /*regparms*/2, 
+                                helperName, VG_(fnptr_to_fnentry)( helperAddr ),
+                                argv );
+      addStmtToIRSB( sb, IRStmt_Dirty(di) );
+   }
+
+   events_used = 0;
+}
+
+// WARNING:  If you aren't interested in instruction reads, you can omit the
+// code that adds calls to trace_instr() in flushEvents().  However, you
+// must still call this function, addEvent_Ir() -- it is necessary to add
+// the Ir events to the events list so that merging of paired load/store
+// events into modify events works correctly.
+static void addEvent_Ir ( IRSB* sb, IRAtom* iaddr, UInt isize )
+{
+   Event* evt;
+   tl_assert( (VG_MIN_INSTR_SZB <= isize && isize <= VG_MAX_INSTR_SZB)
+            || VG_CLREQ_SZB == isize );
+   if (events_used == N_EVENTS)
+      flushEvents(sb);
+   tl_assert(events_used >= 0 && events_used < N_EVENTS);
+   evt = &events[events_used];
+   evt->ekind = Event_Ir;
+   evt->addr  = iaddr;
+   evt->size  = isize;
+   events_used++;
+}
+
+static
+void addEvent_Dr ( IRSB* sb, IRAtom* daddr, Int dsize )
+{
+   Event* evt;
+   tl_assert(isIRAtom(daddr));
+   tl_assert(dsize >= 1 && dsize <= MAX_DSIZE);
+   if (events_used == N_EVENTS)
+      flushEvents(sb);
+   tl_assert(events_used >= 0 && events_used < N_EVENTS);
+   evt = &events[events_used];
+   evt->ekind = Event_Dr;
+   evt->addr  = daddr;
+   evt->size  = dsize;
+   events_used++;
+}
+
+static
+void addEvent_Dw ( IRSB* sb, IRAtom* daddr, Int dsize )
+{
+   Event* lastEvt;
+   Event* evt;
+   tl_assert(isIRAtom(daddr));
+   tl_assert(dsize >= 1 && dsize <= MAX_DSIZE);
+
+   // Is it possible to merge this write with the preceding read?
+   lastEvt = &events[events_used-1];
+   if (events_used > 0
+    && lastEvt->ekind == Event_Dr
+    && lastEvt->size  == dsize
+    && eqIRAtom(lastEvt->addr, daddr))
+   {
+      lastEvt->ekind = Event_Dm;
+      return;
+   }
+
+   // No.  Add as normal.
+   if (events_used == N_EVENTS)
+      flushEvents(sb);
+   tl_assert(events_used >= 0 && events_used < N_EVENTS);
+   evt = &events[events_used];
+   evt->ekind = Event_Dw;
+   evt->size  = dsize;
+   evt->addr  = daddr;
+   events_used++;
+}
+
+
+/* mikaelj *******************************************************************************************/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 IRSB* MC_(instrument) ( VgCallbackClosure* closure,
                         IRSB* sb_in, 
                         VexGuestLayout* layout, 
@@ -5297,11 +5546,13 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
    IRStmt* st;
    MCEnv   mce;
    IRSB*   sb_out;
+   IRTypeEnv* tyenv = sb_in->tyenv;
 
    if (gWordTy != hWordTy) {
       /* We don't currently support this case. */
       VG_(tool_panic)("host/guest word size mismatch");
    }
+
 
    /* Check we're not completely nuts */
    tl_assert(sizeof(UWord)  == sizeof(void*));
@@ -5468,10 +5719,21 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
 
       switch (st->tag) {
 
-         case Ist_WrTmp:
+         case Ist_IMark: {
+           addEvent_Ir( sb_out, mkIRExpr_HWord( (HWord)st->Ist.IMark.addr ),
+                        st->Ist.IMark.len );
+         } break;
+         case Ist_WrTmp: {
+               IRExpr* data = st->Ist.WrTmp.data;
+               if (data->tag == Iex_Load) {
+                  addEvent_Dr( sb_out, data->Iex.Load.addr,
+                               sizeofIRType(data->Iex.Load.ty) );
+               }
+            
+            //ppIRExpr(&data->Iex.Load);
             assign( 'V', &mce, findShadowTmpV(&mce, st->Ist.WrTmp.tmp), 
                                expr2vbits( &mce, st->Ist.WrTmp.data) );
-            break;
+         } break;
 
          case Ist_Put:
             do_shadow_PUT( &mce, 
@@ -5485,6 +5747,11 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
             break;
 
          case Ist_Store:
+            {
+               IRExpr* data  = st->Ist.Store.data;
+               addEvent_Dw( sb_out, st->Ist.Store.addr,
+                            sizeofIRType(typeOfIRExpr(tyenv, data)) );
+            }
             do_shadow_Store( &mce, st->Ist.Store.end,
                                    st->Ist.Store.addr, 0/* addr bias */,
                                    st->Ist.Store.data,
@@ -5493,19 +5760,36 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
             break;
 
          case Ist_Exit:
+            flushEvents(sb_out);
             complainIfUndefined( &mce, st->Ist.Exit.guard, NULL );
-            break;
-
-         case Ist_IMark:
             break;
 
          case Ist_NoOp:
          case Ist_MBE:
             break;
 
-         case Ist_Dirty:
+         case Ist_Dirty: {
+
+            {
+               Int      dsize;
+               IRDirty* d = st->Ist.Dirty.details;
+               if (d->mFx != Ifx_None) {
+                  // This dirty helper accesses memory.  Collect the details.
+                  tl_assert(d->mAddr != NULL);
+                  tl_assert(d->mSize != 0);
+                  dsize = d->mSize;
+                  if (d->mFx == Ifx_Read || d->mFx == Ifx_Modify)
+                     addEvent_Dr( sb_out, d->mAddr, dsize );
+                  if (d->mFx == Ifx_Write || d->mFx == Ifx_Modify)
+                     addEvent_Dw( sb_out, d->mAddr, dsize );
+               } else {
+                  tl_assert(d->mAddr == NULL);
+                  tl_assert(d->mSize == 0);
+               }
+            }
+
             do_shadow_Dirty( &mce, st->Ist.Dirty.details );
-            break;
+         } break;
 
          case Ist_AbiHint:
             do_AbiHint( &mce, st->Ist.AbiHint.base,
@@ -5581,6 +5865,9 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
    VG_(deleteXA)( mce.tmpMap );
 
    tl_assert(mce.sb == sb_out);
+
+   flushEvents(sb_out);
+
    return sb_out;
 }
 

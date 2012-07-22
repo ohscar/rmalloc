@@ -177,6 +177,14 @@
 #include "pub_tool_libcbase.h"
 #include "pub_tool_options.h"
 #include "pub_tool_machine.h"     // VG_(fnptr_to_fnentry)
+#include "pub_tool_mallocfree.h"
+#include "pub_tool_replacemalloc.h"
+
+#define HUMAN 1
+#define COMPUTER 2
+
+#define OUTPUT_FORMAT COMPUTER // HUMAN
+
 
 /*------------------------------------------------------------*/
 /*--- Command line options                                 ---*/
@@ -442,25 +450,44 @@ typedef
 static Event events[N_EVENTS];
 static Int   events_used = 0;
 
+// approximation to not print all loads
+static void *g_memory_start = (void *)0xffffffff;
+static void *g_memory_end = NULL;
+
 
 static VG_REGPARM(2) void trace_instr(Addr addr, SizeT size)
 {
-   VG_(printf)("I  %08lx,%lu\n", addr, size);
+   //VG_(printf)("I  %08lx,%lu\n", addr, size);
 }
 
 static VG_REGPARM(2) void trace_load(Addr addr, SizeT size)
 {
-   VG_(printf)(" L %08lx,%lu\n", addr, size);
+    //if (addr >= (unsigned int)g_memory_start && addr+size < (unsigned int)g_memory_end)
+#if OUTPUT_FORMAT == HUMAN
+       VG_(printf)(" L %08lx,%lu\n", addr, size);
+#else
+       VG_(printf)("('load', 0x%lx, %lu)\n", addr, size);
+#endif
 }
 
 static VG_REGPARM(2) void trace_store(Addr addr, SizeT size)
 {
-   VG_(printf)(" S %08lx,%lu\n", addr, size);
+    //if (addr >= (unsigned int)g_memory_start && addr+size < (unsigned int)g_memory_end)
+#if OUTPUT_FORMAT == HUMAN
+       VG_(printf)(" S %08lx,%lu\n", addr, size);
+#else
+       VG_(printf)("('store', 0x%lx, %lu)\n", addr, size);
+#endif
 }
 
 static VG_REGPARM(2) void trace_modify(Addr addr, SizeT size)
 {
-   VG_(printf)(" M %08lx,%lu\n", addr, size);
+    //if (addr >= (unsigned int)g_memory_start && addr+size < (unsigned int)g_memory_end)
+#if OUTPUT_FORMAT == HUMAN
+       VG_(printf)(" M %08lx,%lu\n", addr, size);
+#else
+       VG_(printf)("('modify', 0x%lx, %lu)\n", addr, size);
+#endif
 }
 
 
@@ -581,7 +608,11 @@ void addEvent_Dw ( IRSB* sb, IRAtom* daddr, Int dsize )
 
 static void trace_superblock(Addr addr)
 {
+#if OUTPUT_FORMAT == HUMAN
    VG_(printf)("SB %08lx\n", addr);
+#else
+   VG_(printf)("('superblock', 0%lx)\n", addr);
+#endif
 }
 
 
@@ -963,6 +994,101 @@ static void lk_fini(Int exitcode)
    }
 }
 
+static void *new_block(ThreadId tid, Addr p, SizeT szB, SizeT alignB, Bool is_zeroed)
+{
+    p = (Addr)VG_(cli_malloc)( alignB, szB );
+    if (!p)
+        return NULL;
+    if (is_zeroed) {
+        VG_(memset)((void*)p, 0, szB);
+    }
+
+    if (g_memory_start > (void *)p)
+        g_memory_start = (void *)p;
+    if (g_memory_end < (unsigned int)p + (unsigned int)szB)
+        g_memory_end = p + szB;
+
+#if OUTPUT_FORMAT == HUMAN
+    VG_(printf)("new_block(%u, align=%u) -> 0%x (start - end = 0%x to 0%x)\n", (unsigned int)szB,
+            (unsigned int)alignB, (void *)p, g_memory_start, g_memory_end);
+#else
+    VG_(printf)("('new', %lu, 0x%lx)\n", (unsigned int)szB, (void *)p);
+#endif
+    return (void *)p;
+}
+
+static void handle_free(ThreadId tid, Addr addr)
+{
+#if OUTPUT_FORMAT == HUMAN
+    VG_(printf)("handle_free(%p)\n", (void *)addr);
+#else
+    VG_(printf)("('free', 0x%lx)\n", addr);
+#endif
+    VG_(cli_free)((void *)addr);
+}
+
+
+static void* lk_malloc( ThreadId tid, SizeT n)
+{
+    return new_block(tid, /*Addr p*/0, n, VG_(clo_alignment), /*is_zeroed*/False);
+}
+
+static void* lk___builtin_new ( ThreadId tid, SizeT n )
+{
+    return new_block(tid, /*Addr p*/0, n, VG_(clo_alignment), /*is_zeroed*/False);
+}
+static void* lk___builtin_vec_new ( ThreadId tid, SizeT n )
+{
+    return new_block(tid, /*Addr p*/0, n, VG_(clo_alignment), /*is_zeroed*/False);
+}
+
+static void* lk_memalign ( ThreadId tid, SizeT alignB, SizeT n )
+{
+    //VG_(printf)("lk_memalign(%u, align=%u)\n", (unsigned int)n, (unsigned int)alignB);
+    return new_block(tid, /*Addr p*/0, n, alignB, /*is_zeroed*/False);
+}
+static void* lk_calloc ( ThreadId tid, SizeT nmemb, SizeT size1 )
+{
+    return new_block(tid, /*Addr p*/0, nmemb*size1, VG_(clo_alignment), /*is_zeroed*/True);
+}
+static void lk_free ( ThreadId tid, void* p )
+{
+    handle_free(tid, (Addr)p);
+}
+
+static void lk___builtin_delete ( ThreadId tid, void* p )
+{
+    handle_free(tid, (Addr)p);
+}
+
+static void lk___builtin_vec_delete ( ThreadId tid, void* p )
+{
+    handle_free(tid, (Addr)p);
+}
+
+static void* lk_realloc ( ThreadId tid, void* p_old, SizeT new_szB )
+{
+    return new_block(tid, /*Addr p*/(Addr)p_old, new_szB, VG_(clo_alignment), /*is_zeroed*/False);
+}
+
+static SizeT lk_malloc_usable_size ( ThreadId tid, void* p )
+{
+#if  0
+   MC_Chunk* mc = VG_(HT_lookup) ( MC_(malloc_list), (UWord)p );
+
+   // There may be slop, but pretend there isn't because only the asked-for
+   // area will be marked as addressable.
+   return ( mc ? mc->szB : 0 );
+    return 0;
+#endif
+
+    VG_(printf)("# lk_malloc_usable_size: %p\n", p);
+
+    return 0;
+}
+
+#define LK_MALLOC_REDZONE_SZB    16
+
 static void lk_pre_clo_init(void)
 {
    VG_(details_name)            ("Lackey");
@@ -979,6 +1105,20 @@ static void lk_pre_clo_init(void)
    VG_(needs_command_line_options)(lk_process_cmd_line_option,
                                    lk_print_usage,
                                    lk_print_debug_usage);
+
+   /*
+   VG_(needs_malloc_replacement)  (lk_malloc,
+                                   lk___builtin_new,
+                                   lk___builtin_vec_new,
+                                   lk_memalign,
+                                   lk_calloc,
+                                   lk_free,
+                                   lk___builtin_delete,
+                                   lk___builtin_vec_delete,
+                                   lk_realloc,
+                                   NULL, //lk_malloc_usable_size, 
+                                   LK_MALLOC_REDZONE_SZB );
+*/
 }
 
 VG_DETERMINE_INTERFACE_VERSION(lk_pre_clo_init)
