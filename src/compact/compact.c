@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <string.h>
 
 /* memory layout
  */
@@ -275,7 +276,7 @@ void freeblock_verify_lower_size() {
         free_memory_block_t *b = g_free_block_slots[k];
         int size = 1<<k;
         while (b) {
-            if (b->header->size < size) {
+            if (b->header->size < size || b->header->memory == NULL) {
                 fprintf(stderr, "\nfreeblock_verify_lower_size(): block %p at mem %p at k=%d has size %d < %d\n",
                         b, b->header->memory, k, b->header->size, size);
 
@@ -755,7 +756,7 @@ header_t *freeblock_find(uint32_t size) {
 }
 
 
-uint32_t stat_total_free_list() {
+uint32_t rmstat_total_free_list() {
     uint32_t total = 0;
     for (int i=0; i<g_free_block_slot_count; i++) {
         free_memory_block_t *b = g_free_block_slots[i];
@@ -770,6 +771,24 @@ uint32_t stat_total_free_list() {
         }
     }
     return total;
+}
+
+uint32_t rmstat_largest_free_block() {
+    uint32_t largest = 0;
+    for (int i=0; i<g_free_block_slot_count; i++) {
+        free_memory_block_t *b = g_free_block_slots[i];
+        free_memory_block_t *a = b;
+        while (b != NULL) {
+            if (b->header->size > largest)
+                largest = b->header->size;
+            b = b->next;
+            if (a == b) {
+                fprintf(stderr, "stat_total_free_list(), panic - found a loop in slot %d item %p!\n", i, a);
+                freeblock_print();
+            }
+        }
+    }
+    return largest;
 }
 
 void header_sort_all() {
@@ -1562,7 +1581,7 @@ void compact() {
 #endif
 
 /* client code */
-void cinit(void *heap, uint32_t size) {
+void rminit(void *heap, uint32_t size) {
     g_memory_size = size;
 
     // +1 to round up. e.g. log2(15)==3
@@ -1589,12 +1608,12 @@ void cinit(void *heap, uint32_t size) {
     memset(heap, 0, size);
 }
 
-void cdestroy() {
+void rmdestroy() {
     // nop.
     return;
 }
 
-handle_t *cmalloc(int size) {
+handle_t *rmmalloc(int size) {
     header_t *h = block_new(size);
 
     if (h == NULL)
@@ -1605,24 +1624,24 @@ handle_t *cmalloc(int size) {
     return (handle_t *)h;
 }
 
-void cfree(handle_t *h) {
+void rmfree(handle_t *h) {
     block_free((header_t *)h);
 }
 
-void *clock(handle_t *h) {
+void *rmlock(handle_t *h) {
     header_t *f = (header_t *)h;
     f->flags = HEADER_LOCKED;
 
     return f->memory;
 }
-void *cweaklock(handle_t *h) {
+void *rmweaklock(handle_t *h) {
     header_t *f = (header_t *)h;
     f->flags = HEADER_WEAK_LOCKED;
     
     return f->memory;
 }
 
-void cunlock(handle_t *h) {
+void rmunlock(handle_t *h) {
     header_t *f = (header_t *)h;
     f->flags = HEADER_UNLOCKED;
 }

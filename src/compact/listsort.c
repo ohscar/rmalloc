@@ -78,7 +78,7 @@ int header__cmp(void *a, void *b) {
     else if (y->memory == NULL)
         return -1;
     else
-        return x->memory - y->memory;
+        return (unsigned int)x->memory - (unsigned int)y->memory;
 }
 
 /*

@@ -4,7 +4,7 @@
 
 #define MB(x) 1024*1024*x
 #define KB(x) 1024*x
-int heap_size = MB(32); // was 16
+const int heap_size = MB(32); // was 16
 int heap_size_small = MB(1);
 
 class SmallAllocTest : public ::testing::Test {
@@ -29,7 +29,7 @@ protected:
 class AllocTest : public ::testing::Test {
 protected:
     AllocTest() {
-        storage = (void *)malloc(heap_size);
+        //storage = (void *)malloc(heap_size);
     }
     ~AllocTest() {
     }
@@ -42,7 +42,8 @@ protected:
         cdestroy();
     }
 
-    void *storage;
+    //void *storage;
+    unsigned char storage[heap_size];
 };
 
 TEST_F(AllocTest, Init) {
@@ -110,7 +111,7 @@ TEST_F(AllocTest, MallocGrowsMemoryHeaders) {
     header_t *header_bottom = g_header_bottom;
 
     int size = 1024;
-    handle_t *h = cmalloc(size);
+    handle_t *h = rmmalloc(size);
     ASSERT_TRUE(h != NULL);
     ASSERT_EQ((uint8_t *)g_memory_top, memory_top+1024);
     // first header is always free - memory location [0]
@@ -118,7 +119,7 @@ TEST_F(AllocTest, MallocGrowsMemoryHeaders) {
     
     memory_top += 1024;
     header_bottom = g_header_bottom;
-    handle_t *h2 = cmalloc(size);
+    handle_t *h2 = rmmalloc(size);
     ASSERT_TRUE(h2 != NULL);
     ASSERT_EQ((uint8_t *)g_memory_top, memory_top+1024);
 
@@ -127,11 +128,11 @@ TEST_F(AllocTest, MallocGrowsMemoryHeaders) {
 
 TEST_F(AllocTest, MallocExhaust) {
     int size = 1024;
-    handle_t *h = cmalloc(size);
+    handle_t *h = rmmalloc(size);
     uint8_t *memory_top = (uint8_t *)g_memory_top;
     header_t *header_bottom = g_header_bottom;
     while ((uint8_t *)g_header_bottom - (uint8_t *)g_memory_top > size+sizeof(header_t)) {
-        h = cmalloc(size);
+        h = rmmalloc(size);
 
         ASSERT_EQ((uint8_t *)g_memory_top, memory_top+1024);
         ASSERT_EQ(g_header_bottom, header_bottom-1);
@@ -139,22 +140,22 @@ TEST_F(AllocTest, MallocExhaust) {
         memory_top = (uint8_t *)g_memory_top;
         header_bottom = g_header_bottom;
     }
-    h = cmalloc(size);
+    h = rmmalloc(size);
     ASSERT_TRUE(h == NULL);
 }
 
 TEST_F(AllocTest, FreeAndMergeSimple) {
     handle_t *h, *h2, *h3, *h5;
     int size = 1024;
-    h = cmalloc(size);
-    h2 = cmalloc(size);
-    h3 = cmalloc(size);
-    h = cmalloc(size);
-    h5 = cmalloc(size);
-    h = cmalloc(size);
+    h = rmmalloc(size);
+    h2 = rmmalloc(size);
+    h3 = rmmalloc(size);
+    h = rmmalloc(size);
+    h5 = rmmalloc(size);
+    h = rmmalloc(size);
 
     header_t *f2 = (header_t *)h2;
-    cfree(h2);
+    rmfree(h2);
 
     free_memory_block_t *block2 = block_from_header(f2);
     ASSERT_TRUE(g_free_block_slots[log2_(f2->size)] == block2);
@@ -162,7 +163,7 @@ TEST_F(AllocTest, FreeAndMergeSimple) {
     ASSERT_TRUE(block2->next == NULL);
 
     header_t *f5 = (header_t *)h5;
-    cfree(h5);
+    rmfree(h5);
 
     free_memory_block_t *block5 = block_from_header(f5);
 
@@ -173,7 +174,7 @@ TEST_F(AllocTest, FreeAndMergeSimple) {
     // killing off h3 means merging with h2!
     header_t *f3 = (header_t *)h3;
     uint8_t *end3 = (uint8_t *)f3->memory + f3->size;
-    cfree(h3);
+    rmfree(h3);
 
     ASSERT_EQ(end3, (uint8_t *)f2->memory+f2->size);
     ASSERT_TRUE(header_is_unused(f3));
@@ -191,15 +192,15 @@ TEST_F(AllocTest, FreeAndMergeEverySecond) {
     bool done = false;
     uint8_t *memtop = (uint8_t *)g_memory_top;
     for (int i=0; i<count/2; i++) {
-        h1 = cmalloc(size);
+        h1 = rmmalloc(size);
         ASSERT_EQ((uint8_t *)g_memory_top, memtop+size);
         memtop += size;
 
-        h2 = cmalloc(size);
+        h2 = rmmalloc(size);
         ASSERT_EQ((uint8_t *)g_memory_top, memtop+size);
         memtop += size;
 
-        cfree(h2);
+        rmfree(h2);
     }
 
     int free_blocks = 0;
@@ -232,12 +233,12 @@ TEST_F(AllocTest, FreeOneMergeTwo) {
     uint8_t *memtop = (uint8_t *)g_memory_top;
     int allocs = 0;
     for (int i=0; i<count/3; i++) {
-        h1 = cmalloc(size);
+        h1 = rmmalloc(size);
         ASSERT_EQ((uint8_t *)g_memory_top, memtop+size);
         memtop += size;
         allocs++;
 
-        h2 = cmalloc(size);
+        h2 = rmmalloc(size);
         ASSERT_EQ((uint8_t *)g_memory_top, memtop+size);
         memtop += size;
         allocs++;
@@ -247,9 +248,9 @@ TEST_F(AllocTest, FreeOneMergeTwo) {
         header_t *f2 = (header_t *)h2;
         //printf("freeing header %p memory %p\n", f2, f2->memory);
         void *mem2 = f2->memory;
-        cfree(h2);
+        rmfree(h2);
 
-        free_later[later_i] = cmalloc(size);
+        free_later[later_i] = rmmalloc(size);
 
         header_t *hl = (header_t *)free_later[later_i];
         void *memlater = hl->memory;
@@ -280,7 +281,7 @@ TEST_F(AllocTest, FreeOneMergeTwo) {
     for (int i=0; i<later_i; i++) {
         header_t *h = (header_t *)free_later[i];
         //printf("#%d freeing header %p memory %p\n", i, h, h->memory);
-        cfree(free_later[i]);
+        rmfree(free_later[i]);
     }
 
     int free_size = 0;
@@ -303,7 +304,7 @@ TEST_F(AllocTest, FreeOneMergeTwo) {
     printf("total free list size = %u kb (%u mb)\n", total/1024, total/1048576);
 }
 
-#define ALLOC(siz, free) {fprintf(stderr, "\n* Allocating %d bytes, ", siz);h=cmalloc(siz); header_t *f = (header_t *)h; if (h) {foo = (uint8_t *)clock(h); fprintf(stderr, "got back %d bytes at %p\n", f->size, f->memory); for (int i=0; i<f->size; i++) foo[i] = filling[f->size % maxfill];cunlock(h);fprintf(stderr, "filled %p of size %d vs %d req. with %c", f, f->size, siz, filling[f->size % maxfill]);if (free) {fprintf(stderr, " freeing."); cfree(h);}} else { fprintf(stderr, "couldn't alloc.\n");}}
+#define ALLOC(siz, free) {fprintf(stderr, "\n* Allocating %d bytes, ", siz);h=rmmalloc(siz); header_t *f = (header_t *)h; if (h) {foo = (uint8_t *)rmlock(h); fprintf(stderr, "got back %d bytes at %p\n", f->size, f->memory); for (int i=0; i<f->size; i++) foo[i] = filling[f->size % maxfill];rmunlock(h);fprintf(stderr, "filled %p of size %d vs %d req. with %c", f, f->size, siz, filling[f->size % maxfill]);if (free) {fprintf(stderr, " freeing."); rmfree(h);}} else { fprintf(stderr, "couldn't alloc.\n");}}
 
 TEST_F(AllocTest, AllocFill1) {
 char *filling = "ABCDEFGHIJKLMNOPQRSTUVXYZ";
@@ -314,7 +315,7 @@ uint8_t *foo;
     ALLOC(89603, true);
 }
 
-TEST_F(AllocTest, RandomAllocFreeCompactMin) {
+TEST_F(AllocTest, RandomAllormfreeCompactMin) {
     const int maxsize = 1024*1024;
     int largest = 0;
 
@@ -338,7 +339,7 @@ ALLOC(2014502, true);
 // alloc, free, free later, alloc, free, free later
 // the free later are freed at a later pass.
 // compact
-TEST_F(AllocTest, RandomAllocFreeCompact) {
+TEST_F(AllocTest, RandomAllormfreeCompact) {
     const int maxsize = 1024*1024;
     int largest = 0;
 
@@ -348,7 +349,7 @@ TEST_F(AllocTest, RandomAllocFreeCompact) {
     int count = 0;
     while (!done) {
         int size = rand()%maxsize+maxsize;
-        handle_t *h = cmalloc(size);
+        handle_t *h = rmmalloc(size);
 
         if (h == NULL) {
             done = true;
@@ -365,7 +366,7 @@ TEST_F(AllocTest, RandomAllocFreeCompact) {
             fprintf(stderr, "true);\n");
             header_t *f = (header_t *)h;
             allocated -= f->size;
-            cfree(h);
+            rmfree(h);
         } else {
             fprintf(stderr, "false)\n");
         }
@@ -379,7 +380,7 @@ TEST_F(AllocTest, RandomAllocFreeCompact) {
 
 // random alloc, random free
 // then another sweep with free
-TEST_F(AllocTest, RandomAllocFreeFreeHalf) {
+TEST_F(AllocTest, RandomAllormfreeFreeHalf) {
     const int maxsize = 128*1024;
     int largest = 0;
 
@@ -389,7 +390,7 @@ TEST_F(AllocTest, RandomAllocFreeFreeHalf) {
     int count = 0;
     while (!done) {
         int size = rand()%maxsize;
-        handle_t *h = cmalloc(size);
+        handle_t *h = rmmalloc(size);
         header_t *f = (header_t *)h;
 
         if (h == NULL) {
@@ -409,7 +410,7 @@ TEST_F(AllocTest, RandomAllocFreeFreeHalf) {
 
             //fprintf(stderr, "free %p size %d (slot %d)\n", block_from_header(f), f->size, log2_(f->size));
             //freeblock_print();
-            cfree(h);
+            rmfree(h);
         } else {
             //fprintf(stderr, "alloc %p size %d (slot %d)\n", block_from_header(f), f->size, log2_(f->size));
             //freeblock_print();
@@ -440,7 +441,7 @@ TEST_F(AllocTest, RandomAllocFreeFreeHalf) {
             if (i++%2 == 0) {
                 //fprintf(stderr, "free %p size %d (slot %d) at location %d\n", block_from_header(h), h->size, log2_(h->size), g_header_top - h);
                 //freeblock_print();
-                cfree((handle_t *)h);
+                rmfree((handle_t *)h);
             }
         }
         h--;
@@ -536,7 +537,7 @@ Program received signal SIGSEGV, Segmentation fault.
 (gdb) bt
 #0  0xb7e42e99 in ?? () from /lib/i386-linux-gnu/libc.so.6
 #1  0x0804b774 in block_free (header=0xb6cf8fe8) at compact.c:321
-#2  0x0804c7c5 in cfree (h=0xb6cf8fe8) at compact.c:1055
+#2  0x0804c7c5 in rmfree (h=0xb6cf8fe8) at compact.c:1055
 #3  0x0804d363 in SmallAllocTest_WriteCompactData3_Test::TestBody (this=0x807f6b0) at test_internal.cpp:476
 #4  0x0806cbc8 in void testing::internal::HandleExceptionsInMethodIfSupported<testing::Test, void>(testing::Test*, void (testing::Test::*)(), char const*) ()
 #5  0x080653f8 in testing::Test::Run() ()
@@ -619,7 +620,7 @@ TEST_F(SmallAllocTest, WriteCompactData2) {
     while (!done) {
         int size = rand()%maxsize+maxsize;
         fprintf(stderr, "trying to allocate %d (allocated %d)...", size, allocated);
-        handle_t *h = cmalloc(size);
+        handle_t *h = rmmalloc(size);
         header_t *f = (header_t *)h;
 
         if (h == NULL) {
@@ -631,7 +632,7 @@ TEST_F(SmallAllocTest, WriteCompactData2) {
         char filler = filling[f->size % maxfill];
         fprintf(stderr, "allocated %d in header %p (flags %d at %p) filling with %d %c", size, f, f->flags, f->memory, f->size, filler);
 
-        uint8_t *foo = (uint8_t *)clock(h);
+        uint8_t *foo = (uint8_t *)rmlock(h);
         ASSERT_FALSE(freeblock_exists_memory(foo));
         for (int i=0; i<f->size; i++) {
             foo[i] = filler;
@@ -650,7 +651,7 @@ TEST_F(SmallAllocTest, WriteCompactData2) {
                             j, &g_free_block_slots[j], i, &foo[i]);
             */
         }
-        cunlock(h);
+        rmunlock(h);
 
         count++;
         allocated += size;
@@ -664,7 +665,7 @@ TEST_F(SmallAllocTest, WriteCompactData2) {
             //fprintf(stderr, "free %p size %d (slot %d)\n", block_from_header(f), f->size, log2_(f->size));
             //freeblock_print();
             fprintf(stderr, "....freeing");
-            cfree(h);
+            rmfree(h);
         } else {
             //fprintf(stderr, "alloc %p size %d (slot %d)\n", block_from_header(f), f->size, log2_(f->size));
             //freeblock_print();
@@ -773,7 +774,7 @@ Which is: 297430
     int blocks_before=0, blocks_after=0;
     while (!done) {
         int size = rand()%maxsize;
-        handle_t *h = cmalloc(size);
+        handle_t *h = rmmalloc(size);
         //fprintf(stderr, "trying to allocate %d (allocated %d)...", size, allocated);
         fprintf(stderr, "ALLOC(%d, ", size);
         header_t *f = (header_t *)h;
@@ -787,7 +788,7 @@ Which is: 297430
         char filler = filling[f->size % maxfill];
         //fprintf(stderr, "allocated %d in header %p (flags %d at %p) filling with %d %c", size, f, f->flags, f->memory, f->size, filler);
 
-        uint8_t *foo = (uint8_t *)clock(h);
+        uint8_t *foo = (uint8_t *)rmlock(h);
 
         // XXX: Test again but add "&& size < sizeof(header_t), because in all
         // other cases f->size === size!!!
@@ -804,7 +805,7 @@ Which is: 297430
                 abort();
             }
         }
-        cunlock(h);
+        rmunlock(h);
 
         count++;
         allocated += size;
@@ -822,9 +823,9 @@ Which is: 297430
             //freeblock_print();
             //fprintf(stderr, "....freeing");
             fprintf(stderr, "true); // header %p memory %p\n", f, f->memory);
-            cfree(h);
+            rmfree(h);
         } else if (rand()%4 == 0) {
-            clock(h);
+            rmlock(h);
             fprintf(stderr, "false); // header %p memory %p filler %c\n", f, f->memory, filler);
         } else {
             //fprintf(stderr, "alloc %p size %d (slot %d)\n", block_from_header(f), f->size, log2_(f->size));
@@ -925,7 +926,7 @@ TEST_F(SmallAllocTest, CompactLock1) {
     int count = 0;
     while (!done) {
         int size = rand()%maxsize;
-        handle_t *h = cmalloc(size);
+        handle_t *h = rmmalloc(size);
         //fprintf(stderr, "trying to allocate %d (allocated %d)...", size, allocated);
         fprintf(stderr, "ALLOC(%d, ", size);
         header_t *f = (header_t *)h;
@@ -939,10 +940,10 @@ TEST_F(SmallAllocTest, CompactLock1) {
         char filler = filling[f->size % maxfill];
         //fprintf(stderr, "allocated %d in header %p (flags %d at %p) filling with %d %c", size, f, f->flags, f->memory, f->size, filler);
 
-        uint8_t *foo = (uint8_t *)clock(h);
+        uint8_t *foo = (uint8_t *)rmlock(h);
         for (int i=0; i<f->size; i++)
             foo[i] = filler;
-        cunlock(h);
+        rmunlock(h);
 
         count++;
         allocated += size;
@@ -957,9 +958,9 @@ TEST_F(SmallAllocTest, CompactLock1) {
             //freeblock_print();
             //fprintf(stderr, "....freeing");
             fprintf(stderr, "true); // header %p memory %p\n", f, f->memory);
-            cfree(h);
+            rmfree(h);
         } else if (rand()%4 == 0) {
-            clock(h);
+            rmlock(h);
             fprintf(stderr, "false); // header %p memory %p filler %c\n", f, f->memory, filler);
         } else {
             //fprintf(stderr, "alloc %p size %d (slot %d)\n", block_from_header(f), f->size, log2_(f->size));
@@ -1026,7 +1027,7 @@ TEST_F(SmallAllocTest, WriteCompactData4) {
     int count = 0;
     while (!done) {
         int size = rand()%maxsize;
-        handle_t *h = cmalloc(size);
+        handle_t *h = rmmalloc(size);
         //fprintf(stderr, "trying to allocate %d (allocated %d)...", size, allocated);
         fprintf(stderr, "ALLOC(%d, ", size);
         header_t *f = (header_t *)h;
@@ -1040,10 +1041,10 @@ TEST_F(SmallAllocTest, WriteCompactData4) {
         char filler = filling[f->size % maxfill];
         //fprintf(stderr, "allocated %d in header %p (flags %d at %p) filling with %d %c", size, f, f->flags, f->memory, f->size, filler);
 
-        uint8_t *foo = (uint8_t *)clock(h);
+        uint8_t *foo = (uint8_t *)rmlock(h);
         for (int i=0; i<f->size; i++)
             foo[i] = filler;
-        cunlock(h);
+        rmunlock(h);
 
         count++;
         allocated += size;
@@ -1058,7 +1059,7 @@ TEST_F(SmallAllocTest, WriteCompactData4) {
             //freeblock_print();
             //fprintf(stderr, "....freeing");
             fprintf(stderr, "true);\n");
-            cfree(h);
+            rmfree(h);
         } else {
             //fprintf(stderr, "alloc %p size %d (slot %d)\n", block_from_header(f), f->size, log2_(f->size));
             //freeblock_print();
@@ -1213,7 +1214,7 @@ TEST_F(AllocTest, WriteCompactData) {
     int count = 0;
     while (!done) {
         int size = rand()%maxsize;
-        handle_t *h = cmalloc(size);
+        handle_t *h = rmmalloc(size);
         fprintf(stderr, "trying to allocate %d (allocated %d)...", size, allocated);
         header_t *f = (header_t *)h;
 
@@ -1225,10 +1226,10 @@ TEST_F(AllocTest, WriteCompactData) {
         char filler = filling[f->size % maxfill];
         fprintf(stderr, "allocated %d in block %p (flags %d at %p) filling with %d %c", size, block_from_header(f), f->flags, f->memory, f->size, filler);
 
-        uint8_t *foo = (uint8_t *)clock(h);
+        uint8_t *foo = (uint8_t *)rmlock(h);
         for (int i=0; i<f->size; i++)
             foo[i] = filler;
-        cunlock(h);
+        rmunlock(h);
 
         count++;
         allocated += size;
@@ -1242,7 +1243,7 @@ TEST_F(AllocTest, WriteCompactData) {
             //fprintf(stderr, "free %p size %d (slot %d)\n", block_from_header(f), f->size, log2_(f->size));
             //freeblock_print();
             fprintf(stderr, "....freeing");
-            cfree(h);
+            rmfree(h);
         } else {
             //fprintf(stderr, "alloc %p size %d (slot %d)\n", block_from_header(f), f->size, log2_(f->size));
             //freeblock_print();
