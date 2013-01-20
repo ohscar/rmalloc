@@ -238,7 +238,7 @@ def main():
         # not arbitrary. sorting and counting lifetime, only displaying the ones above a certain threshold.
         xs.sort(reverse=True)
         for lower, upper in [(0, 1), (10, 15), (75, 100), (0, 100)]:
-            plot_histogram(xs, fname, lower*1000, upper*1000)
+            plot_histogram(xs, fname+"-macro", lower*1000, upper*1000)
 
         #for lower, upper in [(0, 3), (10, 15), (75, 100)]: plot_histogram(xs, fname, lower*1000, upper*1000)
 
