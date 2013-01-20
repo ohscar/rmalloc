@@ -62,11 +62,11 @@ g_perfect_bytes_used = 0
 
 
 
-def plot_histogram(xs, title, lower, upper, ymax=1000):
+def plot_histogram(xs, title, xlabel, lower, upper, ymax=1000):
     n, bins, patches = plt.hist([x for x in xs if x >= lower and x < upper], bins=600, histtype='stepfilled', facecolor='g', alpha=0.75)
     #n, bins, patches = plt.hist(xs, bins=600, histtype='stepfilled')
 
-    plt.xlabel("Lifetime")
+    plt.xlabel(xlabel)
     plt.ylabel("Handle count")
     plt.title("Histogram of memory area lifetime: " + title)
     #plt.axis([100, 0, 0, len(bins)*0.75])
@@ -205,7 +205,10 @@ def main():
             try:
                 own = lifetime_ops[key][0]
                 other = lifetime_ops[key][1]
-                micro_lifetime = float(other)/float(own)
+                micro_inside = own+other
+                if micro_inside == 0:
+                    micro_inside = 1
+                micro_lifetime = float(own)/float(micro_inside)
                 macro_lifetime = float(other+own)/float(ops_counter)
                 stats.append((key, micro_lifetime, macro_lifetime, own, other))
                 if macro_lifetime >= MACRO_LIFETIME_THRESHOLD:
@@ -214,8 +217,11 @@ def main():
                 continue
         print >> st, "\nOps per handle (sorted by micro lifetime):"
         stats.sort(key=lambda x: x[1])
+        micro_xs = []
         for handle, micro_lifetime, macro_lifetime, own, other in stats:
             print >> st, "# %d: %.2f (own = %d, other = %d)" % (handle, micro_lifetime, own, other)
+            lt = int(micro_lifetime*100000.0)
+            micro_xs.append(lt)
 
         print >> st, "\nOps per handle (sorted by macro lifetime):"
         stats.sort(key=lambda x: x[2])
@@ -238,7 +244,17 @@ def main():
         # not arbitrary. sorting and counting lifetime, only displaying the ones above a certain threshold.
         xs.sort(reverse=True)
         for lower, upper in [(0, 1), (10, 15), (75, 100), (0, 100)]:
-            plot_histogram(xs, fname+"-macro", lower*1000, upper*1000)
+            plot_histogram(xs, fname+"-macro", "Overall lifetime, compared to all program ops (macro)", lower*1000, upper*1000)
+
+        # X axis is lifetime
+        # xs contains lifetimes. we only want to show the ones with the longest lifetime,
+        # not arbitrary. sorting and counting lifetime, only displaying the ones above a certain threshold.
+        micro_xs.sort(reverse=True)
+        for lower, upper in [(0, 1), (10, 15), (75, 100), (0, 100)]:
+            try:
+                plot_histogram(micro_xs, fname+"-micro", "Busy-ness, compared to ops within own lifetime (micro)", lower*1000, upper*1000)
+            except:
+                print "Couldn't plot micro_xs for lower", lower, "to upper", upper
 
         #for lower, upper in [(0, 3), (10, 15), (75, 100)]: plot_histogram(xs, fname, lower*1000, upper*1000)
 

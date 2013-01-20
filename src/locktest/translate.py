@@ -205,7 +205,7 @@ def main():
     del blocks.g_blocks
 
     #if mode == 'generate':
-    if True:
+    if False:
         cout = open(fname + "-allocations.c", "wt")
         print >> cout, "memory_t *g_handles[%d];" % blocks.length()
         print >> cout, "void malloc_lock_test() {"
@@ -274,7 +274,6 @@ def main():
 
         st.close()
 
-        plot_histogram(xs, fname)
-
+        plot_histogram(xs, fname+"-macro")
 main()
 
