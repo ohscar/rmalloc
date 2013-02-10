@@ -22,20 +22,20 @@ import matplotlib.pyplot as plt
 # reference value color first
 COLORS = ["b-", "r-", "g-", "b-", "y-", "m-", "c-"]
 g_figure = plt.figure()
-g_row = 1
+g_figure_nr = 1
 
 def subplot(xl, yl, t):
-    global g_row
+    global g_figure_nr
 
-    ax = g_figure.add_subplot(3, 1, g_row, xlabel=xl, ylabel=yl, title=t)
-    g_row += 1
+    ax = g_figure.add_subplot(2, 1, g_figure_nr, xlabel=xl, ylabel=yl, title=t)
+    g_figure_nr += 1
 
     return ax
 
 # allocsys is a list of (allocator_name, ys)
 # first is the ref alloc.
 def plot_memory(allocsys, hs):
-    ax = subplot("Time", "Memory usage (kb)", "Heap usage")
+    ax = subplot("", "Memory usage (kb)", "Heap usage")
 
     for i in range(len(allocsys)):
         name, ys = allocsys[i]
@@ -77,7 +77,10 @@ def main():
     allocs = []
 
     lifetime = []
-    lifetime_file = open(sys.argv[1])
+    try:
+        lifetime_file = open(sys.argv[1])
+    except:
+        lifetime_file = None
     if lifetime_file:
         found = False
         for line in lifetime_file.xreadlines():
@@ -106,6 +109,7 @@ def main():
 
         line = f.readline()
         heap_size = int(line[2:])
+        print "Heap size:", heap_size
         data = []
         for line in f.xreadlines():
             #796128 MD-36 FB2146626120 LAB2146626120 FP0 T1 OOM4
@@ -123,6 +127,7 @@ def main():
 
         f.close()
 
+        print "appending allocs"
         allocs.append((fname, data))
 
     plot_init()
@@ -137,6 +142,7 @@ def main():
             #ys.append(free_bytes)
         allocsys.append((fname, ys))
 
+    print "plotting memory"
     plot_memory(allocsys, heap_size)
 
     # plot speed
@@ -154,11 +160,14 @@ def main():
     plot_save()
 
 def plot_init():
-    plt.axis('tight')
-    plt.grid(True)
+    pass
+    #plt.axis('tight')
+    #plt.grid(True)
 
 def plot_save():
-    plt.savefig("plot-memory-usage.pdf")
+    fname ="plot-memory-usage.pdf"
+    print "Saving plots to", fname
+    plt.savefig(fname)
 
 if __name__ == '__main__':
     main()

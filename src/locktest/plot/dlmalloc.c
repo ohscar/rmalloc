@@ -530,6 +530,20 @@ MAX_RELEASE_CHECK_RATE   default: 4095 unless not HAVE_MMAP
 #define DLMALLOC_EXPORT extern
 #endif
 
+// >mikaelj
+#ifdef __cplusplus
+extern "C" {
+#endif
+extern void *user_sbrk(int);
+#ifdef __cplusplus
+}
+#endif
+
+#define HAVE_MMAP 0
+#define MORECORE user_sbrk
+#define USE_DL_PREFIX
+// <mikaelj
+
 #ifndef WIN32
 #ifdef _WIN32
 #define WIN32 1
