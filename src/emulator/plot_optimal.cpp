@@ -3,7 +3,7 @@
  * no actual allocation, just statistics on what would be an optimal
  * allocator.
  */
-#include "../../compact/compact.h"
+#include "../compact/compact.h"
 
 #include "plot.h"
 

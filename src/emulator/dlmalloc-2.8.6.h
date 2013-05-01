@@ -23,6 +23,22 @@
 #ifndef MALLOC_280_H
 #define MALLOC_280_H
 
+
+// >mikaelj
+#ifdef __cplusplus
+extern "C" {
+#endif
+extern void *user_sbrk(int);
+#ifdef __cplusplus
+}
+#endif
+
+#define HAVE_MMAP 0
+#define MORECORE user_sbrk
+#define USE_DL_PREFIX
+// <mikaelj
+
+
 #ifdef __cplusplus
 extern "C" {
 #endif

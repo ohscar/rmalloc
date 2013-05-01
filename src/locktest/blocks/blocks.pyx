@@ -113,6 +113,7 @@ g_ops_filename = None
 
 # id maps to index in g_blocks
 def find_block(address):
+    global g_blocks
     try:
         mid = g_blocks[address]
         #mid = int(g_redis[address])
@@ -122,12 +123,14 @@ def find_block(address):
     return mid
 
 def length():
+    global g_blocks
     s = {}
     for v in g_blocks.values():
         s[v] = 1
     return len(s.keys())
 
 def append(start, end):
+    global g_blocks
     #if start == 0x41C4AE8:
         #    print  >> sys.stderr,"append:", hex(start), hex(end)
     global g_memoryid_counter
@@ -144,6 +147,7 @@ def append(start, end):
 import sys
 
 def remove(add):
+    global g_blocks
     try:
         memory_id = g_blocks[add]
         #memory_id = int(g_redis[add])
