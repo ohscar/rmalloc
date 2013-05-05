@@ -4,7 +4,12 @@ all: plot_optimal plot_dlmalloc
 
 SOURCES=plot.cpp plot.h #../../compact/compact.c ../../compact/listsort.c
 
-CFLAGS=-g -O0 -Wshadow
+CFLAGS=-g -O0
+#CFLAGS=-O3
+
+WARNFLAGS=-Wshadow
+
+CFLAGS += $(WARNFLAGS)
 
 .cpp.o:
 	g++ -c $(CFLAGS) $<

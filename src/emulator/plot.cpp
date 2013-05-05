@@ -27,19 +27,30 @@
 
 typedef std::map<uint32_t, void *> handle_pointer_map_t;
 typedef std::map<void *, uint32_t> pointer_size_map_t;
+typedef std::map<uint32_t, uint32_t> handle_count_map_t;
+
+int colormap_print(char *output);
 
 static handle_pointer_map_t g_handles;
 static pointer_size_map_t g_sizes;
+
+static handle_count_map_t g_handle_free;
+static pointer_size_map_t g_pointer_free;
+
 FILE *fpstats = NULL;
 unsigned long long g_counter = 0;
 uint32_t g_memory_usage = 0;
 
-#define HEAP_SIZE (512 * 1024*1024)
+#define HEAP_SIZE (512  * 1024*1024)
 
 uint32_t g_heap_size = HEAP_SIZE;
 uint8_t *g_heap = NULL;
 uint8_t *g_colormap = NULL;
 uint32_t g_colormap_size = HEAP_SIZE/4;
+
+uint8_t *g_highest_address = 0;
+
+char *g_opsfile = NULL;
 
 void heap_colormap_init() {
     uint32_t *h = (uint32_t *)g_heap;
@@ -47,13 +58,13 @@ void heap_colormap_init() {
         h[i] = PAINT_INITIAL_COLOR;
     }
 
-    memset(g_colormap, COLOR_GREEN, g_colormap_size);
+    // keep this in sync w/ plot_fragmetn_image
+    memset(g_colormap, COLOR_WHITE, g_colormap_size);
 }
 
-void register_op(int op, int handle) {
+void register_op(int op, int handle, void *ptr, int ptrsize) {
     // ptr will be within g_heap
-    void *ptr = g_handles[handle];
-    uint32_t offset = (uint32_t)g_heap - (uint32_t)ptr;
+    uint32_t offset = (uint32_t)ptr - (uint32_t)g_heap;
     uint32_t size = g_sizes[ptr];
 
     int cs = ceil((float)size/4.0); 
@@ -62,13 +73,22 @@ void register_op(int op, int handle) {
     // mark area with initial as a cleanup, otherwise too many areas will be falsely marked as overhead below.
     int ps = size/4; // floor, not to overwrite data.
     uint32_t *pp = (uint32_t *)ptr;
-    for (int i=0; i<ps; i++) {
-        pp[i] = PAINT_INITIAL_COLOR;
-    }
+    uint8_t *p = (uint8_t *)ptr;
+
+    //printf("marking handle %d ptr %x of size %d (and small size: %d)\n", handle, (uint32_t)ptr, size, ps);
+
+    uint32_t heap_fill = (op == OP_ALLOC) ? HEAP_ALLOC : HEAP_FREE; 
+    for (int i=0; i<ps; i++)
+        pp[i] = heap_fill;
 
     uint8_t color = (op == OP_ALLOC) ? COLOR_RED : COLOR_GREEN;
-    memset(g_colormap, color, ps);
+    memset((void *)((uint32_t)g_colormap+co), color, ps);
+}
 
+void scan_heap_update_colormap() {
+    static int sequence = 0;
+
+#if 0 // METHOD 1
     /* go through colormap, and for each pixel that is non-green and non-red,
      * look at the corresponding value in the heap.  if it is not initial color, color as overhead.
      *
@@ -83,8 +103,23 @@ void register_op(int op, int handle) {
                 g_colormap[i] = COLOR_WHITE;
         }
     }
+#endif
+#if 1 // METHOD 2
+    uint32_t *vh = (uint32_t *)g_heap;
+    for (int i=0; i<g_colormap_size; i++) {
+        if (vh[i] != HEAP_INITIAL &&
+            vh[i] != HEAP_ALLOC &&
+            vh[i] != HEAP_FREE)
+
+            // well, it's got to be changed then.
+            g_colormap[i] = COLOR_WHITE;
+    }
+#endif
 
     // presto, a fresh colormap with appropriate values for green, red and white.
+    char buf[256];
+    snprintf(buf, sizeof(buf), "%s-plot-%.6d.png", g_opsfile, sequence++);
+    colormap_print(buf);
 }
 
 /* parses ops file and calls into user alloc functions. */
@@ -111,8 +146,6 @@ void alloc_driver(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap_size, 
             // skip
         } else {
 
-            if (op == 'N' || op == 'F')
-                printf("%c handle %d of size %d\n", op, handle, size);
             switch (op) {
                 case 'O': // Open = lock
                     
@@ -131,12 +164,19 @@ void alloc_driver(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap_size, 
                     break;
                 case 'N': {
                     void *ptr = user_malloc(size, handle);
+                    printf("NEW handle %d of size %d to 0x%X\n", handle, size, (uint32_t)ptr);
+                    if ((uint32_t)ptr > (uint32_t)g_highest_address)
+                        g_highest_address = (uint8_t *)ptr;
+
                     g_handles[handle] = ptr;
                     g_sizes[g_handles[handle]] = size;
 
+                    // XXX when to call register_op() and do coloring?
                     if (ptr == NULL) {
                         if (user_handle_oom(size)) {
-                            g_handles[handle] = user_malloc(size, handle);
+                            ptr = user_malloc(size, handle);
+                            g_handles[handle] = ptr;
+                            register_op(OP_ALLOC, handle, ptr, size);
                             g_sizes[g_handles[handle]] = size;
                             if (!g_handles[handle]) {
                                 die("\n\nOOM!\n");
@@ -145,19 +185,25 @@ void alloc_driver(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap_size, 
                             die("\n\nOOM!\n");
                         }
                     } else {
-                        //register_op(OP_ALLOC, handle);
+                        register_op(OP_ALLOC, handle, ptr, size);
                     }
+                    scan_heap_update_colormap();
                     print_after_malloc_stats(g_handles[handle], address, size);
                 } break;
                 case 'F': {
                     void *ptr = g_handles[handle];
+                    int s = g_sizes[g_handles[handle]];
+                    printf("FREE handle %d of size %d at 0x%X\n", handle, s, (uint32_t)ptr);
+
+                    register_op(OP_FREE, handle, ptr, s);
                     user_free(ptr, handle);
-                    print_after_free_stats(address, size);
+                    scan_heap_update_colormap();
+
+                    print_after_free_stats(address, s);
                 } break;
             }
         }
     }
-
 }
 
 void plot_report(long memory_delta, unsigned long free_bytes, unsigned long largest_allocatable_block, int fragmentation_percent, suseconds_t op_time, int caused_oom) {
@@ -167,9 +213,32 @@ void plot_report(long memory_delta, unsigned long free_bytes, unsigned long larg
     g_counter++;
 }
 
+int colormap_print(char *output) {
+    int end = ((uint32_t)g_highest_address-(uint32_t)g_heap)/4;
+    //int end = g_colormap_size;
+#define putchar(x) (void)x
+    putchar("\n"); putchar('[');
+    FILE *f = fopen("/tmp/fragmentplot.txt", "wt");
+    for (int i=0; i<end; i++) {
+        switch (g_colormap[i]) {
+        case COLOR_GREEN: fputc(CHAR_GREEN, f); putchar(CHAR_GREEN); break;
+        case COLOR_RED: fputc(CHAR_RED, f); putchar(CHAR_RED); break;
+        case COLOR_WHITE: fputc(CHAR_WHITE, f); putchar(CHAR_WHITE); break;
+        default: break;
+        }
+    }
+    putchar(']'); putchar("\n"); 
+#undef putchar
+    fclose(f);
+
+    char cmd[256];
+    sprintf(cmd, "python plot_fragment_image.py /tmp/fragmentplot.txt %s", output);
+    system(cmd);
+    //printf("Plot data saved in %s\n", output);
+}
+
 int main(int argc, char **argv) {
     FILE *fpops = NULL;
-    char *opsfile = NULL;
     char driver[512];
     g_heap = (uint8_t *)malloc(g_heap_size);
     g_colormap = (uint8_t *)malloc(g_colormap_size);
@@ -178,10 +247,10 @@ int main(int argc, char **argv) {
         die("usage: %s opsfile\n", argv[0])
     }
 
-    opsfile = argv[1];
-    fpops = fopen64(opsfile, "rt");
+    g_opsfile = argv[1];
+    fpops = fopen64(g_opsfile, "rt");
     if (!fpops) {
-        die("%s: couldn't open opsfile %s: strerror() = %s\n", argv[0], opsfile, strerror(errno));
+        die("%s: couldn't open opsfile %s: strerror() = %s\n", argv[0], g_opsfile, strerror(errno));
     }
 
     heap_colormap_init();
@@ -199,14 +268,50 @@ int main(int argc, char **argv) {
     alloc_driver(fpops, 500*1000, g_heap, g_heap_size, g_colormap);
     user_destroy();
 
+
+    printf("pure memory usage: %d bytes = %d kbytes = %d megabytes\n",
+            g_memory_usage, g_memory_usage/1024, g_memory_usage/1048576);
+    printf("writing alloc stats data to %s\n", driver);
+
+
+
+    {
+    pointer_size_map_t::iterator it;
+    for (it=g_pointer_free.begin(); it != g_pointer_free.end(); it++) 
+        if (it->second != 1)
+            printf("Pointer %x free'd %d times\n", (uint32_t)it->first, it->second);
+    }
+    {
+    handle_count_map_t::iterator it;
+    for (it=g_handle_free.begin(); it != g_handle_free.end(); it++) 
+        if (it->second != 1)
+            printf("Handle %d free'd %d times\n", it->first, it->second);
+    }
+
+    printf("highest address: 0x%X adjusted for heap start = %d kb\n", (uint32_t)g_highest_address, ((uint32_t)g_highest_address - (uint32_t)g_heap) / 1024);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     fclose(fpstats);
     fclose(fpops);
 
     free(g_colormap);
     free(g_heap);
-
-    printf("pure memory usage: %d bytes = %d kbytes = %d megabytes\n",
-            g_memory_usage, g_memory_usage/1024, g_memory_usage/1048576);
-    printf("writing alloc stats data to %s\n", driver);
 }
 

@@ -33,13 +33,22 @@ enum {
     COLOR_WHITE, // overhead
 };
 
+enum {
+    CHAR_GREEN = ' ',
+    CHAR_RED = '#',
+    CHAR_WHITE = '.'
+};
 
 enum {
     OP_ALLOC,
     OP_FREE,
 };
 
-#define HEAP_INITIAL_VALUE (uint32_t)0xDEADBEEF
+enum {
+    HEAP_INITIAL = 0xDEADBEEF,
+    HEAP_ALLOC = 0xBEEFBABE,
+    HEAP_FREE = 0xDEADBABE
+};
 
 // first argument is either a real void* or malloc-specific handle type
 

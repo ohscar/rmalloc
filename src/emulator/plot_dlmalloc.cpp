@@ -21,7 +21,8 @@ static unsigned long g_memory_usage;
 static unsigned long g_handle_counter = 0;
 
 static void *g_heap = NULL;
-static void *g_heap_end = NULL; // g_heap <= end of heap < g_heap+g_heap_size
+static void *g_heap_end = NULL;
+static void *g_heap_top = NULL; // g_heap <= end of heap < g_heap_top
 static void *g_colormap = NULL; 
 
 typedef std::map<void *, uint32_t> pointer_size_map_t;
@@ -44,8 +45,7 @@ void sanity() {
     int nonzero = 0;
     for (it=g_count.begin(); it != g_count.end(); it++) {
         if (it->second != 0) {
-            printf("handle %d, ptr 0x%X is non-zero: %d\n",
-                    g_handle_pointer[it->first], (uint32_t)it->first, it->second);
+            //printf("handle %d, ptr 0x%X is non-zero: %d\n", g_handle_pointer[it->first], (uint32_t)it->first, it->second);
             nonzero++;
         }
     }
@@ -57,7 +57,7 @@ void *user_malloc(int size, uint32_t handle) {
     g_memory_usage += size*0.9; // XXX: *0.9 is bogus, should be just size. for plot testing purposes!
 
     void *ptr = dlmalloc(size);
-    printf("|| h == (void *)%x // MALLOC, heap start %x, heap end %x\n", (uint32_t)ptr, (uint32_t)g_heap, (uint32_t)g_heap_end);
+    //printf("|| h == (void *)0x%X // MALLOC, heap start %x, heap end %x\n", (uint32_t)ptr, (uint32_t)g_heap, (uint32_t)g_heap_end);
     g_handles[ptr] = size;
 
     g_handle_pointer[ptr] = handle;
@@ -93,7 +93,7 @@ void user_free(void *ptr, uint32_t handle) {
 
     //sanity();
 
-    printf("|| h == (void *)%x // FREE\n", (uint32_t)ptr);
+    //printf("|| h == (void *)0x%X // FREE\n", (uint32_t)ptr);
     dlfree(ptr);
 }
 
@@ -121,6 +121,7 @@ bool user_init(uint32_t heap_size, void *heap, void *colormap, char *name) {
     g_heap = heap;
     g_heap_size = heap_size;
     g_heap_end = g_heap;
+    g_heap_top = (uint8_t *)((uint32_t)g_heap_end + heap_size);
     g_colormap = colormap;
 }
 
@@ -137,20 +138,44 @@ void *user_sbrk(int);
 #ifdef __cplusplus
 }
 #endif
-void *user_sbrk(int increment) {
-    printf("user_sbrk(): requesting %d bytes.\n", increment);
 
-    if (increment == 0)
+
+void *user_sbrk(int incr)
+{
+    void *prev_heap_end;
+
+    prev_heap_end = g_heap_end;
+
+    incr = (incr + 3) & ~3; // align to 4-byte boundary
+
+    if ((uint32_t)g_heap_end + incr > (uint32_t)g_heap_top)
+    {
+        errno = ENOMEM;
+        return (void*)-1;
+    }
+
+    g_heap_end = (void *)((uint32_t)g_heap_end + incr);
+
+    return (caddr_t) prev_heap_end;
+}
+#if 0
+void *user_sbrk(int increment) {
+    if (increment == 0) {
+        printf("user_sbrk(): requesting current heap end = 0x%X and start = 0x%X\n", (uint32_t)g_heap_end, (uint32_t)g_heap);
         return g_heap_end;
+    }
+    printf("user_sbrk(): requesting %d bytes.\n", increment);
 
     if ((uint32_t)g_heap_end + increment < (uint32_t)g_heap + g_heap_size) {
         g_heap_end = (void*)((uint32_t)g_heap_end + increment);
 
-        printf("user_sbrk(): request OK, new heap size: %d\n", (uint8_t *)g_heap_end-(uint8_t *)g_heap);
+        printf("user_sbrk(): request OK, new heap size: %d, from 0x%X to 0x%X\n", (uint8_t *)g_heap_end-(uint8_t *)g_heap,
+                (uint32_t)g_heap, (uint32_t)g_heap_end);
         return g_heap_end;
     }
     errno = ENOMEM;
     return (void *)-1;
 }
+#endif
 
 
