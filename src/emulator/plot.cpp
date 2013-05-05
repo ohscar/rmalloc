@@ -15,6 +15,7 @@
 #include "plot.h"
 
 #include <inttypes.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -29,13 +30,13 @@ typedef std::map<uint32_t, void *> handle_pointer_map_t;
 typedef std::map<void *, uint32_t> pointer_size_map_t;
 typedef std::map<uint32_t, uint32_t> handle_count_map_t;
 
-int colormap_print(char *output);
-
 static handle_pointer_map_t g_handles;
 static pointer_size_map_t g_sizes;
 
 static handle_count_map_t g_handle_free;
 static pointer_size_map_t g_pointer_free;
+static handle_count_map_t g_free_block_count;
+static handle_count_map_t g_used_block_count;
 
 FILE *fpstats = NULL;
 unsigned long long g_counter = 0;
@@ -51,6 +52,121 @@ uint32_t g_colormap_size = HEAP_SIZE/4;
 uint8_t *g_highest_address = 0;
 
 char *g_opsfile = NULL;
+
+void scan_block_sizes(void);
+int colormap_print(char *output);
+void calculate_fragmentation_percent(void);
+
+/*
+ * scan through the colormap for blocks and update the free/used block map accordingly.
+ */
+void scan_block_sizes(void) {
+    int start = 0, end = 0;
+    bool inside = false;
+    uint8_t color = COLOR_WHITE;
+    int length = 0;
+    for (int i=0; i<g_colormap_size; i++) {
+        if (g_colormap[i] != color) {
+            if (!inside) {
+                inside = true;
+                start = i;
+                color = g_colormap[i];
+            } else {
+                inside = false;
+                length = i-start;
+
+                if (color == COLOR_GREEN) {
+                    if (g_free_block_count.find(length) == g_free_block_count.end())
+                        g_free_block_count[length] = 1;
+                    else
+                        g_free_block_count[length] += 1;
+                } else if (color == COLOR_RED) {
+                    if (g_used_block_count.find(length) == g_used_block_count.end())
+                        g_used_block_count[length] = 1;
+                    else
+                        g_used_block_count[length] += 1;
+                }
+
+                color = g_colormap[i];
+            }
+        }
+    }
+}
+
+void calculate_fragmentation_percent(void) {
+    scan_block_sizes();
+
+    {
+    printf("\nBlock statistics.\n");
+    handle_count_map_t::iterator it;
+    for (it=g_free_block_count.begin(); it != g_free_block_count.end(); it++)
+        printf("Free block size %d has %d items\n", it->first, it->second);
+    printf("\n");
+    for (it=g_used_block_count.begin(); it != g_used_block_count.end(); it++)
+        printf("Used block size %d has %d items\n", it->first, it->second);
+    }
+
+    /*
+     * (1 - S / Sn) * Ps
+     *
+     * S = block size
+     * Sn = total number of units as a multiple of the smallest block size
+     * Ps = contribution of block size <s> to whole.
+     *
+     * Ps = Ns/Sn, Ns = number of units of size <s>
+     * e.g. Sn = 20, s = 5, T5 = 3, N5 = 15 => Ps = 15/20 = 0.75
+     */
+    uint32_t smallest_block_size = UINT_MAX;
+    double sum = 0;
+    {
+    handle_count_map_t::iterator it;
+    for (it=g_free_block_count.begin(); it != g_free_block_count.end(); it++) {
+        if (it->first < smallest_block_size)
+            smallest_block_size = it->first;
+        sum += (it->first * it->second);
+    }
+    }
+
+    double Sn = sum/smallest_block_size;
+    handle_count_map_t N;
+
+    {
+    handle_count_map_t::iterator it;
+    for (it=g_free_block_count.begin(); it != g_free_block_count.end(); it++) {
+        N[it->first] = it->first * it->second;
+    }
+    }
+    
+    handle_count_map_t F;
+    double total_frag = 0;
+    {
+    handle_count_map_t::iterator it;
+    for (it=N.begin(); it != N.end(); it++) {
+        double S = it->first;
+        double Ns = it->second;
+        double Ps = Ns / Sn; // Ps = Ns / Sn
+        double f = (1.0 - (double)S/Sn) * Ps;
+        F[it->first] = (int)(f*10000.0);
+        total_frag += f;
+    }
+    }
+
+    {
+    printf("\nFragmentation statistics: %u free units.\n", (uint32_t)sum);
+    handle_count_map_t::iterator it;
+
+    for (it=g_free_block_count.begin(); it != g_free_block_count.end(); it++)
+        printf("Block size %d (block sum %d from %d blocks, of total %d units) contributes to fragmentation by %.2f%%\n",
+                it->first,
+                N[it->first],
+                g_free_block_count[it->first],
+                (uint32_t)Sn,
+                (float)F[it->first] / 100.0);
+
+    printf("\nTotal fragmentation: %.2f%%\n", total_frag*100.0);
+    }
+
+}
 
 void heap_colormap_init() {
     uint32_t *h = (uint32_t *)g_heap;
@@ -291,6 +407,18 @@ int main(int argc, char **argv) {
     printf("highest address: 0x%X adjusted for heap start = %d kb\n", (uint32_t)g_highest_address, ((uint32_t)g_highest_address - (uint32_t)g_heap) / 1024);
 
 
+    {
+    printf("\nBlock statistics.\n");
+    handle_count_map_t::iterator it;
+    for (it=g_free_block_count.begin(); it != g_free_block_count.end(); it++)
+        printf("Free block size %d has %d items\n", it->first, it->second);
+    printf("\n");
+    for (it=g_used_block_count.begin(); it != g_used_block_count.end(); it++)
+        printf("Used block size %d has %d items\n", it->first, it->second);
+    }
+
+
+    calculate_fragmentation_percent();
 
 
 
