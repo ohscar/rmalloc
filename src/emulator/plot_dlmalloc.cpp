@@ -24,6 +24,7 @@ static void *g_heap = NULL;
 static void *g_heap_end = NULL;
 static void *g_heap_top = NULL; // g_heap <= end of heap < g_heap_top
 static void *g_colormap = NULL; 
+static uint32_t g_original_size = 0;
 
 typedef std::map<void *, uint32_t> pointer_size_map_t;
 
@@ -49,14 +50,17 @@ void sanity() {
             nonzero++;
         }
     }
-    printf("Total %d pointers, %d dangling, %d total free() calls, %d total malloc() calls.\n", g_count.size(), nonzero, g_free, g_malloc);
+    fprintf(stderr, "Total %d pointers, %d dangling, %d total free() calls, %d total malloc() calls.\n", g_count.size(), nonzero, g_free, g_malloc);
 }
 
 
-void *user_malloc(int size, uint32_t handle) {
+void *user_malloc(int size, uint32_t handle, uint32_t *op_time) {
     g_memory_usage += size*0.9; // XXX: *0.9 is bogus, should be just size. for plot testing purposes!
 
     void *ptr = dlmalloc(size);
+    if (ptr == NULL)
+        return ptr;
+
     //printf("|| h == (void *)0x%X // MALLOC, heap start %x, heap end %x\n", (uint32_t)ptr, (uint32_t)g_heap, (uint32_t)g_heap_end);
     g_handles[ptr] = size;
 
@@ -67,33 +71,31 @@ void *user_malloc(int size, uint32_t handle) {
     else {
         g_count[ptr] += 1;
         if (g_count[ptr] > 1)
-            printf("Double malloc for handle %d\n", handle);
+            fprintf(stderr, "Double malloc for handle %d\n", handle); // FIXME: this test should be here.
     }
 
-    plot_report(size, g_heap_size-g_memory_usage, g_heap_size-g_memory_usage,
-            /*fragmentation_percent*/0, /*op_timep (usec)*/1, /*caused_oom*/0);
-
-    //sanity();
+#ifdef DEBUG
+    sanity();
+#endif
     
     g_malloc++;
+
+    *op_time = 3;
 
     return ptr;
 }
 
-void user_free(void *ptr, uint32_t handle) {
+void user_free(void *ptr, uint32_t handle, uint32_t *op_time) {
     unsigned long size = g_handles[ptr];
     g_memory_usage -= size;
-
-    plot_report(size*(-1), g_heap_size-g_memory_usage, g_heap_size-g_memory_usage,
-            /*fragmentation_percent*/0, /*op_timep (usec)*/0,
-            /*caused_oom*/0);
 
     g_count[ptr] -= 1;
     g_free++;
 
-    //sanity();
+#ifdef DEBUG
+    sanity();
+#endif
 
-    //printf("|| h == (void *)0x%X // FREE\n", (uint32_t)ptr);
     dlfree(ptr);
 }
 
@@ -119,10 +121,18 @@ bool user_init(uint32_t heap_size, void *heap, void *colormap, char *name) {
     strcpy(name, ALLOC_NAME);
 
     g_heap = heap;
+    g_original_size = heap_size;
     g_heap_size = heap_size;
     g_heap_end = g_heap;
     g_heap_top = (uint8_t *)((uint32_t)g_heap_end + heap_size);
     g_colormap = colormap;
+}
+
+void user_reset(void) {
+    char buffer[100];
+    g_handles.clear();
+    g_count.clear();
+    user_init(g_original_size, g_heap, /*colormap, unused*/NULL, buffer);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////

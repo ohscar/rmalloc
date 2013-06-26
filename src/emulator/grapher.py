@@ -21,10 +21,10 @@ import matplotlib.pyplot as plt
 
 # reference value color first
 COLORS = ["b-", "r-", "g-", "b-", "y-", "m-", "c-"]
-g_figure = plt.figure()
+g_figure = plt.figure(figsize=(12.8,8), dpi=300)
 g_figure_nr = 1
 
-def subplot(xl, yl, t):
+def subplot2(t, xl, yl):
     global g_figure_nr
 
     ax = g_figure.add_subplot(2, 1, g_figure_nr, xlabel=xl, ylabel=yl, title=t)
@@ -32,10 +32,18 @@ def subplot(xl, yl, t):
 
     return ax
 
+def subplot(t, xl, yl):
+    global g_figure_nr
+
+    ax = g_figure.add_subplot(1, 1, g_figure_nr, xlabel=xl, ylabel=yl, title=t)
+    g_figure_nr += 1
+
+    return ax
+
 # allocsys is a list of (allocator_name, ys)
 # first is the ref alloc.
 def plot_memory(allocsys, hs):
-    ax = subplot("", "Memory usage (kb)", "Heap usage")
+    ax = subplot("Heap usage", "", "Memory usage (kb)")
 
     for i in range(len(allocsys)):
         name, ys = allocsys[i]
@@ -48,7 +56,7 @@ def plot_memory(allocsys, hs):
     #plt.show()
 
 def plot_speed(allocsys, hs):
-    ax = subplot("Time", "Time (usec)", "Speed");
+    ax = subplot("Speed", "Time", "Time (usec)")
 
     for i in range(len(allocsys)):
         name, ys = allocsys[i]
@@ -63,10 +71,130 @@ def plot_speed(allocsys, hs):
                 v = 0
         ax.plot(rs, COLORS[i])
 
+def plot_allocstats(allocstats):
+    opstats = allocstats['alloc_stats']
+
+    if allocstats['opmode'] == 'fragmentation':
+        opmode = 'fragmentation'
+        pretty = "Fragmentation (%)"
+    elif allocstats['opmode'] == 'maxmem':
+        opmode = 'maxmem'
+        pretty = "Largest block size (bytes)"
+
+    driver = allocstats['driver']
+    opsfile = allocstats['opsfile']
+    heap_size = allocstats['heap_size']
+    #title = "Driver '%s' running on input '%s' with heap size %d bytes (%d kb)" % (driver, opsfile, heap_size, heap_size/1024)
+    title = "%s for %s, heap size = %d bytes (%d kb)" % (driver, opsfile, heap_size, heap_size/1024)
+    ax = subplot(title, "Time (op)", pretty)
+
+    if opmode == 'fragmentation':
+        max_size = 0
+        for op in opstats:
+            m = op['free'] + op['overhead'] + op['used']
+            if m > max_size:
+                max_size = m
+
+        def s(n):
+            return float(n)/max_size * 100.0
+
+        frag = [op[opmode] for op in opstats]
+        free = [s(op['free']) for op in opstats]
+        used = [s(op['used']) for op in opstats]
+        overhead = [s(op['overhead']) for op in opstats]
+
+        def log10_(x):
+            from math import log10
+            if x == 0:
+                return 0
+            else:
+                return log10(x)
+
+        frag = map(log10_, frag)
+        free = map(log10_, free)
+        used = map(log10_, used)
+        overhead = map(log10_, overhead)
+
+        p1, = ax.plot(frag, 'b-', label=pretty)
+        p2, = ax.plot(free, 'g-', label='Free')
+        p3, = ax.plot(used, 'r-', label='Used')
+        p4, = ax.pot(overhead, 'k-', label='Overhead')
+
+        ax.yaxis.tick_right()
+        ax.yaxis.set_label_position('right')
+
+        lines=[p1, p2, p3, p4]
+        plt.legend(lines, [l.get_label() for l in lines], loc=2) # upper left
+
+    elif opmode == 'maxmem':
+        max_size = 0
+        for op in opstats:
+            m = op['free'] + op['overhead'] + op['used']
+            if m > max_size:
+                max_size = m
+
+        def ratio(op):
+            #return op[opmode] / op['free']
+            return (op['free'] - op['maxmem']) / 1024.0
+            #return op[opmode]
+
+        def ratiopercent(op):
+            return (op['free'] - op['maxmem']) / op['free'] * 100.0
+            #return op[opmode] / op['free'] * 100.0
+
+        def s(n):
+            return float(n)/max_size * 100.0
+
+        freediff = [ratio(op) for op in opstats]
+        freediffpercent = [ratiopercent(op) for op in opstats]
+        frag = [op['maxmem'] for op in opstats]
+        free = [op['free'] for op in opstats]
+        used = [op['used'] for op in opstats]
+        overhead = [op['overhead'] for op in opstats]
+
+        #ax.plot(frag, 'b-', label=pretty)
+        p1, = ax.plot(freediff, 'r-', label='Diff actual vs theoretical')
+
+        ax2 = ax.twinx()
+        ax2.yaxis.tick_left()
+        ax2.yaxis.set_label_position("left")
+        p2, = ax2.plot(freediffpercent, 'b-', label='Diff (%)')
+        ax.set_ylabel('Diff actual vs theoretical')
+
+        ax.yaxis.tick_right()
+        ax.yaxis.set_label_position('right')
+        ax2.set_ylabel('Diff (%) in usable memory vs total theoretical memory')
+        ax.set_ylabel('Diff (kbytes)')
+
+        lines=[p1, p2]
+        #lines=[p2]
+        plt.legend(lines, [l.get_label() for l in lines], loc=2) # upper left
+
+def main():
+    if len(sys.argv) < 2:
+        print "usage: %s plotdatafile" % sys.argv[0]
+        print "<plotsdatafile> is the name of a file of Python data generated from plot_<driver>."
+        sys.exit(1)
+
+    plotfilename = sys.argv[1]
+    allocstats = {}
+    execfile(plotfilename, {}, allocstats)
+
+    print "Reading data:", plotfilename
+
+    plot_init()
+
+    plot_allocstats(allocstats)
+
+    figurefile = "plot-%s-%s.png" % (allocstats['driver'], allocstats['opsfile'])
+    plot_save(figurefile)
+
+    #plt.show()
+
 #
 # App
 #
-def main():
+def main2():
     if len(sys.argv) < 3:
         print "usage: %s: lifetime refplot plot1 [...]" % sys.argv[0]
         print "all arguments are files."
@@ -164,9 +292,8 @@ def plot_init():
     #plt.axis('tight')
     #plt.grid(True)
 
-def plot_save():
-    fname ="plot-memory-usage.pdf"
-    print "Saving plots to", fname
+def plot_save(fname):
+    print "Saving plot to", fname
     plt.savefig(fname)
 
 if __name__ == '__main__':
