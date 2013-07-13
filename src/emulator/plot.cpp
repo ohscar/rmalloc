@@ -30,7 +30,8 @@
 // 0 = ok, 
 // 1 = unused,
 // 2 = oom
-#define die(x...) {printf(x); exit(2);}
+#define die(x...) {printf(x); exit(1);}
+#define oom(x...) {printf(x); exit(2);}
 
 typedef std::map<uint32_t, void *> handle_pointer_map_t;
 typedef std::map<void *, uint32_t> pointer_size_map_t;
@@ -83,6 +84,7 @@ uint32_t g_colormap_size = HEAP_SIZE/4;
 uint8_t *g_highest_address = 0;
 
 char *g_opsfile = NULL;
+char *g_resultsfile = NULL;
 
 void scan_block_sizes(void);
 int colormap_print(char *output);
@@ -90,6 +92,7 @@ void calculate_fragmentation_percent(uint8_t op);
 
 
 uint32_t g_total_memory_consumption = 0;
+uint32_t g_theoretical_heap_size = 0;
 uint32_t g_theoretical_free_space; // calculated by scan_block_sizes
 uint32_t g_theoretical_used_space; // calculated by scan_block_sizes
 uint32_t g_theoretical_overhead_space; // calculated by scan_block_sizes
@@ -449,18 +452,18 @@ void alloc_driver_fragmentation(FILE *fp, int num_handles, uint8_t *heap, uint32
                         if (user_handle_oom(size)) {
                             ptr = user_malloc(size, handle, &op_time);
                             if (NULL == ptr) {
-                                die("\n\nOOM!\n");
+                                oom("\n\nOOM!\n");
                             }
                             g_handles[handle] = ptr;
                             register_op(OP_ALLOC, handle, ptr, size);
                             g_sizes[g_handles[handle]] = size;
                         } else {
-                            die("\n\nOOM!\n");
+                            oom("\n\nOOM!\n");
                         }
                     } else {
                         register_op(OP_ALLOC, handle, ptr, size);
                     }
-                    scan_heap_update_colormap(true);
+                    scan_heap_update_colormap(false/*create_plot*/);
                     print_after_malloc_stats(g_handles[handle], address, size);
 
                     scan_block_sizes();
@@ -474,7 +477,7 @@ void alloc_driver_fragmentation(FILE *fp, int num_handles, uint8_t *heap, uint32
 
                     register_op(OP_FREE, handle, ptr, s);
                     user_free(ptr, handle, &op_time);
-                    scan_heap_update_colormap(true);
+                    scan_heap_update_colormap(false/*create_plot*/);
 
                     print_after_free_stats(address, s);
 
@@ -702,7 +705,7 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                         if (user_handle_oom(size)) {
                             ptr = user_malloc(size, handle, &op_time);
                             if (NULL == ptr) {
-                                die("\n\nOOM!\n");
+                                oom("\n\nOOM!\n");
                             }
                             if ((uint32_t)ptr > (uint32_t)g_highest_address)
                                 g_highest_address = (uint8_t *)ptr;
@@ -710,7 +713,7 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                             register_op(OP_ALLOC, handle, ptr, size);
                             g_sizes[g_handles[handle]] = size;
                         } else {
-                            die("\n\nOOM!\n");
+                            oom("\n\nOOM!\n");
                         }
                     } else {
                         register_op(OP_ALLOC, handle, ptr, size);
@@ -779,15 +782,29 @@ int main(int argc, char **argv) {
     // XXX: The entire parameter passing is a big mess!
 
     if (argc < 3) {
-        die("%d is too few.\nusage: %s [--maxmem|--fragmentation|--peakmem] opsfile [oplimit] [peakmemsize]\noplimit and peakmemsize for use by --maxmem\n", argc, argv[0]);
+        die("%d is too few.\n"
+            "usage: %s --maxmem opsfile resultfile oplimit peakmemsize theoretical_heap_size\n"
+            "       oplimit = 0 => write header to <driver>.alloc_stats\n"
+            "       oplimit > 0 => write free/used/overhead/maxmem per op.\n"
+            "\n"
+            "       %s --peakmem opsfile\n"
+            "       Prints out therotical heap size used.\n"
+            "\n"
+            "       %s --fragmentation opsfile\n"
+            , argc, argv[0], argv[0], argv[0]);
     }
 
     if (argv[1][0] == '-') {
         g_opsfile = argv[2];
-        if (strcmp(argv[1], "--maxmem") == 0 && argc == 5) {
+        if (strcmp(argv[1], "--maxmem") == 0) {
+            if (argc < 5)
+                die("too few arguments.");
+            g_resultsfile = argv[3];
             g_operation_mode = OPMODE_MAXMEM;
-            g_oplimit = atoi(argv[3]);
-            g_total_memory_consumption = atoi(argv[4]);
+            g_oplimit = atoi(argv[4]);
+            g_total_memory_consumption = atoi(argv[5]);
+            g_theoretical_heap_size = atoi(argv[6]);
+            fprintf(stderr, "opmode: maxmem\n");
         }else if (strcmp(argv[1], "--peakmem") == 0) {
             g_operation_mode = OPMODE_PEAKMEM;
             fprintf(stderr, "opmode: peakmem\n");
@@ -816,20 +833,28 @@ int main(int argc, char **argv) {
     heap_colormap_init();
     
     user_init(g_heap_size, (void *)g_heap, (void *)g_colormap, driver);
-    strcpy(statsfile, driver);
-    strcat(statsfile, ".alloc-stats");
+    if (g_resultsfile == NULL) {
+        strcpy(statsfile, driver);
+        strcat(statsfile, ".alloc-stats");
+    }
+    else
+        strcpy(statsfile, g_resultsfile);
 
     if (g_oplimit == 0) {
         fpstats = fopen(statsfile, "wt");
-        fprintf(fpstats, "# Format of header:\n");
-        fprintf(fpstats, "# HS<heap size>\n");
-        fprintf(fpstats, "# Format of each op line:\n");
-        fprintf(fpstats, "# <counter> MD<memory delta> FB<free bytes> LAB<largest allocatable block> FP<fragmentation percent> T<operation time> OOM<caused oom?>\n");
+        //fprintf(fpstats, "# Format of header:\n");
+        //fprintf(fpstats, "# HS<heap size>\n");
+        //fprintf(fpstats, "# Format of each op line:\n");
+        //fprintf(fpstats, "# <counter> MD<memory delta> FB<free bytes> LAB<largest allocatable block> FP<fragmentation percent> T<operation time> OOM<caused oom?>\n");
         fprintf(fpstats, "driver = \"%s\"\n", driver);
         fprintf(fpstats, "opsfile = \"%s\"\n", g_opsfile);
         fprintf(fpstats, "heap_size = %u\n", g_heap_size);
+        fprintf(fpstats, "theoretical_heap_size = %u\n", g_theoretical_heap_size);
         fprintf(fpstats, "opmode = '%s'\n", g_operation_mode == OPMODE_FRAGMENTATION ? "fragmentation" : "maxmem");
     } else {
+        char buffer[512];
+        if (g_resultsfile != NULL)
+            sprintf(statsfile, "%s.part_%d", g_resultsfile, g_oplimit);
         fpstats = fopen(statsfile, "at");
     }
 
@@ -898,7 +923,7 @@ int main(int argc, char **argv) {
         {
         alloc_stat_t::iterator it;
         for (it=g_alloc_stat.begin(); it != g_alloc_stat.end(); it++) {
-            fprintf(fpstats, "    {'free': %9d, 'used': %9d, 'overhead': %9d, 'fragmentation': %7.2f}%s\n", std::get<0>(*it), std::get<1>(*it), std::get<2>(*it), std::get<3>(*it),
+            fprintf(fpstats, "    {'op_index': %10d, 'free': %9d, 'used': %9d, 'overhead': %9d, 'fragmentation': %7.2f}%s\n", g_oplimit, std::get<0>(*it), std::get<1>(*it), std::get<2>(*it), std::get<3>(*it),
                     (it+1) != g_alloc_stat.end() ? ", " : " ");
         }
         }
@@ -909,7 +934,7 @@ int main(int argc, char **argv) {
         for (it=g_maxmem_stat.begin(); it != g_maxmem_stat.end(); it++) {
             if (g_oplimit > 0)
                 fputc(',', fpstats);
-            fprintf(fpstats, "    {'free': %9d, 'used': %9d, 'overhead': %9d, 'maxmem': %7.2f}\n", std::get<0>(*it), std::get<1>(*it), std::get<2>(*it), std::get<3>(*it));
+            fprintf(fpstats, "    {'op_index': %10d, 'free': %9d, 'used': %9d, 'overhead': %9d, 'maxmem': %7.2f}\n", g_oplimit, std::get<0>(*it), std::get<1>(*it), std::get<2>(*it), std::get<3>(*it));
         }
         }
     }

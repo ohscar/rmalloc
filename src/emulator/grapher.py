@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 
 # reference value color first
 COLORS = ["b-", "r-", "g-", "b-", "y-", "m-", "c-"]
-g_figure = plt.figure(figsize=(12.8,8), dpi=300)
+g_figure = plt.figure(figsize=(19.2,12.0), dpi=300)
 g_figure_nr = 1
 
 def subplot2(t, xl, yl):
@@ -74,6 +74,9 @@ def plot_speed(allocsys, hs):
 def plot_allocstats(allocstats):
     opstats = allocstats['alloc_stats']
 
+    # sort opstats by 'op_index'
+    opstats.sort(key=lambda x: x['op_index'])
+
     if allocstats['opmode'] == 'fragmentation':
         opmode = 'fragmentation'
         pretty = "Fragmentation (%)"
@@ -84,8 +87,9 @@ def plot_allocstats(allocstats):
     driver = allocstats['driver']
     opsfile = allocstats['opsfile']
     heap_size = allocstats['heap_size']
+    theoretical_heap_size = allocstats['theoretical_heap_size']
     #title = "Driver '%s' running on input '%s' with heap size %d bytes (%d kb)" % (driver, opsfile, heap_size, heap_size/1024)
-    title = "%s for %s, heap size = %d bytes (%d kb)" % (driver, opsfile, heap_size, heap_size/1024)
+    title = "Theofree vs actual free RAM over time [%s / %s]\nActual heap %d bytes / %d kb, heap theosize %d bytes / %d kb" % (driver, opsfile, heap_size, heap_size/1024, theoretical_heap_size, theoretical_heap_size/1024)
     ax = subplot(title, "Time (op)", pretty)
 
     if opmode == 'fragmentation':
@@ -147,13 +151,15 @@ def plot_allocstats(allocstats):
 
         freediff = [ratio(op) for op in opstats]
         freediffpercent = [ratiopercent(op) for op in opstats]
-        frag = [op['maxmem'] for op in opstats]
+        maxmem = [op['maxmem'] for op in opstats]
         free = [op['free'] for op in opstats]
         used = [op['used'] for op in opstats]
         overhead = [op['overhead'] for op in opstats]
 
         #ax.plot(frag, 'b-', label=pretty)
-        p1, = ax.plot(freediff, 'r-', label='Diff actual vs theoretical')
+        p1, = ax.plot(freediff, 'r-', label='Diff (kb)')
+        p1a, = ax.plot(map(lambda x: x/1024, free), 'y-', label='Free: theory (kb)')
+        p1b, = ax.plot(map(lambda x: x/1024, maxmem), 'g-', label='Free: actual (kb)')
 
         ax2 = ax.twinx()
         ax2.yaxis.tick_left()
@@ -166,9 +172,9 @@ def plot_allocstats(allocstats):
         ax2.set_ylabel('Diff (%) in usable memory vs total theoretical memory')
         ax.set_ylabel('Diff (kbytes)')
 
-        lines=[p1, p2]
+        lines=[p1, p2, p1a, p1b]
         #lines=[p2]
-        plt.legend(lines, [l.get_label() for l in lines], loc=2) # upper left
+        plt.legend(lines, [l.get_label() for l in lines], loc=3) # 2=upper left, 4=lower right, 3=lower left
 
 def main():
     if len(sys.argv) < 2:
