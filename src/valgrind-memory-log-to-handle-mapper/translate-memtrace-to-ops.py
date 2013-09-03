@@ -99,17 +99,19 @@ def process_ops():
     return handle_ops, lifetime_ops, total_ops
 
 
-def plot_histogram(xs, title):
+def plot_histogram(xs, xlabel, title):
     n, bins, patches = plt.hist(xs, bins=75, histtype='stepfilled')
 
-    plt.xlabel("Lifetime")
+    plt.xlabel(xlabel)
     plt.ylabel("Handle count")
     plt.title("Histogram of memory area lifetime: " + title)
     #plt.axis([100, 0, 0, len(bins)*0.75])
     plt.axis('tight')
     plt.grid(True)
     #plt.show()
-    plt.savefig(title + "-histogram.pdf")
+    f = title + "-histogram.pdf"
+    print "Saving histogram:", f
+    plt.savefig(f)
 
 """
     # the histogram of the data
@@ -175,6 +177,7 @@ def main():
     f.close()
 
     blocks.g_ops_file.close()
+    print "Saving ops: ", blocks.g_ops_filename
 
     """
     print >> sys.stderr, "saving translated copy of block list."
@@ -197,33 +200,15 @@ def main():
 
     #sys.exit(0)
 
-    print >> sys.stderr, "processing."
-
     handle_ops, lifetime_ops, total_count = process_ops()
 
     length = blocks.length()
     del blocks.g_blocks
 
-    #if mode == 'generate':
-    if False:
-        cout = open(fname + "-allocations.c", "wt")
-        print >> cout, "memory_t *g_handles[%d];" % blocks.length()
-        print >> cout, "void malloc_lock_test() {"
-        for op in blocks.g_ops:
-            if op[1] == 'N':
-                print >> cout, "    g_handles[%d] = user_malloc(%d);" % (op[0], op[2])
-                print >> cout, "    print_after_malloc_stats(%d, %d); // params: handle_index, size" % (op[0], op[2])
-            elif op[1] == 'F':
-                print >> cout, "    user_free(g_handles[%d]);" % op[0]
-                print >> cout, "    print_after_free_stats(%d); // params: handle_index" % (op[0])
-            else:
-                print >> cout, "    user_lock(g_handles[%d]);" % op[0]
-                print >> cout, "    user_unlock(g_handles[%d]);" % op[0]
-        print >> cout, "}"
-        cout.close()
-    #elif mode == 'asciiplot':
+    statsfilename = fname + "-statistics"
     if True:
-        st = open(fname + "-statistics", "wt")
+        print "Saving statistics:", statsfilename
+        st = open(statsfilename, "wt")
 
         s = []
         for op in blocks.g_ops:
@@ -274,6 +259,7 @@ def main():
 
         st.close()
 
-        plot_histogram(xs, fname+"-macro")
+        xlabel = "Macro lifetime (others ops within own lifetime + own ops)/total_count"
+        plot_histogram(xs, xlabel, fname+"-macro")
 main()
 

@@ -61,10 +61,27 @@ g_heap_top = 0
 # similar.
 g_perfect_bytes_used = 0
 
+LOWER_UPPER_SCALE = 1000
 
 
 def plot_histogram(xs, title, xlabel, lower, upper, ymax=1000):
-    n, bins, patches = plt.hist([x for x in xs if x >= lower and x < upper], bins=600, histtype='stepfilled', facecolor='g', alpha=0.75)
+    old_lower, old_upper = lower, upper
+    lower *= LOWER_UPPER_SCALE
+    upper *= LOWER_UPPER_SCALE
+
+    if len(xs) == 0:
+        print "No bins for current histogram interval %d - %d" % (lower, upper)
+        return
+    bincount = 600
+    matching_xs = [x for x in xs if x >= lower and x < upper]
+    if len(matching_xs) < bincount:
+        bincount=len(matching_xs)
+    if len(matching_xs) == 0:
+        return
+
+    bincount=75
+
+    n, bins, patches = plt.hist(matching_xs, bins=bincount, histtype='stepfilled', facecolor='g', alpha=0.75)
     #n, bins, patches = plt.hist(xs, bins=600, histtype='stepfilled')
 
     plt.xlabel(xlabel)
@@ -75,7 +92,8 @@ def plot_histogram(xs, title, xlabel, lower, upper, ymax=1000):
     #plt.axis('tight')
     plt.grid(True)
     #plt.show()
-    filename = "%s-histogram-%d-%d.pdf" % (title, lower, upper)
+    filename = "%s-histogram-%d-%d.pdf" % (title, old_lower, old_upper)
+    print "Saving histogram:", filename
     plt.savefig(filename)
 
 """
@@ -240,24 +258,26 @@ def main():
 
         st.close()
 
+        print "Macro histograms."
         # X axis is lifetime
         # xs contains lifetimes. we only want to show the ones with the longest lifetime,
         # not arbitrary. sorting and counting lifetime, only displaying the ones above a certain threshold.
         xs.sort(reverse=True)
         for lower, upper in [(0, 1), (10, 15), (75, 100), (0, 100)]:
-            plot_histogram(xs, fname+"-macro", "Overall lifetime, compared to all program ops (macro)", lower*1000, upper*1000)
+            plot_histogram(xs, fname+"-macro", "Overall lifetime, compared to all program ops (macro)", lower, upper)
 
         # X axis is lifetime
         # xs contains lifetimes. we only want to show the ones with the longest lifetime,
         # not arbitrary. sorting and counting lifetime, only displaying the ones above a certain threshold.
+        print "Micro histograms."
         micro_xs.sort(reverse=True)
         for lower, upper in [(0, 1), (10, 15), (75, 100), (0, 100)]:
             try:
-                plot_histogram(micro_xs, fname+"-micro", "Busy-ness, compared to ops within own lifetime (micro)", lower*1000, upper*1000)
+                plot_histogram(micro_xs, fname+"-micro", "Busy-ness, compared to ops within own lifetime (micro)", lower, upper)
             except:
                 print "Couldn't plot micro_xs for lower", lower, "to upper", upper
 
-        #for lower, upper in [(0, 3), (10, 15), (75, 100)]: plot_histogram(xs, fname, lower*1000, upper*1000)
+        #for lower, upper in [(0, 3), (10, 15), (75, 100)]: plot_histogram(xs, fname, lower, upper)
 
     # generate new ops-lock file
     ops_filename = fname + "-ops"
@@ -268,7 +288,7 @@ def main():
     lifetime_ops = {}
     dead_ops = {}
     ops_counter = 0
-    print >> sys.stderr, "reading ops from file", g_ops_filename
+    print >> sys.stderr, "\nreading ops from file", g_ops_filename
     i = 0
     bytes = 0
     skipped = 0
@@ -312,6 +332,7 @@ def main():
             else:
                 print >> ops_lock_file, "%d %s %d %d" % (lh, lo, la, ls)
 
+    print >> sys.stderr
     ops_file.close()
     ops_lock_file.close()
 
