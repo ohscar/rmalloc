@@ -17,6 +17,8 @@ while [[ "$1" != "" ]]; do
     start=$1
     let end=$start+9
 
+    shift
+
     # number of points where we measure max alloc'able amount. should be approx 1000 or so.
     let SKIPDATA=$OPS_COUNT/$DATAPOINTS
     #echo "$donefile: running from $start to $end: ./plot_dlmalloc --maxmem $opsfile [i] $peakmem $theory_peakmem (of $OPS_COUNT)"
@@ -28,8 +30,6 @@ while [[ "$1" != "" ]]; do
         ./plot_dlmalloc --maxmem $opsfile $RESULTFILE $trueindex $peakmem $theory_peakmem > /dev/null 2>&1
         #echo "$donefile ./plot_dlmalloc --maxmem $opsfile $RESULTFILE $trueindex $peakmem $theory_peakmem ($i $SKIPDATA $OPS_COUNT $DATAPOINTS)"
     done
-
-    shift
 done
 
 echo > $donefile

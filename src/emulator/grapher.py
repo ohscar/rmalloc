@@ -18,6 +18,7 @@ import random
 import numpy as np
 import matplotlib.mlab as mlab
 import matplotlib.pyplot as plt
+import os.path
 
 # reference value color first
 COLORS = ["b-", "r-", "g-", "b-", "y-", "m-", "c-"]
@@ -157,9 +158,9 @@ def plot_allocstats(allocstats):
         overhead = [op['overhead'] for op in opstats]
 
         #ax.plot(frag, 'b-', label=pretty)
-        p1, = ax.plot(freediff, 'r-', label='Diff (kb)')
-        p1a, = ax.plot(map(lambda x: x/1024, free), 'y-', label='Free: theory (kb)')
-        p1b, = ax.plot(map(lambda x: x/1024, maxmem), 'g-', label='Free: actual (kb)')
+        p1, = ax.plot(freediff, 'y-', label='Diff (kb)')
+        p1a, = ax.plot(map(lambda x: x/1024, free), 'g-', label='Free: theory (kb)')
+        p1b, = ax.plot(map(lambda x: x/1024, maxmem), 'r-', label='Free: actual (kb)')
 
         ax2 = ax.twinx()
         ax2.yaxis.tick_left()
@@ -192,7 +193,7 @@ def main():
 
     plot_allocstats(allocstats)
 
-    figurefile = "plot-%s-%s.png" % (allocstats['driver'], allocstats['opsfile'])
+    figurefile = "plot-%s-%s.png" % (allocstats['driver'], os.path.basename(allocstats['opsfile']))
     plot_save(figurefile)
 
     #plt.show()

@@ -2,7 +2,7 @@
 
 #set -x
 
-if [[ "$1" == "" ]]; then
+if [[ "$1" == "" || ! -f "$1" ]]; then
 echo "opsfile req'd"
 	exit
 fi
@@ -10,7 +10,7 @@ fi
 
 CORES=$(grep -c ^processor /proc/cpuinfo)
 let CORES=2*$CORES
-export DATAPOINTS=1000 # requested -- will be adjusted down if neccessary.
+export DATAPOINTS=1500 # requested -- will be adjusted down if neccessary.
 
 export opsfile=$1
 export RESULTFILE=$(basename $opsfile)-allocstats
@@ -70,7 +70,8 @@ while [[ "$done" != "1" ]]; do
     #echo ./plot_dlmalloc --maxmem $opsfile $fullcount $peakmem $theory_peakmem
     ./plot_dlmalloc --maxmem $opsfile $RESULTFILE $fullcount $peakmem $theory_peakmem > /dev/null 2>&1
     status=$?
-    if [[ "$status" == "2" ]]; then
+    #if [[ "$status" == "2" ]]; then # don't test for 2, in case of crash - test for 0.
+    if [[ "$status" != "0" ]]; then
         # oom, bump by 5% and retry.
         peakmem=$(echo "$peakmem*1.05/1" | bc)
         echo
