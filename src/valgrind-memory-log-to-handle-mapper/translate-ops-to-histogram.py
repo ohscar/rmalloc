@@ -45,6 +45,7 @@ import matplotlib.mlab as mlab
 import matplotlib.pyplot as plt
 
 import sys
+import os.path
 
 g_ops_filename = None
 g_ops_file = None
@@ -61,10 +62,25 @@ g_heap_top = 0
 # similar.
 g_perfect_bytes_used = 0
 
-LOWER_UPPER_SCALE = 1000
+#LOWER_UPPER_SCALE = 1000
+LOWER_UPPER_SCALE = 1
 
+def plot_histogram(xs, filename, title, xlabel,      lower, upper):
+    old_lower, old_upper = lower, upper
+    n, bins, patches = plt.hist(xs, bins=75, histtype='stepfilled')
 
-def plot_histogram(xs, title, xlabel, lower, upper, ymax=1000):
+    plt.xlabel(xlabel)
+    plt.ylabel("Handle count")
+    plt.title("Histogram of memory area lifetime: " + title)
+    #plt.axis([100, 0, 0, len(bins)*0.75])
+    plt.axis('tight')
+    plt.grid(True)
+    #plt.show()
+    fname = "%s-histogram-%d-%d.pdf" % (filename, old_lower, old_upper)
+    print "Saving histogram:", fname
+    plt.savefig(fname)
+
+def plot_histogram2(xs, title, xlabel, lower, upper, ymax=None): #ymax=1000):
     old_lower, old_upper = lower, upper
     lower *= LOWER_UPPER_SCALE
     upper *= LOWER_UPPER_SCALE
@@ -173,11 +189,42 @@ def main():
 
         # skip duplicates, even though it's not entirely correct when measuring lifetime
         # however, it takes too long time to care about duplicates.
-        if ph == lh and lo in ['L', 'S', 'M'] and po in ['L', 'S', 'M']:
-            skipped += 1
-            continue
-        else:
-        #if True:
+        #if False: # ph == lh and lo in ['L', 'S', 'M'] and po in ['L', 'S', 'M']:
+        #    skipped += 1
+        #    continue
+        #else:
+        if True:
+
+            # g_ops.append((mid, op, size, address))
+            # == op[0] == handle == lh
+            # == op[1] == operation == lo
+            # == op[2] == size == ls
+            # == op[3] == address == la
+            op = (lh, lo, ls, la)
+            #print "+", op
+            if op[1] == 'N':
+                # live, own count, other count
+                lifetime_ops[op[0]] = [True, 0, 0]
+            elif op[1] == 'F':
+                lifetime_ops[op[0]][0] = False
+            #elif op[1] in ['L', 'S', 'M']:
+            else:
+                try:
+                    # increase the 'other count' for all live handles
+                    for key in lifetime_ops.keys():
+                        if lifetime_ops[key][0]:
+                            if key == op[0]:
+                                lifetime_ops[key][1] += 1
+                            else:
+                                lifetime_ops[key][2] += 1
+                    ops_counter += 1
+                #print "lifetime op other", lifetime_ops[key]
+                except:
+                    print "Handle", op[0], "has no previous new associated:", op
+                    continue
+
+
+            """
             op = (lh, lo, la, ls)
             if op[1] == 'N':
                 # own count, current total ops
@@ -192,6 +239,8 @@ def main():
                 lifetime_ops[lh][0] += 1
 
             ops_counter += 1
+            """
+
 
         if handle_count < lh:
             handle_count = lh
@@ -201,6 +250,7 @@ def main():
 
     print >> sys.stderr, "\n\nmoving remaining alive ops (%d of them) to dead area" % len(lifetime_ops.keys())
 
+    """
     # move remaining alive ops to dead, to get a correct value of "other"
     for key in lifetime_ops.keys():
         dead_ops[key] = lifetime_ops[key]
@@ -213,6 +263,7 @@ def main():
 
     lifetime_ops = dead_ops
     del dead_ops
+    """
 
     if True:
         st = open(fname + "-statistics", "wt")
@@ -220,6 +271,8 @@ def main():
         handles = {}
 
         stats = []
+
+        """
         for key in lifetime_ops.keys():
             try:
                 own = lifetime_ops[key][0]
@@ -234,6 +287,18 @@ def main():
                     handles[key] = macro_lifetime
             except:
                 continue
+        """
+
+        total_count = ops_counter
+        for key in lifetime_ops.keys():
+            own = lifetime_ops[key][1]
+            other = lifetime_ops[key][2]
+            micro_lifetime = float(other)/float(own)
+            macro_lifetime = float(other+own)/float(total_count)
+            #print "+ ", macro_lifetime
+            stats.append((key, micro_lifetime, macro_lifetime, own, other))
+
+
         print >> st, "\nOps per handle (sorted by micro lifetime):"
         stats.sort(key=lambda x: x[1])
         micro_xs = []
@@ -248,7 +313,11 @@ def main():
         for handle, micro_lifetime, macro_lifetime, own, other in stats:
             print >> st, "# %d: %d%% (own = %d, other = %d)" % (handle, macro_lifetime*100.0, own, other)
             #xs.append(int(macro_lifetime*100.0))
-            lt = int(macro_lifetime*100000.0)
+
+            # XXX: Why scale by such a huge factor?  Does it make sense for eg. Opera?  Scale by an appropriate amount
+            # in that case!
+            #lt = int(macro_lifetime*100000.0)
+            lt = int(macro_lifetime*100.0) # into percentage
             xs.append(lt)
 
         print >> st, "\nTotal number of ops:", ops_counter
@@ -262,9 +331,14 @@ def main():
         # X axis is lifetime
         # xs contains lifetimes. we only want to show the ones with the longest lifetime,
         # not arbitrary. sorting and counting lifetime, only displaying the ones above a certain threshold.
+
+        plot_title = os.path.basename(fname)
+
+        # XXX: Net needed, it seems.
         xs.sort(reverse=True)
         for lower, upper in [(0, 1), (10, 15), (75, 100), (0, 100)]:
-            plot_histogram(xs, fname+"-macro", "Overall lifetime, compared to all program ops (macro)", lower, upper)
+            plot_histogram(xs, fname+"-macro", plot_title+": Macro", "(other+own ops within lifetime of handle) / total ops => overall lifetime (%)",
+                           lower, upper)
 
         # X axis is lifetime
         # xs contains lifetimes. we only want to show the ones with the longest lifetime,
@@ -273,7 +347,8 @@ def main():
         micro_xs.sort(reverse=True)
         for lower, upper in [(0, 1), (10, 15), (75, 100), (0, 100)]:
             try:
-                plot_histogram(micro_xs, fname+"-micro", "Busy-ness, compared to ops within own lifetime (micro)", lower, upper)
+                plot_histogram(micro_xs, fname+"-micro", plot_title+": Micro", "other ops / own ops => activity of handle within its lifetime (%)",
+                               lower, upper)
             except:
                 print "Couldn't plot micro_xs for lower", lower, "to upper", upper
 
@@ -288,7 +363,7 @@ def main():
     lifetime_ops = {}
     dead_ops = {}
     ops_counter = 0
-    print >> sys.stderr, "\nreading ops from file", g_ops_filename
+    print >> sys.stderr, "\n\nGenerating locks file.\nReading ops from file", g_ops_filename
     i = 0
     bytes = 0
     skipped = 0

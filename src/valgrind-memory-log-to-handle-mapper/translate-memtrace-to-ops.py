@@ -77,6 +77,7 @@ def process_ops():
 
     lifetime_ops = {}
     for op in blocks.g_ops:
+        #print "+", op
         if op[1] == 'N':
             # live, own count, other count
             lifetime_ops[op[0]] = [True, 0, 0]
@@ -239,7 +240,9 @@ def main():
             other = lifetime_ops[key][2]
             micro_lifetime = float(other)/float(own)
             macro_lifetime = float(other+own)/float(total_count)
+            #print "+ ", macro_lifetime
             stats.append((key, micro_lifetime, macro_lifetime, own, other))
+
         print >> st, "\nOps per handle (sorted by micro lifetime):"
         stats.sort(key=lambda x: x[1])
         for handle, micro_lifetime, macro_lifetime, own, other in stats:
