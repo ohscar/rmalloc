@@ -44,8 +44,6 @@ import numpy as np
 import matplotlib.mlab as mlab
 import matplotlib.pyplot as plt
 
-import copy
-
 import sys
 import os.path
 
@@ -197,7 +195,6 @@ def main():
         #else:
         if True:
 
-            """
             # g_ops.append((mid, op, size, address))
             # == op[0] == handle == lh
             # == op[1] == operation == lo
@@ -225,64 +222,35 @@ def main():
                 except:
                     print "Handle", op[0], "has no previous new associated:", op
                     continue
+
+
             """
-
-
-
-
-
-
-
             op = (lh, lo, la, ls)
-            if lo == 'N':
+            if op[1] == 'N':
                 # own count, current total ops
-                lifetime_ops[lh] = [0, ops_counter]
+                lifetime_ops[op[0]] = [0, ops_counter]
             elif op[1] == 'F':
-                dead_ops[lh] = lifetime_ops[lh]
+                dead_ops[lh] = lifetime_ops[op[0]]
                 # ops_counter - own count - ops counter at creation = correct number of others ops
                 dead_ops[lh][1] = ops_counter - dead_ops[lh][0] - dead_ops[lh][1]
                 del lifetime_ops[lh]
             #elif op[1] in ['L', 'S', 'M']:
             else:
                 lifetime_ops[lh][0] += 1
-                ops_counter += 1
+
+            ops_counter += 1
+            """
+
 
         if handle_count < lh:
             handle_count = lh
 
 
-
-
-
-
     print  >> sys.stderr, " ->", chars[chari % 4], "%.2f MB skipped %lu K duplicate ops (handle count %d, dead ops %d, alive ops %d)" % (bytes / 1048576.0, skipped/1000, handle_count, len(dead_ops.keys()), len(lifetime_ops.keys())),"\r",
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     print >> sys.stderr, "\n\nmoving remaining alive ops (%d of them) to dead area" % len(lifetime_ops.keys())
+
+    """
     # move remaining alive ops to dead, to get a correct value of "other"
     for key in lifetime_ops.keys():
         dead_ops[key] = lifetime_ops[key]
@@ -293,18 +261,9 @@ def main():
 
     print >> sys.stderr, "processing."
 
-    lifetime_ops = copy.deepcopy(dead_ops)
+    lifetime_ops = dead_ops
     del dead_ops
-
-
-
-
-
-
-
-
-
-
+    """
 
     if True:
         st = open(fname + "-statistics", "wt")
@@ -332,23 +291,12 @@ def main():
 
         total_count = ops_counter
         for key in lifetime_ops.keys():
-            own = lifetime_ops[key][0]
-            other = lifetime_ops[key][1]
-            micro_lifetime = float(other)/float(own)
-            macro_lifetime = float(other+own)/float(total_count)
-            #print "+ ", macro_lifetime
-            stats.append((key, micro_lifetime, macro_lifetime, own, other))
-
-        """
-        total_count = ops_counter
-        for key in lifetime_ops.keys():
             own = lifetime_ops[key][1]
             other = lifetime_ops[key][2]
             micro_lifetime = float(other)/float(own)
             macro_lifetime = float(other+own)/float(total_count)
             #print "+ ", macro_lifetime
             stats.append((key, micro_lifetime, macro_lifetime, own, other))
-        """
 
 
         print >> st, "\nOps per handle (sorted by micro lifetime):"
