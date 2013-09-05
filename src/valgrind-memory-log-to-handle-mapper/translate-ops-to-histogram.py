@@ -41,6 +41,7 @@ FIXME: When/where to insert compact() calls?
 """
 
 import numpy as np
+import matplotlib as mpl
 import matplotlib.mlab as mlab
 import matplotlib.pyplot as plt
 import json
@@ -68,52 +69,85 @@ g_perfect_bytes_used = 0
 #LOWER_UPPER_SCALE = 1000
 LOWER_UPPER_SCALE = 1
 
-def plot_histogram(xs, filename, title, xlabel,      lower, upper):
-    old_lower, old_upper = lower, upper
-    n, bins, patches = plt.hist(xs, bins=75, histtype='stepfilled')
+MIN_RANGE = 75 # items on X axis.
+
+from drange import drange
+
+def formatter_x_to_percent(x, pos):
+    return "{0}".format(round(x*100.0, 2))
+
+def formatter_max_to_percent(y, pos, ymax):
+    p = float(y)/ymax * 100.0
+    return "{0}\n{1}%".format(y, round(p, 2))
+
+def plot_histogram(xs, filename, title, xlabel,      lower, upper, normed=False):
+    old_lower, old_upper = int(lower*1000), int(upper*1000)
+
+    # lower/upper is in percentage.
+    # in order to see what's appropriate, we need to figure out the scale.
+    # like this?
+    # http://stackoverflow.com/questions/15177203/how-is-the-pyplot-histogram-bins-interpreted
+
+    matching_xs = [x for x in xs if x >= lower and x <= upper]
+    if len(matching_xs) == 0:
+        print "Nothing matching for", lower, upper
+        return
+
+    """
+    if lower == 75:
+        i = 0
+        for x in matching_xs:
+            print x,
+            if i % 80 == 0:
+                print
+            i+=1
+        #matching_xs = [99]*20 + [90]*10 + [80]*5
+        pass
+    """
+
+    # at least MIN_RANGE steps.
+    step = upper-lower
+    if step < MIN_RANGE:
+        step = float(step) / MIN_RANGE
+    else:
+        step = 1.0
+
+    bins = [i for i in drange(lower, upper+0.000001, step)]
+    #print "bins from lower to upper:", bins
+    #n, bins, patches = plt.hist(matching_xs, bins=[0, 70,80,90,100], histtype='stepfilled')
+    #n, bins, patches = plt.hist(xs, bins=100, range=(lower, upper), histtype='stepfilled')
+    #n, bins, patches = plt.hist(xs, bins=100, histtype='stepfilled')
+    #n, bins, patches = plt.hist(matching_xs, bins=100, histtype='stepfilled')
+    n, bins, patches = plt.hist(matching_xs, bins=bins, normed=normed, histtype='stepfilled')
+    #n, bins, patches = plt.hist(matching_xs, bins=bins, histtype='stepfilled')
+    #print "n =", n
+    print "lower, upper =", lower, upper
+    #print "bins =", bins
+    #print "patches =", patches
+
 
     plt.xlabel(xlabel)
-    plt.ylabel("Handle count")
-    plt.title("Histogram of memory area lifetime: " + title)
+    plt.ylabel("Handle count / % of max")
+    plt.title("Histogram of memory area lifetime (%d - %d): %s" % (old_lower, old_upper, title))
+
     #plt.axis([100, 0, 0, len(bins)*0.75])
+
     plt.axis('tight')
     plt.grid(True)
+
+    ax = plt.gca()
+    ax.xaxis.set_major_formatter(mpl.ticker.FuncFormatter(formatter_x_to_percent))
+    ymin, ymax = ax.get_ylim()
+    ax.yaxis.set_major_formatter(mpl.ticker.FuncFormatter(lambda y, pos: formatter_max_to_percent(y, pos, ymax)))
+
     #plt.show()
     fname = "%s-histogram-%d-%d.pdf" % (filename, old_lower, old_upper)
-    print "Saving histogram:", fname
     plt.savefig(fname)
+    print "Saved histogram:", fname
 
-def plot_histogram2(xs, title, xlabel, lower, upper, ymax=None): #ymax=1000):
-    old_lower, old_upper = lower, upper
-    lower *= LOWER_UPPER_SCALE
-    upper *= LOWER_UPPER_SCALE
-
-    if len(xs) == 0:
-        print "No bins for current histogram interval %d - %d" % (lower, upper)
-        return
-    bincount = 600
-    matching_xs = [x for x in xs if x >= lower and x < upper]
-    if len(matching_xs) < bincount:
-        bincount=len(matching_xs)
-    if len(matching_xs) == 0:
-        return
-
-    bincount=75
-
-    n, bins, patches = plt.hist(matching_xs, bins=bincount, histtype='stepfilled', facecolor='g', alpha=0.75)
-    #n, bins, patches = plt.hist(xs, bins=600, histtype='stepfilled')
-
-    plt.xlabel(xlabel)
-    plt.ylabel("Handle count")
-    plt.title("Histogram of memory area lifetime: " + title)
-    #plt.axis([100, 0, 0, len(bins)*0.75])
-    plt.axis([lower, upper, 0, ymax])
-    #plt.axis('tight')
-    plt.grid(True)
-    #plt.show()
-    filename = "%s-histogram-%d-%d.pdf" % (title, old_lower, old_upper)
-    print "Saving histogram:", filename
-    plt.savefig(filename)
+    plt.clf()
+    plt.cla()
+    plt.close()
 
 """
     # the histogram of the data
@@ -159,259 +193,301 @@ def main():
 
 
     g_ops_filename = fname + "-ops"
-    g_ops_file = open(g_ops_filename, "rt")
 
-    g_lifetime_filename = fname + "-lifetime"
-    g_lifetime_file = open(g_lifetime_filename, "wt")
+    g_opslist_filename = fname + "-json-ops"
+    g_opslist_file = None
 
-    handle_count = 0
+    ops_list = []
+    ops_list_read = False
+    live_objects = {}
 
     lifetime_ops = {}
-    dead_ops = {}
-    ops_counter = 0
-    print >> sys.stderr, "reading ops from file", g_ops_filename
-    i = 0
-    bytes = 0
-    skipped = 0
-    chars = "-\|/"
-    chari = 0
-    lh, lo, la, ls = -1, 'x', -1, -1
-    for line in g_ops_file.xreadlines():
-        if i % 100000 == 0:
-            chari += 1
-            print >> sys.stderr,  " ->", chars[chari % 4], "%.2f MB skipped %lu K duplicate ops (handle count %d, dead ops %d, alive ops %d)" % (bytes / 1048576.0, skipped/1000, handle_count, len(dead_ops.keys()), len(lifetime_ops.keys())),"\r",
-
-        i += 1
-
-        bytes += len(line)
-
-        ph, po, pa, ps = lh, lo, la, ls
-
-        try:
-            lh, lo, la, ls = line.split()
-        except:
-            continue
-        lh, lo, la, ls = int(lh), lo, int(la), int(ls)
-
-        # skip duplicates, even though it's not entirely correct when measuring lifetime
-        # however, it takes too long time to care about duplicates.
-        #if False: # ph == lh and lo in ['L', 'S', 'M'] and po in ['L', 'S', 'M']:
-        #    skipped += 1
-        #    continue
-        #else:
-        if True:
-
-            """
-            # g_ops.append((mid, op, size, address))
-            # == op[0] == handle == lh
-            # == op[1] == operation == lo
-            # == op[2] == size == ls
-            # == op[3] == address == la
-            op = (lh, lo, ls, la)
-            #print "+", op
-            if op[1] == 'N':
-                # live, own count, other count
-                lifetime_ops[op[0]] = [True, 0, 0]
-            elif op[1] == 'F':
-                lifetime_ops[op[0]][0] = False
-            #elif op[1] in ['L', 'S', 'M']:
-            else:
-                try:
-                    # increase the 'other count' for all live handles
-                    for key in lifetime_ops.keys():
-                        if lifetime_ops[key][0]:
-                            if key == op[0]:
-                                lifetime_ops[key][1] += 1
-                            else:
-                                lifetime_ops[key][2] += 1
-                    ops_counter += 1
-                #print "lifetime op other", lifetime_ops[key]
-                except:
-                    print "Handle", op[0], "has no previous new associated:", op
-                    continue
-            """
-
-
-
-
-
-
-
-            op = (lh, lo, la, ls)
-            if lo == 'N':
-                # own count, current total ops
-                lifetime_ops[lh] = [0, ops_counter]
-            elif op[1] == 'F':
-                dead_ops[lh] = lifetime_ops[lh]
-                # ops_counter - own count - ops counter at creation = correct number of others ops
-                dead_ops[lh][1] = ops_counter - dead_ops[lh][0] - dead_ops[lh][1]
-                del lifetime_ops[lh]
-            #elif op[1] in ['L', 'S', 'M']:
-            else:
-                lifetime_ops[lh][0] += 1
-                ops_counter += 1
-
-        if handle_count < lh:
-            handle_count = lh
-
-
-
-
-
-
-    print  >> sys.stderr, " ->", chars[chari % 4], "%.2f MB skipped %lu K duplicate ops (handle count %d, dead ops %d, alive ops %d)" % (bytes / 1048576.0, skipped/1000, handle_count, len(dead_ops.keys()), len(lifetime_ops.keys())),"\r",
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    print >> sys.stderr, "\n\nmoving remaining alive ops (%d of them) to dead area" % len(lifetime_ops.keys())
-    # move remaining alive ops to dead, to get a correct value of "other"
-    for key in lifetime_ops.keys():
-        dead_ops[key] = lifetime_ops[key]
-        # ops_counter - own count - ops counter at creation = correct number of others ops
-        dead_ops[key][1] = ops_counter - dead_ops[key][0] - dead_ops[key][1]
-
-    g_ops_file.close()
-
-    print >> sys.stderr, "processing."
-
-    lifetime_ops = copy.deepcopy(dead_ops)
-    del dead_ops
-
-
-
-    print "Saving lifetime data:", g_lifetime_filename
-    g_lifetime_file.write(json.dumps(lifetime_ops))
-    g_lifetime_file.close()
-
-
-
-
-
-
-
-    if True:
-        st = open(fname + "-statistics", "wt")
-
-        handles = {}
-
-        stats = []
-
-        """
-        for key in lifetime_ops.keys():
+    g_lifetime_filename = fname + "-lifetime"
+    if os.path.exists(g_lifetime_filename):
+        print "Cached lifetime exists, loading...",
+        lifetime_data = json.loads(open(g_lifetime_filename, "rt").read())
+        if type(lifetime_data) != dict or not lifetime_data.has_key('lifetime-ops'):
+            lifetime_ops = {}
+            print "invalid, regenerating"
+        else:
             try:
-                own = lifetime_ops[key][0]
-                other = lifetime_ops[key][1]
-                micro_inside = own+other
-                if micro_inside == 0:
-                    micro_inside = 1
-                micro_lifetime = float(own)/float(micro_inside)
-                macro_lifetime = float(other+own)/float(ops_counter)
-                stats.append((key, micro_lifetime, macro_lifetime, own, other))
-                if macro_lifetime >= MACRO_LIFETIME_THRESHOLD:
-                    handles[key] = macro_lifetime
+                lifetime_ops = lifetime_data['lifetime-ops']
+                ops_counter = lifetime_data['mod-op-count']
+                print "OK. %d items, ops counter = %d\n" % (len(lifetime_ops.keys()), ops_counter)
+            except:
+                print "invalid, regenerating"
+                lifetime_ops = {}
+
+    if os.path.exists(g_opslist_filename):
+        try:
+            ops_list = json.loads(open(g_opslist_filename, "rt").read())
+            if type(ops_list) != list:
+                ops_list = []
+            ops_list_read = True
+        except:
+            ops_list = []
+
+    if not ops_list:
+        g_ops_file = open(g_ops_filename, "rt")
+        handle_count = 0
+        ops_counter = 0
+        print >> sys.stderr, "Reading ops from file into opslist:", g_ops_filename
+        i = 0
+        bytes = 0
+        skipped = 0
+        chars = "-\|/"
+        chari = 0
+        lh, lo, la, ls = -1, 'x', -1, -1
+        for line in g_ops_file.xreadlines():
+            if i % 500000 == 0:
+                chari += 1
+                print >> sys.stderr,  " ->", chars[chari % 4], "%.2f MB skipped %lu K duplicate ops (handle count %d)" % (bytes / 1048576.0, skipped/1000, handle_count),"\r",
+
+            i += 1
+
+            #bytes += len(line)
+
+            #ph, po, pa, ps = lh, lo, la, ls
+            try:
+                lh, lo, la, ls = line.split()
             except:
                 continue
-        """
+            lh, lo, la, ls = int(lh), lo, int(la), int(ls)
 
-        total_count = ops_counter
+            # skip duplicates, even though it's not entirely correct when measuring lifetime
+            # however, it takes too long time to care about duplicates.
+            #if False: # ph == lh and lo in ['L', 'S', 'M'] and po in ['L', 'S', 'M']:
+            #    skipped += 1
+            #    continue
+            #else:
+            op = (lh, lo, la, ls)
+            ops_list.append(lh)
+
+        print >> sys.stderr, "\n"
+        #print >> sys.stderr, " ->", chars[chari % 4], "%.2f MB skipped %lu K duplicate ops (handle count %d, dead ops %d, alive ops %d)" % (bytes / 1048576.0, skipped/1000, handle_count),"\r",
+        g_ops_file.close()
+
+        print "Saving ops data:", g_opslist_filename
+        g_opslist_file = open(g_opslist_filename, "wt")
+        g_opslist_file.write(json.dumps(ops_list))
+        g_opslist_file.close()
+        del ops_list
+
+
+    if not lifetime_ops:
+        g_ops_file = open(g_ops_filename, "rt")
+        g_lifetime_file = open(g_lifetime_filename, "wt")
+
+        handle_count = 0
+        lifetime_ops = {}
+
+        dead_ops = {}
+        ops_counter = 0
+        print >> sys.stderr, "Reading ops from file into lifetime", g_ops_filename
+        i = 0
+        bytes = 0
+        skipped = 0
+        chars = "-\|/"
+        chari = 0
+        lh, lo, la, ls = -1, 'x', -1, -1
+        for line in g_ops_file.xreadlines():
+            if i % 100000 == 0:
+                chari += 1
+                print >> sys.stderr,  " ->", chars[chari % 4], "%.2f MB skipped %lu K duplicate ops (handle count %d, dead ops %d, alive ops %d)" % (bytes / 1048576.0, skipped/1000, handle_count, len(dead_ops.keys()), len(lifetime_ops.keys())),"\r",
+
+            i += 1
+
+            bytes += len(line)
+
+            ph, po, pa, ps = lh, lo, la, ls
+            try:
+                lh, lo, la, ls = line.split()
+            except:
+                continue
+            lh, lo, la, ls = int(lh), lo, int(la), int(ls)
+
+            # skip duplicates, even though it's not entirely correct when measuring lifetime
+            # however, it takes too long time to care about duplicates.
+            #if False: # ph == lh and lo in ['L', 'S', 'M'] and po in ['L', 'S', 'M']:
+            #    skipped += 1
+            #    continue
+            #else:
+            if True:
+                op = (lh, lo, la, ls)
+                if lo == 'N':
+                    # own count, current total ops
+                    lifetime_ops[lh] = [0, ops_counter]
+                    #live_objects[lh] = [i, 0]
+                    #lo = copy.deepcopy(live_objects)
+                    #live_objects_time.append(lo)
+                elif op[1] == 'F':
+                    dead_ops[lh] = copy.deepcopy(lifetime_ops[lh])
+                    # ops_counter - own count - ops counter at creation = correct number of others ops
+                    dead_ops[lh][1] = ops_counter - dead_ops[lh][0] - dead_ops[lh][1]
+                    del lifetime_ops[lh]
+
+                    #del live_objects[lh]
+                    #lo = copy.deepcopy(live_objects)
+                    #live_objects_time.append(lo)
+                    #live_objects[lh][1] = i
+                #elif op[1] in ['L', 'S', 'M']:
+                else:
+                    lifetime_ops[lh][0] += 1
+                    ops_counter += 1
+
+            if handle_count < lh:
+                handle_count = lh
+
+        print >> sys.stderr, " ->", chars[chari % 4], "%.2f MB skipped %lu K duplicate ops (handle count %d, dead ops %d, alive ops %d)" % (bytes / 1048576.0, skipped/1000, handle_count, len(dead_ops.keys()), len(lifetime_ops.keys())),"\r",
+
+
+        print >> sys.stderr, "\n\nmoving remaining alive ops (%d of them) to dead area" % len(lifetime_ops.keys())
+        # move remaining alive ops to dead, to get a correct value of "other"
         for key in lifetime_ops.keys():
+            dead_ops[key] = lifetime_ops[key]
+            # ops_counter - own count - ops counter at creation = correct number of others ops
+            dead_ops[key][1] = ops_counter - dead_ops[key][0] - dead_ops[key][1]
+
+        g_ops_file.close()
+
+        print >> sys.stderr, "processing."
+
+        lifetime_ops = copy.deepcopy(dead_ops)
+        del dead_ops
+
+        print "Saving lifetime data:", g_lifetime_filename
+        lifetime_data = {'mod-op-count': ops_counter, 'lifetime-ops': lifetime_ops}
+        g_lifetime_file.write(json.dumps(lifetime_data))
+        g_lifetime_file.close()
+
+    #
+    # stats
+    #
+    st = open(fname + "-statistics", "wt")
+
+    handles = {}
+
+    stats = []
+
+    """
+    print >> st, "Live objects (count) over time"
+    for objs in live_objects_time:
+        l = len(objs.keys())
+        print >> st, l
+    """
+
+    """
+    print >> st, "Individual object lifetime"
+    for key in live_objects.keys():
+        se = live_objects[key]
+        if se[1] > se[0]:
+            start, end = se
+            print >> st, "%d # %d - %d" % (end-start, start, end)
+    """
+
+    """
+    for key in lifetime_ops.keys():
+        try:
             own = lifetime_ops[key][0]
             other = lifetime_ops[key][1]
-            micro_lifetime = float(other)/float(own)
-            macro_lifetime = float(other+own)/float(total_count)
-            #print "+ ", macro_lifetime
+            micro_inside = own+other
+            if micro_inside == 0:
+                micro_inside = 1
+            micro_lifetime = float(own)/float(micro_inside)
+            macro_lifetime = float(other+own)/float(ops_counter)
             stats.append((key, micro_lifetime, macro_lifetime, own, other))
+            if macro_lifetime >= MACRO_LIFETIME_THRESHOLD:
+                handles[key] = macro_lifetime
+        except:
+            continue
+    """
 
-        """
-        total_count = ops_counter
-        for key in lifetime_ops.keys():
-            own = lifetime_ops[key][1]
-            other = lifetime_ops[key][2]
-            micro_lifetime = float(other)/float(own)
-            macro_lifetime = float(other+own)/float(total_count)
-            #print "+ ", macro_lifetime
-            stats.append((key, micro_lifetime, macro_lifetime, own, other))
-        """
+    print "Calculating micro/macro lifetime."
+    total_count = ops_counter
+    for key in lifetime_ops.keys():
+        own = lifetime_ops[key][0]
+        other = lifetime_ops[key][1]
+        # XXX: What is more correct - 1 or 0.00001?
+        if own == 0:
+            own = 1.0
+        micro_lifetime = float(other)/float(own)
+        macro_lifetime = float(other+own)/float(total_count)
+
+        #print "+ ", macro_lifetime
+        v = (int(key), micro_lifetime, macro_lifetime, own, other)
+        #print "appending", v
+        stats.append(v)
+
+    """
+    total_count = ops_counter
+    for key in lifetime_ops.keys():
+        own = lifetime_ops[key][1]
+        other = lifetime_ops[key][2]
+        micro_lifetime = float(other)/float(own)
+        macro_lifetime = float(other+own)/float(total_count)
+        #print "+ ", macro_lifetime
+        stats.append((key, micro_lifetime, macro_lifetime, own, other))
+    """
 
 
-        print >> st, "\nOps per handle (sorted by micro lifetime):"
-        stats.sort(key=lambda x: x[1])
-        micro_xs = []
-        for handle, micro_lifetime, macro_lifetime, own, other in stats:
-            print >> st, "# %d: %.2f (own = %d, other = %d)" % (handle, micro_lifetime, own, other)
-            lt = int(micro_lifetime*100000.0)
-            micro_xs.append(lt)
+    print >> st, "\nOps per handle (sorted by micro lifetime):"
+    stats.sort(key=lambda x: x[1])
+    micro_xs = []
+    for handle, micro_lifetime, macro_lifetime, own, other in stats:
+        print >> st, "# %d: %.2f (own = %d, other = %d)" % (handle, micro_lifetime, own, other)
+        lt = int(micro_lifetime*100000.0)
+        micro_xs.append(lt)
 
-        print >> st, "\nOps per handle (sorted by macro lifetime):"
-        stats.sort(key=lambda x: x[2])
-        xs = []
-        for handle, micro_lifetime, macro_lifetime, own, other in stats:
-            print >> st, "# %d: %d%% (own = %d, other = %d)" % (handle, macro_lifetime*100.0, own, other)
-            #xs.append(int(macro_lifetime*100.0))
+    print >> st, "\nOps per handle (sorted by macro lifetime):"
+    stats.sort(key=lambda x: x[2])
+    xs = []
+    for handle, micro_lifetime, macro_lifetime, own, other in stats:
+        print >> st, "# %d: %d%% (own = %d, other = %d)" % (handle, macro_lifetime*100.0, own, other)
+        #xs.append(int(macro_lifetime*100.0))
 
-            # XXX: Why scale by such a huge factor?  Does it make sense for eg. Opera?  Scale by an appropriate amount
-            # in that case!
-            #lt = int(macro_lifetime*100000.0)
-            lt = int(macro_lifetime*100.0) # into percentage
-            xs.append(lt)
+        #lt = int(macro_lifetime*100.0) # into percentage
+        #lt = int(macro_lifetime*100.0) # to get more bins.
+        lt = macro_lifetime # to get more bins.
+        xs.append(lt)
 
-        print >> st, "\nTotal number of ops:", ops_counter
+    print >> st, "\nTotal number of ops:", ops_counter
 
-        print >> st, "\nOut of bounds ops (%d ops):" % len(g_out_of_bounds)
-        print >> st, g_out_of_bounds
+    print >> st, "\nOut of bounds ops (%d ops):" % len(g_out_of_bounds)
+    print >> st, g_out_of_bounds
 
-        st.close()
+    st.close()
 
-        print "Macro histograms."
-        # X axis is lifetime
-        # xs contains lifetimes. we only want to show the ones with the longest lifetime,
-        # not arbitrary. sorting and counting lifetime, only displaying the ones above a certain threshold.
+    print "Macro histograms."
+    # X axis is lifetime
+    # xs contains lifetimes. we only want to show the ones with the longest lifetime,
+    # not arbitrary. sorting and counting lifetime, only displaying the ones above a certain threshold.
 
-        plot_title = os.path.basename(fname)
+    plot_title = os.path.basename(fname)
 
-        # XXX: Net needed, it seems.
-        xs.sort(reverse=True)
-        for lower, upper in [(0, 1), (10, 15), (75, 100), (0, 100)]:
-            plot_histogram(xs, fname+"-macro", plot_title+": Macro", "(other+own ops within lifetime of handle) / total ops => overall lifetime (%)",
-                           lower, upper)
+    # Sort such that we can cut the data off where requested.
+    xs.sort(reverse=True)
+    for lower, upper in [(0, 0.001), (0.0001, 0.02), (0.01, 0.15), (0.75, 1.0), (0.01, 1.0), (0, 1.0)]:
+        normed = False
+        plot_histogram(xs, fname+"-macro", plot_title+": Macro", "(other+own ops within lifetime of handle) / total ops => overall lifetime (%)",
+                       lower, upper, normed)
 
-        # X axis is lifetime
-        # xs contains lifetimes. we only want to show the ones with the longest lifetime,
-        # not arbitrary. sorting and counting lifetime, only displaying the ones above a certain threshold.
+    # X axis is lifetime
+    # xs contains lifetimes. we only want to show the ones with the longest lifetime,
+    # not arbitrary. sorting and counting lifetime, only displaying the ones above a certain threshold.
+    if False:
         print "Micro histograms."
         micro_xs.sort(reverse=True)
-        for lower, upper in [(0, 1), (10, 15), (75, 100), (0, 100)]:
+        for lower, upper in [(0, 0.01), (0.10, 0.15), (.75, 1.0), (0, 1.0)]:
             try:
                 plot_histogram(micro_xs, fname+"-micro", plot_title+": Micro", "other ops / own ops => activity of handle within its lifetime (%)",
                                lower, upper)
             except:
                 print "Couldn't plot micro_xs for lower", lower, "to upper", upper
 
-        #for lower, upper in [(0, 3), (10, 15), (75, 100)]: plot_histogram(xs, fname, lower, upper)
+    #for lower, upper in [(0, 3), (10, 15), (75, 100)]: plot_histogram(xs, fname, lower, upper)
 
+    # XXX: TODO. this could be cached data. don't have to read it again.
+    """
     # generate new ops-lock file
     ops_filename = fname + "-ops"
     ops_lock_filename = fname + "-ops-lock"
@@ -468,6 +544,9 @@ def main():
     print >> sys.stderr
     ops_file.close()
     ops_lock_file.close()
+    """
 
-main()
+if __name__ == '__main__':
+    main()
+
 
