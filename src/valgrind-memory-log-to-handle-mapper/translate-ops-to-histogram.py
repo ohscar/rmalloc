@@ -43,6 +43,7 @@ FIXME: When/where to insert compact() calls?
 import numpy as np
 import matplotlib.mlab as mlab
 import matplotlib.pyplot as plt
+import json
 
 import copy
 
@@ -159,6 +160,9 @@ def main():
 
     g_ops_filename = fname + "-ops"
     g_ops_file = open(g_ops_filename, "rt")
+
+    g_lifetime_filename = fname + "-lifetime"
+    g_lifetime_file = open(g_lifetime_filename, "wt")
 
     handle_count = 0
 
@@ -298,7 +302,9 @@ def main():
 
 
 
-
+    print "Saving lifetime data:", g_lifetime_filename
+    g_lifetime_file.write(json.dumps(lifetime_ops))
+    g_lifetime_file.close()
 
 
 
