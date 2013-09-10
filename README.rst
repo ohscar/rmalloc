@@ -1,9 +1,3 @@
-Where did I leave last time?
-=============================
-src/emulator, trying to build plot_dlmalloc.c
-
-
-
 =========================================
 rmalloc: Relocatable memory allocator
 =========================================
@@ -19,43 +13,69 @@ Lock a handle to get the memory address, unlock it when done. Unlocked memory bl
 
 Requires modifications to code using a normal malloc(), but can potentially be quicker and more memory efficient.
 
-Notes
-=======
-Different allocators: http://publib.boulder.ibm.com/infocenter/pseries/v5r3/index.jsp?topic=/com.ibm.aix.genprogc/doc/genprogc/sys_mem_alloc.htm
+Resources on the Internet and elsewhere
+============================================================
+* Different allocators: http://publib.boulder.ibm.com/infocenter/pseries/v5r3/index.jsp?topic=/com.ibm.aix.genprogc/doc/genprogc/sys_mem_alloc.htm
+* About garbage collectors (good text!): http://www.gamedev.net/page/resources/_/technical/general-programming/modern-garbage-collectors-under-the-hood-r2995
 
-src/locktest
-==============
+src/valgrind
+=========================
+Building::
+
+    cd rmalloc/valgrind
+    ./autogen.sh
+    ./configure
+    make
+
+Run::
+
+    ./vg-in-place --tool=memcheck theapp 2>&1 >/dev/null | grep '^>>>' > theapp.memtrace
+
+Format::
+
+    >>> N 69586984 352
+    ...
+    >>> F 69589088 0
+    >>> L 69587700 4
+    >>> L 69589376 4
+    >>> F 69589360 0
+    >>> L 69587708 4
+    ...
+
+* <N>ew <resulting address> <size>
+* <F>ree <address> 0
+* <L>oad <address> <size>
+* <S>tore <address> <size>
+* <M>odify <address> <size>
+
+src/valgrind-memory-log-to-handle-mapper/
+==========================================================================
 Scripts to process and visualize the data from a Valgrind test run.  Converts memory address accesses to handles, plotting histograms of macro lifetime.
 
 translate.py
 ~~~~~~~~~~~~~~~~~~~~
 Usage::
 
-    translate.py result.soffice
+    translate-memtrace-to-ops.py soffice.memtrace
 
 Writes result.soffice-ops in the following format::
 
     <int: handle> <char: operation> <int: address> <int: size>
 
-``operation`` is one of N (new), F (free), S (store), L (load), M (modify).
+``operation`` is one of N (new), F (free), S (store), L (load), M (modify), e.g.::
+
+    
 
 result.soffice in the format::
 
-    ('new', 16, 0x41c3028)
-    ('store', 0x41c3028, 4)
-    ('store', 0x41c3030, 4)
-    ('store', 0x41c302c, 4)
-    ('new', 16, 0x41c3068)
-    ('store', 0x41c3068, 4)
-    ('store', 0x41c3070, 4)
-    ('store', 0x41c306c, 4)
-    ('new', 16, 0x41c30a8)
-    ('store', 0x41c30a8, 4)
-    ('store', 0x41c30b0, 4)
-    ('store', 0x41c30ac, 4)
-    ('new', 16, 0x41c30e8)
-    ('store', 0x41c30e8, 4)
-    ('store', 0x41c30f0, 4)
+    >>> N 69586984 352
+    ...
+    >>> F 69589088 0
+    >>> L 69587700 4
+    >>> L 69589376 4
+    >>> F 69589360 0
+    >>> L 69587708 4
+    ...
 
 Each line is mapped to its corresponding handle by building a lookup table mapping a range of memory locations to a
 number. The handles are then plugged into an allocator.  Since Lackey (the Valgrind tool) only stores the lowest and

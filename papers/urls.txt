@@ -1,0 +1,2 @@
+http://infolab.stanford.edu/~cgzhu/QualPaper/FreqItemset/Mannila_sequence.pdf
+
