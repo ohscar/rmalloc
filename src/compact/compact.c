@@ -1,9 +1,11 @@
-#include "compact.h"
-#include "compact_internal.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 #include <string.h>
+#include <stdbool.h>
+
+#include "compact.h"
+#include "compact_internal.h"
 
 /* memory layout
  */

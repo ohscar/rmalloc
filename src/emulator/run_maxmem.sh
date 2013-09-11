@@ -7,6 +7,11 @@ echo "opsfile req'd"
 	exit
 fi
 
+if [[ "$ALLOCATOR" == "" ]]; then
+    echo "ALLOCATOR not set. Set it to the path to test program, e.g. ALLOCATOR=./plot_dlmalloc"
+    exit
+fi
+
 
 CORES=$(grep -c ^processor /proc/cpuinfo)
 let CORES=2*$CORES
@@ -18,7 +23,7 @@ export RESULTFILE=$(basename $opsfile)-allocstats
 echo -n "Calculating peak mem... "
 # XXX: re-enable this
 #peakmem=50485760
-export peakmem=$(./plot_dlmalloc --peakmem $opsfile 2> /dev/null)
+export peakmem=$($ALLOCATOR --peakmem $opsfile 2> /dev/null)
 export theory_peakmem=$peakmem
 
 #peakmem=$(echo "$peakmem*1.05/1" | bc)
@@ -32,7 +37,7 @@ echo "$theory_peakmem bytes"
 # count=$(wc -l $opsfile | awk '{print $1}')
 # while [[ "$done" != "1" ]]; do
 #     for i in $(seq 0 $count); do
-#         ./plot_dlmalloc --maxmem $opsfile $i $peakmem $theory_peakmem > /dev/null 2>&1
+#         $ALLOCATOR --maxmem $opsfile $i $peakmem $theory_peakmem > /dev/null 2>&1
 #         status=$?
 #         if [[ "$status" == "2" ]]; then
 #             # oom, bump by 5% and retry.
@@ -43,7 +48,7 @@ echo "$theory_peakmem bytes"
 #         fi
 #         echo -ne "\r                               \r$i / $count "
 #         #echo -n "."
-#         #echo "./plot_dlmalloc --maxmem $opsfile $i (of $count) $peakmem (of theoretical $theory_peakmem) => exit code $status"
+#         #echo "$ALLOCATOR --maxmem $opsfile $i (of $count) $peakmem (of theoretical $theory_peakmem) => exit code $status"
 #     done
     # if we've reached this point, we didn't have an OOM. yay.
 #     # proceed.
@@ -67,8 +72,8 @@ while [[ "$done" != "1" ]]; do
 
     # XXX: re-enable this later.
 
-    #echo ./plot_dlmalloc --maxmem $opsfile $fullcount $peakmem $theory_peakmem
-    ./plot_dlmalloc --maxmem $opsfile $RESULTFILE $fullcount $peakmem $theory_peakmem > /dev/null 2>&1
+    #echo $ALLOCATOR --maxmem $opsfile $fullcount $peakmem $theory_peakmem
+    $ALLOCATOR --maxmem $opsfile $RESULTFILE $fullcount $peakmem $theory_peakmem > /dev/null 2>&1
     status=$?
     #if [[ "$status" == "2" ]]; then # don't test for 2, in case of crash - test for 0.
     if [[ "$status" != "0" ]]; then
@@ -79,7 +84,7 @@ while [[ "$done" != "1" ]]; do
     else
         break
         #echo -n "."
-        #echo "./plot_dlmalloc --maxmem $opsfile $i (of $count) $peakmem (of theoretical $theory_peakmem) => exit code $status"
+        #echo "$ALLOCATOR --maxmem $opsfile $i (of $count) $peakmem (of theoretical $theory_peakmem) => exit code $status"
     fi
 done
 
@@ -143,12 +148,12 @@ rm -rf ${RESULTFILE}.part*
 # 
 # # number of operations to perform..
 # # each run "discards" the previous ones, i.e. doesn't try to do max-size allocs for any but the last
-# echo "./plot_dlmalloc --maxmem $opsfile $i $peakmem $theory_peakmem (of $count)"
+# echo "$ALLOCATOR --maxmem $opsfile $i $peakmem $theory_peakmem (of $count)"
 # i=0
 # while [[ "$i" != "$count" ]]; do
 # #for i in $(seq 0 $count); do
 #     echo -ne "\r                               \r$i / $count "
-#     ./plot_dlmalloc --maxmem $opsfile $i $peakmem $theory_peakmem > /dev/null 2>&1
+#     $ALLOCATOR --maxmem $opsfile $i $peakmem $theory_peakmem > /dev/null 2>&1
 # 
 #     let i=$i+1
 # done

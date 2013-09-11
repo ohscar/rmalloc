@@ -1,8 +1,12 @@
 .PHONY: tests
 
-all:  tests
+all: compact.o listsort.o
 
-SOURCES=listsort.c
+SOURCES=listsort.c compact.c
+CFLAGS=-std=gnu99
+
+.c.o:
+	g++ -c $(CFLAGS) $<
 
 tests: test_*.cpp $(SOURCES)
 	gcc -o run_tests test_*.cpp $(SOURCES) -g -std=gnu99 -lstdc++ -lgtest -lgtest_main -lpthread -lrt
@@ -10,3 +14,5 @@ tests: test_*.cpp $(SOURCES)
 compact: $(SOURCES)
 	gcc -o compact $(SOURCES)
 
+clean:
+	rm -rf listsort.o compact.o run_tests compact
