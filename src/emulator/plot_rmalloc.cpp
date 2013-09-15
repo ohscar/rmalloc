@@ -3,7 +3,8 @@
  * uses dlmalloc from a user heap by overriding sbrk().
  */
 #include "../compact/compact.h"
-#include "dlmalloc-2.8.6.h"
+#include "../compact/compact_internal.h"
+//#include "dlmalloc-2.8.6.h"
 
 #include "plot.h"
 
@@ -14,7 +15,7 @@
 
 #include <map>
 
-#define ALLOC_NAME "dlmalloc"
+#define ALLOC_NAME "rmmalloc"
 
 static unsigned long g_heap_size;
 static unsigned long g_memory_usage;
@@ -26,10 +27,13 @@ static void *g_heap_top = NULL; // g_heap <= end of heap < g_heap_top
 static void *g_colormap = NULL; 
 static uint32_t g_original_size = 0;
 
-typedef std::map<void *, uint32_t> pointer_size_map_t;
+typedef std::map<handle_t, uint32_t> pointer_size_map_t;
+typedef std::map<uint32_t, handle_t> handle_block_map_t;
+
 
 static pointer_size_map_t g_handles, g_count;
 static pointer_size_map_t g_handle_pointer;
+static handle_block_map_t g_handle_to_block;
 int g_free = 0;
 int g_malloc = 0;
 
@@ -54,22 +58,84 @@ void sanity() {
 }
 
 
+
+
+
+// FIXME: user_malloc() must return handle_t, not the pointer, since the pointer will be invalid after the first compact.  Take specific care of this in plot.cpp in the driver, because it uses the pointer address to figure out e.g. g_highest_address.  That'll be completely wrong, and it should instead query the driver.
+
+
+
+void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddress) {
+
+    handle_t block = rmmalloc(size);
+    if (block == NULL)
+    {
+        return NULL;
+    }
+
+    // only used temporarily to get the highest memory address
+    
+    if (memaddress != NULL)
+        *memaddress = ((header_t *)block)->memory;
+
+    g_handle_to_block[handle] = block;
+    fprintf(stderr, "==> NEW %3d => 0x%X\n", handle, block);
+
+    return block;
+}
+
+void user_free(void *ptr, uint32_t handle, uint32_t *op_time) {
+    handle_t block = g_handle_to_block[handle];
+    if ((void *)block != ptr)
+    {
+        fprintf(stderr, "user_free(0x%X, %d): bad mapping: got 0x%X\n", ptr, handle, block);
+    }
+
+    fprintf(stderr, "<== FRE %3d => 0x%X\n", handle, block);
+    rmfree(block);
+
+    // is compacting considered cheating?
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#if 0
 void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddress) {
     g_memory_usage += size*0.9; // XXX: *0.9 is bogus, should be just size. for plot testing purposes!
 
-    void *ptr = dlmalloc(size);
-    if (ptr == NULL)
-        return ptr;
+    handle_t block = rmalloc(size);
+    if (block == NULL)
+        return NULL;
+    *memaddress = rmlock(block);
+    if (*memaddress == NULL)
+        return NULL;
 
     //printf("|| h == (void *)0x%X // MALLOC, heap start %x, heap end %x\n", (uint32_t)ptr, (uint32_t)g_heap, (uint32_t)g_heap_end);
-    g_handles[ptr] = size;
+    g_handles[block] = handle;
+    g_pointer_block_map[*memaddress] = block;
 
-    g_handle_pointer[ptr] = handle;
+    g_handle_pointer[block] = handle;
 
-    if (g_count.find(ptr) == g_count.end())
-        g_count[ptr] = 1;
+    if (g_count.find(block) == g_count.end())
+        g_count[block] = 1;
     else {
-        g_count[ptr] += 1;
+        g_count[block] += 1;
         if (g_count[ptr] > 1)
             fprintf(stderr, "Double malloc for handle %d\n", handle); // FIXME: this test should be here.
     }
@@ -82,25 +148,24 @@ void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddres
 
     *op_time = 3;
 
-    if (memaddress != NULL)
-        *memaddress = ptr;
-
     return ptr;
 }
 
 void user_free(void *ptr, uint32_t handle, uint32_t *op_time) {
     unsigned long size = g_handles[ptr];
+    handle_t block = g_pointer_block_map[ptr];
     g_memory_usage -= size;
 
-    g_count[ptr] -= 1;
+    g_count[block] -= 1;
     g_free++;
 
 #ifdef DEBUG
     sanity();
 #endif
 
-    dlfree(ptr);
+    //dlfree(ptr);
 }
+#endif
 
 void user_lock(void *h) {
 }
@@ -129,6 +194,8 @@ bool user_init(uint32_t heap_size, void *heap, void *colormap, char *name) {
     g_heap_end = g_heap;
     g_heap_top = (uint8_t *)((uint32_t)g_heap_end + heap_size);
     g_colormap = colormap;
+
+    rminit(heap, heap_size);
 }
 
 void user_reset(void) {
@@ -137,58 +204,5 @@ void user_reset(void) {
     g_count.clear();
     user_init(g_original_size, g_heap, /*colormap, unused*/NULL, buffer);
 }
-
-/////////////////////////////////////////////////////////////////////////////////////////////
-
-/* sbrk() for use with dlmalloc
- *
- * use this to return data from _our_ heap.
- */
-#ifdef __cplusplus
-extern "C" {
-#endif
-void *user_sbrk(int);
-#ifdef __cplusplus
-}
-#endif
-
-
-void *user_sbrk(int incr)
-{
-    void *prev_heap_end;
-
-    prev_heap_end = g_heap_end;
-
-    incr = (incr + 3) & ~3; // align to 4-byte boundary
-
-    if ((uint32_t)g_heap_end + incr > (uint32_t)g_heap_top)
-    {
-        errno = ENOMEM;
-        return (void*)-1;
-    }
-
-    g_heap_end = (void *)((uint32_t)g_heap_end + incr);
-
-    return (caddr_t) prev_heap_end;
-}
-#if 0
-void *user_sbrk(int increment) {
-    if (increment == 0) {
-        printf("user_sbrk(): requesting current heap end = 0x%X and start = 0x%X\n", (uint32_t)g_heap_end, (uint32_t)g_heap);
-        return g_heap_end;
-    }
-    printf("user_sbrk(): requesting %d bytes.\n", increment);
-
-    if ((uint32_t)g_heap_end + increment < (uint32_t)g_heap + g_heap_size) {
-        g_heap_end = (void*)((uint32_t)g_heap_end + increment);
-
-        printf("user_sbrk(): request OK, new heap size: %d, from 0x%X to 0x%X\n", (uint8_t *)g_heap_end-(uint8_t *)g_heap,
-                (uint32_t)g_heap, (uint32_t)g_heap_end);
-        return g_heap_end;
-    }
-    errno = ENOMEM;
-    return (void *)-1;
-}
-#endif
 
 

@@ -92,6 +92,23 @@ header_t *header_find_free() {
     return NULL;
 }
 
+void freeblock_verify_lower_size() {
+    for (int k=0; k<g_free_block_slot_count; k++) {
+        free_memory_block_t *b = g_free_block_slots[k];
+        int size = 1<<k;
+        while (b) {
+            if (b->header->size < size || b->header->memory == NULL) {
+                fprintf(stderr, "\nfreeblock_verify_lower_size(): block %p at mem %p at k=%d has size %d < %d\n",
+                        b, b->header->memory, k, b->header->size, size);
+
+                abort();
+            }
+
+            b = b->next;
+        }
+    }
+}
+
 header_t *header_new(bool insert_in_list, bool override) {
     header_t *header = header_find_free();
     if ((int)header == 0xb7cf0848) {
@@ -157,6 +174,7 @@ header_t *block_new(int size) {
     if (size < sizeof(free_memory_block_t))
         size = sizeof(free_memory_block_t);
 
+    freeblock_verify_lower_size();
  
     // XXX: Is this really the proper fix?
     if ((uint8_t *)g_memory_top+size+sizeof(header_t) < (uint8_t *)g_header_bottom) {
@@ -271,23 +289,6 @@ bool freeblock_checkloop(free_memory_block_t *block) {
         }
     }
     return false;
-}
-
-void freeblock_verify_lower_size() {
-    for (int k=0; k<g_free_block_slot_count; k++) {
-        free_memory_block_t *b = g_free_block_slots[k];
-        int size = 1<<k;
-        while (b) {
-            if (b->header->size < size || b->header->memory == NULL) {
-                fprintf(stderr, "\nfreeblock_verify_lower_size(): block %p at mem %p at k=%d has size %d < %d\n",
-                        b, b->header->memory, k, b->header->size, size);
-
-                abort();
-            }
-
-            b = b->next;
-        }
-    }
 }
 
 /* 1. mark the block's header as free
@@ -806,7 +807,7 @@ void header_sort_all() {
 #define WITH_ITER(h, init, body...) {header_t *h = init; while (h != NULL) {body; h = h->next;}}
 
 /* compacting */
-void compact(int maxtime) {
+void rmcompact(int maxtime) {
 
     fprintf(stderr, "******************** compact started (g_header_root = %p).\n", g_header_root);
 
@@ -940,7 +941,9 @@ void compact(int maxtime) {
             largest, total, 1.0-(float)largest/(float)total, 1.0-(float)smallest/(float)largest);
 #endif
 
-    /* compacting */
+    /**********************************
+     * C O M P A C T I N G
+     **********************************/
 
     /* make one pass.
      *
@@ -981,7 +984,7 @@ void compact(int maxtime) {
 
 
         
-#if 1
+#if 0
         {
         char *filling = "ABCDEFGHIJKLMNOPQRSTUVXYZ";
         int maxfill = strlen(filling);
@@ -1079,8 +1082,18 @@ void compact(int maxtime) {
             h = h->next;
         }
 
-        if (!h) {fprintf(stderr, "no free blocks\n"); root_header = NULL; continue;}
+        if (!h)
+        {
+            fprintf(stderr, "no free blocks\n");
+            root_header = NULL;
+            continue;
+        }
         fprintf(stderr, "First free block %p, last free %p, total free %d\n", first_free, last_free, total_free);
+
+        if (first_free == last_free)
+        {
+            fprintf(stderr, "first and last free is same block: header %p\n", first_free);
+        }
 
         bool adjacent = false;
         if (h->flags == HEADER_UNLOCKED)
@@ -1320,6 +1333,7 @@ void compact(int maxtime) {
         new_free->flags = HEADER_FREE_BLOCK;
         if (adjacent) {
             // FIXME: This calculation _could_ be wrong in non-adjacent mode
+            // XXX: to_addr does not match up with total_used.
             new_free->memory = (uint8_t *)to_addr + total_used; 
             new_free->size = total_free;
             if (extra_free_size) {
@@ -1453,7 +1467,8 @@ void compact(int maxtime) {
     // rebuild free list
     memset((void *)g_free_block_slots, 0, sizeof(free_memory_block_t *) * g_free_block_slot_count);
 
-    WITH_ITER(h, g_header_root,
+    header_t *h = g_header_root;
+    while (h != NULL) {
         if (!h->memory || h->flags != HEADER_FREE_BLOCK) {
             h = h->next;
             continue;
@@ -1463,6 +1478,16 @@ void compact(int maxtime) {
         if (h->size >= sizeof(free_memory_block_t)) {
             int k = log2_(h->size);
             free_memory_block_t *block = block_from_header(h);
+
+
+            // XXX: added 2013-09-18. 
+            // Since the free memory block slots is cleared, the blocks don't point at anything. 
+            // How did this ever work?
+            block->header = h; 
+
+
+
+
             if (g_free_block_slots[k] == NULL)
                 g_free_block_slots[k] = block;
             else {
@@ -1470,117 +1495,21 @@ void compact(int maxtime) {
                 g_free_block_slots[k] = block;
             }
         }
-    )
-    
+
+        h = h->next;
+    }
+
+    for (int i=0; i<g_free_block_slot_count; i++)
+    {
+        fprintf(stderr, "free block slot [%d] (size %d) = %p (header size %d)\n", i, 1<<i, g_free_block_slots[i],
+                (g_free_block_slots[i] != NULL && g_free_block_slots[i]->header != NULL) ? g_free_block_slots[i]->header->size : 0);
+           
+    }
+
+
+    freeblock_verify_lower_size();
 }
 
-
-
-#if 0
-void compact() {
-    /* the super-greedy find first block algorithm!
-     *
-     * since block_new() is silly, we want to move as much out of the way from
-     * the end of our memory block space. let's do so!
-     */
-
-    // find the largest free block that also starts fairly early
-    // cut-off point at 50%? make that a configurable variable to be testable
-    // in benchmarks!
-    free_memory_block_t *largest_block = g_free_list_root;
-    free_memory_block_t *largest_block_prev = g_free_list_root;
-    free_memory_block_t *block = g_free_list_root, *prev = NULL;
-    void *lowfree = block->header->memory, *highfree = block->header->memory;
-    float cutoff_ratio = 0.5;
-    void *cutoff = NULL;
-
-    // find the boundaries of the memory blocks
-    while (block) {
-        if (block->header->memory < lowfree)
-            lowfree = block->header->memory;
-
-        if (block->header->memory > highfree)
-            highfree = block->header->memory;
-
-        block = block->next;
-    }
-
-    cutoff = (void *)((uint32_t)lowfree + (uint32_t)(((uint8_t *)highfree-(uint8_t *)lowfree)*cutoff_ratio));
-
-    block = g_free_list_root;
-    prev = g_free_list_root;
-
-    while (block) {
-        if (block->header->size > largest_block->header->size && block->header->memory < cutoff) {
-            largest_block_prev = prev;
-            largest_block = block;
-        } 
-
-        prev = block;
-        block = block->next;
-    }
-
-    // Panic. Can't happen, unless above is wrong. Which it isn't...?
-    if (largest_block_prev->next != largest_block)
-        fprintf(stderr, "******************* PREV->next != BLOCK!!! (%p -> %p)\n", largest_block_prev, largest_block);
-
-    uint32_t size = (uint8_t *)highfree - (uint8_t *)lowfree;
-    printf("free block range: lowest %p to highest %p (%d K) with cutoff %p\n", lowfree, highfree, size/1024, cutoff);
-    printf("best suited free block at %p (%d kb from lowest) of size %d kb\n", largest_block->header->memory, ((uint32_t)largest_block->header->memory - (uint32_t)lowfree)/1024, largest_block->header->size/1024);
-
-    // we have the largest free block.
-    // memory grows up: look for highest addresses that will fit.
-    header_t *h = g_header_top;
-    header_t *highest = g_header_top;
-    while (h != g_header_bottom) {
-        if (h->flags == HEADER_UNLOCKED /* || h->flags == HEADER_WEAK_LOCKED */
-            && h->memory > highest->memory && h->size <= largest_block->header->size) {
-            // a winner!
-
-            printf("larger header h %d, size %d kb, memory %p\n", h->flags, h->size/1024, h->memory);
-
-            highest = h;
-        } else
-            printf("smaller header h %d, size %d kb, memory %p\n", h->flags, h->size/1024, h->memory);
-
-        h--;
-    }
-
-    // 1. copy the used block to the free block.
-    // 2. point the used block header to the free header's starting address
-    // 3a. if free block minus used block larger than sizeof(free_memory_block)
-    //     * adjust the free header's start adress and size
-    // 3b. if free header less than sizeof(free_memory_block_t):
-    //     * add that space to the used block (internal fragmentation)
-    //     * mark free block as unused
-    //     * point the free block's previous block's next to point to the free block's next block
-
-    // 1. copy the used block to the free block.
-    header_t *free_header = largest_block->header;
-    free_memory_block_t *largest_block_next = largest_block->next;
-
-    printf("moving block %p (size %d kb) to free block %p (size %d kb)\n", highest->memory, highest->size/1024, free_header->memory, free_header->size/1024);
-
-    memcpy(free_header->memory, highest->memory, highest->size);
-
-    // 2. point the used block header to the free header's starting address
-    highest->memory = free_header->memory;
-    
-    // 3a. if free header larger than sizeof(free_memory_block)
-    int diff = free_header->size - highest->size;
-    if (diff >= sizeof(free_memory_block_t)) {
-        free_header->memory = (void *)((uint32_t)free_header->memory + highest->size);
-        free_header->size = diff;
-    } else {
-        // 3b. if free header less than sizeof(free_memory_block_t):
-        highest->size = free_header->size;
-        header_set_unused(free_header);
-
-        largest_block_prev->next = largest_block_next;
-    } 
-
-}
-#endif
 
 /* client code */
 void rminit(void *heap, uint32_t size) {
@@ -1591,7 +1520,8 @@ void rminit(void *heap, uint32_t size) {
     // in practice, will there be such a large block?
     g_free_block_slot_count = log2_(size) + 1; 
     g_free_block_slots = (free_memory_block_t **)heap;
-    memset((void *)g_free_block_slots, 0, sizeof(free_memory_block_t *)*g_free_block_slot_count);
+    uint32_t count = sizeof(free_memory_block_t *)*g_free_block_slot_count;
+    memset((void *)g_free_block_slots, 0, count);
 
     g_memory_bottom = (void *)((uint32_t)heap + (uint32_t)(g_free_block_slot_count * sizeof(free_memory_block_t *)));
     g_memory_top = g_memory_bottom;
@@ -1599,7 +1529,8 @@ void rminit(void *heap, uint32_t size) {
     g_free_header_root = NULL;
     g_free_header_end = NULL;
 
-    g_header_top = (header_t *)((uint32_t)heap + size);
+    //g_header_top = (header_t *)((uint32_t)heap + size);
+    g_header_top = (header_t *)((uint32_t)heap + size - sizeof(header_t));
     g_header_bottom = g_header_top;
     g_header_root = g_header_top;
     g_header_root->next = NULL;
@@ -1615,35 +1546,33 @@ void rmdestroy() {
     return;
 }
 
-handle_t *rmmalloc(int size) {
+handle_t rmmalloc(int size) {
     header_t *h = block_new(size);
 
     if (h == NULL)
         fprintf(stderr, "h = NULL.\n");
 
-    //if ((int)h == 0xb7cf0848) abort();
-
-    return (handle_t *)h;
+    return (handle_t)h;
 }
 
-void rmfree(handle_t *h) {
+void rmfree(handle_t h) {
     block_free((header_t *)h);
 }
 
-void *rmlock(handle_t *h) {
+void *rmlock(handle_t h) {
     header_t *f = (header_t *)h;
     f->flags = HEADER_LOCKED;
 
     return f->memory;
 }
-void *rmweaklock(handle_t *h) {
+void *rmweaklock(handle_t h) {
     header_t *f = (header_t *)h;
     f->flags = HEADER_WEAK_LOCKED;
     
     return f->memory;
 }
 
-void rmunlock(handle_t *h) {
+void rmunlock(handle_t h) {
     header_t *f = (header_t *)h;
     f->flags = HEADER_UNLOCKED;
 }

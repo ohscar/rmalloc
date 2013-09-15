@@ -6,10 +6,10 @@ all: plot_dlmalloc plot_rmalloc
 COMPACT_OBJS=../compact/compact.o ../compact/listsort.o
 SOURCES=plot.cpp plot.h #../../compact/compact.c ../../compact/listsort.c
 
-CFLAGS=-std=gnu++11 -I..
+CFLAGS=-std=gnu++11 -I.. -I../compact
 
-#FLAGS+=-g -O0
-CFLAGS+=-O3 -march=core2
+CFLAGS+=-g -O0
+#CFLAGS+=-O3 -march=core2
 
 WARNFLAGS=-Wshadow
 

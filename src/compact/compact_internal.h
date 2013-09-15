@@ -1,18 +1,20 @@
 #ifndef __compact_internal_h
 #define __compact_internal_h
 
+#include <stdint.h>
+
 /* header, see compact.h
  */
 
 #define HEADER_FREE_BLOCK   0
-#define HEADER_UNLOCKED     1
-#define HEADER_LOCKED       2
-#define HEADER_WEAK_LOCKED  3
+#define HEADER_UNLOCKED     (1<<0)
+#define HEADER_LOCKED       (1<<1)
+#define HEADER_WEAK_LOCKED  (1<<2)
 
 typedef struct header_t {
     void *memory;
     int size;
-    int flags;
+    uint8_t flags;
 
     struct header_t *next;
 } header_t;

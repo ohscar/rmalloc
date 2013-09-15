@@ -5,6 +5,8 @@ all: compact.o listsort.o
 SOURCES=listsort.c compact.c
 CFLAGS=-std=gnu99
 
+CFLAGS+=-g -O0
+
 .c.o:
 	g++ -c $(CFLAGS) $<
 

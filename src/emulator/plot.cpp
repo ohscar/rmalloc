@@ -13,6 +13,7 @@
  * duplicate entries (two or more successive SLM on the same handle) are discarded.
  */
 #include "plot.h"
+#include "compact.h"
 
 #include <inttypes.h>
 #include <limits.h>
@@ -37,7 +38,9 @@ typedef std::map<uint32_t, void *> handle_pointer_map_t;
 typedef std::map<void *, uint32_t> pointer_size_map_t;
 typedef std::map<uint32_t, uint32_t> handle_count_map_t;
 typedef std::map<uint32_t, float> operation_percent_map_t;
+typedef std::map<void *, void *> block_address_map_t;
 
+static handle_pointer_map_t g_handle_to_address;
 static handle_pointer_map_t g_handles;
 static pointer_size_map_t g_sizes;
 
@@ -439,29 +442,32 @@ void alloc_driver_fragmentation(FILE *fp, int num_handles, uint8_t *heap, uint32
                     break;
                 case 'N': {
                     //putchar('.');
-                    void *ptr = user_malloc(size, handle, &op_time);
+                    void *memaddress = NULL;
+                    void *ptr = user_malloc(size, handle, &op_time, &memaddress);
                     //fprintf(stderr, "NEW handle %d of size %d to 0x%X\n", handle, size, (uint32_t)ptr);
-                    if ((uint32_t)ptr > (uint32_t)g_highest_address)
-                        g_highest_address = (uint8_t *)ptr;
+                    if ((uint32_t)memaddress > (uint32_t)g_highest_address)
+                        g_highest_address = (uint8_t *)memaddress;
 
+                    g_handle_to_address[handle] = memaddress;
                     g_handles[handle] = ptr;
                     g_sizes[g_handles[handle]] = size;
 
                     // XXX when to call register_op() and do coloring?
                     if (ptr == NULL) {
                         if (user_handle_oom(size)) {
-                            ptr = user_malloc(size, handle, &op_time);
+                            ptr = user_malloc(size, handle, &op_time, &memaddress);
                             if (NULL == ptr) {
                                 oom("\n\nOOM!\n");
                             }
                             g_handles[handle] = ptr;
-                            register_op(OP_ALLOC, handle, ptr, size);
+                            register_op(OP_ALLOC, handle, memaddress, size);
                             g_sizes[g_handles[handle]] = size;
                         } else {
                             oom("\n\nOOM!\n");
                         }
                     } else {
-                        register_op(OP_ALLOC, handle, ptr, size);
+                        // FIXME: Recalculate all ops after compact?
+                        register_op(OP_ALLOC, handle, memaddress, size);
                     }
                     scan_heap_update_colormap(false/*create_plot*/);
                     print_after_malloc_stats(g_handles[handle], address, size);
@@ -474,8 +480,9 @@ void alloc_driver_fragmentation(FILE *fp, int num_handles, uint8_t *heap, uint32
                     void *ptr = g_handles[handle];
                     int s = g_sizes[g_handles[handle]];
                     //fprintf(stderr, "FREE handle %d of size %d at 0x%X\n", handle, s, (uint32_t)ptr);
+                    void *memaddress = g_handle_to_address[handle];
 
-                    register_op(OP_FREE, handle, ptr, s);
+                    register_op(OP_FREE, handle, memaddress, s);
                     user_free(ptr, handle, &op_time);
                     scan_heap_update_colormap(false/*create_plot*/);
 
@@ -503,7 +510,7 @@ uint32_t calculate_maxmem(uint8_t op) {
     void *p = NULL;
     while (size > 0) {
         uint32_t dummy_op_time;
-        p = user_malloc(size, handle, &dummy_op_time);
+        p = user_malloc(size, handle, &dummy_op_time, NULL);
         if (p != NULL)
             break;
         size -= MAXMEM_STEP;
@@ -560,30 +567,32 @@ void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap
                     break;
                 case 'N': {
                     //putchar('.');
-                    void *ptr = user_malloc(size, handle, &op_time);
+                    void *memaddress = NULL;
+                    void *ptr = user_malloc(size, handle, &op_time, &memaddress);
                     //fprintf(stderr, "NEW handle %d of size %d to 0x%X\n", handle, size, (uint32_t)ptr);
-                    if ((uint32_t)ptr > (uint32_t)g_highest_address)
-                        g_highest_address = (uint8_t *)ptr;
+                    if ((uint32_t)memaddress > (uint32_t)g_highest_address)
+                        g_highest_address = (uint8_t *)memaddress;
 
+                    g_handle_to_address[handle] = memaddress;
                     g_handles[handle] = ptr;
                     g_sizes[g_handles[handle]] = size;
 
                     // XXX when to call register_op() and do coloring?
                     if (ptr == NULL) {
                         if (user_handle_oom(size)) {
-                            ptr = user_malloc(size, handle, &op_time);
+                            ptr = user_malloc(size, handle, &op_time, NULL);
                             if (NULL == ptr) {
                                 was_oom = true;
                             } else {
                                 g_handles[handle] = ptr;
-                                register_op(OP_ALLOC, handle, ptr, size);
+                                register_op(OP_ALLOC, handle, memaddress, size);
                                 g_sizes[g_handles[handle]] = size;
                             }
                         } else {
                             was_oom = true;
                         }
                     } else {
-                        register_op(OP_ALLOC, handle, ptr, size);
+                        register_op(OP_ALLOC, handle, memaddress, size);
                     }
                     print_after_malloc_stats(g_handles[handle], address, size);
 
@@ -617,7 +626,8 @@ void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap
                     int s = g_sizes[g_handles[handle]];
                     //fprintf(stderr, "FREE handle %d of size %d at 0x%X\n", handle, s, (uint32_t)ptr);
 
-                    register_op(OP_FREE, handle, ptr, s);
+                    void *memaddress = g_handle_to_address[handle];
+                    register_op(OP_FREE, handle, memaddress, s);
                     user_free(ptr, handle, &op_time);
 
                     print_after_free_stats(address, s);
@@ -692,31 +702,33 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                     break;
                 case 'N': {
                     //putchar('.');
-                    void *ptr = user_malloc(size, handle, &op_time);
+                    void *memaddress = NULL;
+                    void *ptr = user_malloc(size, handle, &op_time, &memaddress);
                     //fprintf(stderr, "NEW handle %d of size %d to 0x%X\n", handle, size, (uint32_t)ptr);
-                    if ((uint32_t)ptr > (uint32_t)g_highest_address)
-                        g_highest_address = (uint8_t *)ptr;
+                    if ((uint32_t)memaddress > (uint32_t)g_highest_address)
+                        g_highest_address = (uint8_t *)memaddress;
 
+                    g_handle_to_address[handle] = memaddress;
                     g_handles[handle] = ptr;
                     g_sizes[g_handles[handle]] = size;
 
                     // XXX when to call register_op() and do coloring?
                     if (ptr == NULL) {
                         if (user_handle_oom(size)) {
-                            ptr = user_malloc(size, handle, &op_time);
+                            ptr = user_malloc(size, handle, &op_time, &memaddress);
                             if (NULL == ptr) {
                                 oom("\n\nOOM!\n");
                             }
-                            if ((uint32_t)ptr > (uint32_t)g_highest_address)
-                                g_highest_address = (uint8_t *)ptr;
+                            if ((uint32_t)memaddress > (uint32_t)g_highest_address)
+                                g_highest_address = (uint8_t *)memaddress;
                             g_handles[handle] = ptr;
-                            register_op(OP_ALLOC, handle, ptr, size);
+                            register_op(OP_ALLOC, handle, memaddress, size);
                             g_sizes[g_handles[handle]] = size;
                         } else {
                             oom("\n\nOOM!\n");
                         }
                     } else {
-                        register_op(OP_ALLOC, handle, ptr, size);
+                        register_op(OP_ALLOC, handle, memaddress, size);
                     }
 
                 } break;
@@ -726,7 +738,9 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                     int s = g_sizes[g_handles[handle]];
                     //fprintf(stderr, "FREE handle %d of size %d at 0x%X\n", handle, s, (uint32_t)ptr);
 
-                    register_op(OP_FREE, handle, ptr, s);
+                    void *memaddress = g_handle_to_address[handle];
+
+                    register_op(OP_FREE, handle, memaddress, s);
                     user_free(ptr, handle, &op_time);
 
                     print_after_free_stats(address, s);

@@ -71,7 +71,7 @@ extern bool user_init(uint32_t heap_size, void *heap, void *colormap, char *name
 extern void user_destroy();
 extern void user_reset(); // basically destroy + init
 extern bool user_handle_oom(int size); // number of bytes tried to be allocated, return true if <size> bytes could be compacted.
-extern void *user_malloc(int size, uint32_t handle, uint32_t *op_time);
+extern void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddress);
 extern void user_free(void *, uint32_t handle, uint32_t *op_time);
 extern void user_lock(void *);
 extern void user_unlock(void *);

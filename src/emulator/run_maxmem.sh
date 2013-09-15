@@ -20,9 +20,8 @@ export DATAPOINTS=1500 # requested -- will be adjusted down if neccessary.
 export opsfile=$1
 export RESULTFILE=$(basename $opsfile)-allocstats
 
-echo -n "Calculating peak mem... "
+echo -n "Calculating theoretical peak mem used by the allocator... "
 # XXX: re-enable this
-#peakmem=50485760
 export peakmem=$($ALLOCATOR --peakmem $opsfile 2> /dev/null)
 export theory_peakmem=$peakmem
 
@@ -33,33 +32,8 @@ echo "$theory_peakmem bytes"
 # alright, try to figure out how small we can make peakmem while still not getting OOMs.
 # this could take some time...
 
-# done=0
-# count=$(wc -l $opsfile | awk '{print $1}')
-# while [[ "$done" != "1" ]]; do
-#     for i in $(seq 0 $count); do
-#         $ALLOCATOR --maxmem $opsfile $i $peakmem $theory_peakmem > /dev/null 2>&1
-#         status=$?
-#         if [[ "$status" == "2" ]]; then
-#             # oom, bump by 5% and retry.
-#             peakmem=$(echo "$peakmem*1.05/1" | bc)
-#             echo
-#             echo "OOM! Bump by 5% up to $peakmem bytes\n"
-#             break
-#         fi
-#         echo -ne "\r                               \r$i / $count "
-#         #echo -n "."
-#         #echo "$ALLOCATOR --maxmem $opsfile $i (of $count) $peakmem (of theoretical $theory_peakmem) => exit code $status"
-#     done
-    # if we've reached this point, we didn't have an OOM. yay.
-#     # proceed.
-#     break
-# done
-# # delete file after. it is no longer of interest
-# echo > dlmalloc.alloc-stats
-
 done=0
 fullcount=$(wc -l $opsfile | awk '{print $1}')
-
 
 echo "fullcount = $fullcount"
 
@@ -70,12 +44,9 @@ echo "ops_count (N/F ops) = $OPS_COUNT"
 while [[ "$done" != "1" ]]; do
     echo "calculating maxmem for $peakmem"
 
-    # XXX: re-enable this later.
-
     #echo $ALLOCATOR --maxmem $opsfile $fullcount $peakmem $theory_peakmem
     $ALLOCATOR --maxmem $opsfile $RESULTFILE $fullcount $peakmem $theory_peakmem > /dev/null 2>&1
     status=$?
-    #if [[ "$status" == "2" ]]; then # don't test for 2, in case of crash - test for 0.
     if [[ "$status" != "0" ]]; then
         # oom, bump by 5% and retry.
         peakmem=$(echo "$peakmem*1.05/1" | bc)
@@ -83,8 +54,6 @@ while [[ "$done" != "1" ]]; do
         echo "OOM! Bump by 5% up to $peakmem bytes\n"
     else
         break
-        #echo -n "."
-        #echo "$ALLOCATOR --maxmem $opsfile $i (of $count) $peakmem (of theoretical $theory_peakmem) => exit code $status"
     fi
 done
 

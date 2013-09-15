@@ -40,11 +40,12 @@ typedef void *handle_t;
 void rminit(void *heap, uint32_t size);
 void rmdestroy();
 
-handle_t *rmmalloc(int size);
-void rmfree(handle_t *);
-void *rmlock(handle_t *);
-void *rmweaklock(handle_t *);
-void rmunlock(handle_t *);
+handle_t rmmalloc(int size);
+void rmfree(handle_t);
+void *rmlock(handle_t);
+void *rmweaklock(handle_t);
+void rmunlock(handle_t);
+void rmcompact(int maxtime);
 
 /* internal */
 
