@@ -62,5 +62,6 @@ header_t *block_free(header_t *header);
 
 uint32_t rmstat_total_free_list();
 uint32_t rmstat_largest_free_block();
+void *rmstat_highest_used_address();
 
 #endif // __compact_h

@@ -83,7 +83,7 @@ void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddres
     *op_time = 3;
 
     if (memaddress != NULL)
-        *memaddress = ptr;
+        *memaddress = (ptr + size);
 
     return ptr;
 }
@@ -136,6 +136,10 @@ void user_reset(void) {
     g_handles.clear();
     g_count.clear();
     user_init(g_original_size, g_heap, /*colormap, unused*/NULL, buffer);
+}
+
+void *user_highest_address(void) {
+    return NULL;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////

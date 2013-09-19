@@ -15,6 +15,11 @@ WARNFLAGS=-Wshadow
 
 CFLAGS += $(WARNFLAGS)  -std=gnu++0x
 
+ifneq ($(COMPACTING),)
+	CFLAGS += -DCOMPACTING
+endif
+
+
 ../compact/compact.o: ../compact/compact.c
 	make -C ../compact
 
@@ -39,3 +44,5 @@ plot_optimal: plot_optimal.cpp $(SOURCES)
 clean:
 	rm -rf plot_cmalloc plot_dlmalloc plot_optimal *.o
 
+settings:
+	@echo COMPACTING=1 for automatic compacting after free().

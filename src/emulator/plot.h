@@ -75,6 +75,7 @@ extern void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **me
 extern void user_free(void *, uint32_t handle, uint32_t *op_time);
 extern void user_lock(void *);
 extern void user_unlock(void *);
+extern void *user_highest_address(void); // what is the highest address allocated? NULL if not accessible.
 
 /* driver code */
 

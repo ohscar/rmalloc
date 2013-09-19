@@ -58,6 +58,15 @@ void sanity() {
 }
 
 
+static void full_compact(void)
+{
+#ifdef COMPACTING
+    // Full compact!
+    int COMPACT_TIME = 50000;
+    rmcompact(COMPACT_TIME);
+#endif // COMPACTING
+}
+
 
 
 
@@ -73,10 +82,8 @@ void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddres
         return NULL;
     }
 
-    // only used temporarily to get the highest memory address
-    
     if (memaddress != NULL)
-        *memaddress = ((header_t *)block)->memory;
+        *memaddress = size + ((header_t *)block)->memory;
 
     g_handle_to_block[handle] = block;
     fprintf(stderr, "==> NEW %3d => 0x%X\n", handle, block);
@@ -95,77 +102,8 @@ void user_free(void *ptr, uint32_t handle, uint32_t *op_time) {
     rmfree(block);
 
     // is compacting considered cheating?
+    //full_compact();
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#if 0
-void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddress) {
-    g_memory_usage += size*0.9; // XXX: *0.9 is bogus, should be just size. for plot testing purposes!
-
-    handle_t block = rmalloc(size);
-    if (block == NULL)
-        return NULL;
-    *memaddress = rmlock(block);
-    if (*memaddress == NULL)
-        return NULL;
-
-    //printf("|| h == (void *)0x%X // MALLOC, heap start %x, heap end %x\n", (uint32_t)ptr, (uint32_t)g_heap, (uint32_t)g_heap_end);
-    g_handles[block] = handle;
-    g_pointer_block_map[*memaddress] = block;
-
-    g_handle_pointer[block] = handle;
-
-    if (g_count.find(block) == g_count.end())
-        g_count[block] = 1;
-    else {
-        g_count[block] += 1;
-        if (g_count[ptr] > 1)
-            fprintf(stderr, "Double malloc for handle %d\n", handle); // FIXME: this test should be here.
-    }
-
-#ifdef DEBUG
-    sanity();
-#endif
-    
-    g_malloc++;
-
-    *op_time = 3;
-
-    return ptr;
-}
-
-void user_free(void *ptr, uint32_t handle, uint32_t *op_time) {
-    unsigned long size = g_handles[ptr];
-    handle_t block = g_pointer_block_map[ptr];
-    g_memory_usage -= size;
-
-    g_count[block] -= 1;
-    g_free++;
-
-#ifdef DEBUG
-    sanity();
-#endif
-
-    //dlfree(ptr);
-}
-#endif
 
 void user_lock(void *h) {
 }
@@ -178,11 +116,12 @@ void user_destroy() {
 }
 
 bool user_handle_oom(int size) {
+    full_compact();
+
     return true;
 }
 
 void user_paint(void) {
-    
 }
 
 bool user_init(uint32_t heap_size, void *heap, void *colormap, char *name) {
@@ -203,6 +142,13 @@ void user_reset(void) {
     g_handles.clear();
     g_count.clear();
     user_init(g_original_size, g_heap, /*colormap, unused*/NULL, buffer);
+}
+
+void *user_highest_address(void) {
+    // TODO: Implement me!
+
+    return rmstat_highest_used_address();
+    //return NULL;
 }
 
 

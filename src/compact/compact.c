@@ -794,6 +794,26 @@ uint32_t rmstat_largest_free_block() {
     return largest;
 }
 
+void *rmstat_highest_used_address() {
+    void *highest = NULL;
+    
+    header_t *h = g_header_root;
+
+    //printf("Highest: ");
+    while (h != NULL) {
+        if (h->flags != HEADER_FREE_BLOCK) {
+            //printf("*%p ", h->memory);
+            if (h->size + (uint8_t *)h->memory > highest)
+                highest = h->size + (uint8_t *)h->memory;
+        } else
+            ;//printf("%p ", h->memory);
+        h = h->next;
+    }
+    //printf("\n");
+
+    return highest;
+}
+
 void header_sort_all() {
     fprintf(stderr, "g_header_root before header_sort_all(): %p\n", g_header_root);
     g_header_root = header__sort(g_header_root, header__cmp);
