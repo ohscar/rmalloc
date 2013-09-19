@@ -44,7 +44,8 @@ echo "ops_count (N/F ops) = $OPS_COUNT"
 while [[ "$done" != "1" ]]; do
     echo "calculating maxmem for $peakmem"
 
-    #echo $ALLOCATOR --maxmem $opsfile $fullcount $peakmem $theory_peakmem
+    #echo "($ALLOCATOR)--maxmem ($opsfile) ($RESULTFILE) ($fullcount) ($peakmem) ($theory_peakmem)"
+    #echo $ALLOCATOR --maxmem $opsfile $RESULTFILE $fullcount $peakmem $theory_peakmem
     $ALLOCATOR --maxmem $opsfile $RESULTFILE $fullcount $peakmem $theory_peakmem > /dev/null 2>&1
     status=$?
     if [[ "$status" != "0" ]]; then
