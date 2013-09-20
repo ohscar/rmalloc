@@ -9,16 +9,11 @@ ifneq ($(COMPACTING),)
 	RMALLOC_BINARY=plot_rmalloc_compacting
 endif
 
-ifneq ($(DEBUG),)
-	CFLAGS += -DDEBUG
-endif
-
-
 #all: plot_optimal plot_dlmalloc plot_rmalloc
 all: $(RMALLOC_BINARY) plot_dlmalloc
 all: CFLAGS += -O3 -march=core2
 
-debug: CFLAGS += -g -O0
+debug: CFLAGS += -g -DDEBUG # -O0
 debug: plot_dlmalloc $(RMALLOC_BINARY)
 
 COMPACT_OBJS=../compact/compact.o ../compact/listsort.o

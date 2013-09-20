@@ -851,12 +851,18 @@ int main(int argc, char **argv) {
         }
     }
 
+    g_heap = (uint8_t *)malloc(g_heap_size);
+    while (g_heap == NULL) {
+        g_heap_size = (int)(0.9 * (float)g_heap_size);
+        g_heap = (uint8_t *)malloc(g_heap_size);
+    }
+    g_highest_address = g_heap;
+
     if (g_total_memory_consumption > 0) {
         g_heap_size = g_total_memory_consumption;
         g_colormap_size = g_heap_size/4;
     }
 
-    g_heap = (uint8_t *)malloc(g_heap_size);
     g_colormap = (uint8_t *)malloc(g_colormap_size);
 
     fpops = fopen64(g_opsfile, "rt");

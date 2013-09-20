@@ -18,6 +18,12 @@
 #include <sys/time.h>
 #include <inttypes.h>
 
+#if __x86_64__
+typedef uint64_t ptr_t;
+#else
+typedef uint32_t ptr_t;
+#endif
+
 /* client code */
 /*
  * colormap is a byte array of sizeof(g_heap)/4.

@@ -32,6 +32,13 @@ header_t *g_free_header_root;
 header_t *g_free_header_end; // always NULL as its last element.
 
 
+
+#if __x86_64__
+typedef uint64_t ptr_t;
+#else
+typedef uint32_t ptr_t;
+#endif
+
 #define fprintf(...) 
 #define fputc(...)
 
@@ -152,13 +159,7 @@ inline header_t *header_new(bool insert_in_list, bool override) {
         if (insert_in_list && header->next == NULL && header != g_header_root) {
             header->next = g_header_root;
 
-            //fprintf(stderr, "g_header_root = %p, next = %p, header = %p -then- ", g_header_root, g_header_root->next, header);
-            if ((int)header == 0xb7cf0848) {
-                fprintf(stderr, "setting g_header_root to 0xb7cf0848\n");
-                //abort();
-            }
             g_header_root = header;
-            //fprintf(stderr, "g_header_root = %p, next = %p, header = %p\n", g_header_root, g_header_root->next, header);
         }
 
     }
@@ -827,13 +828,81 @@ void header_sort_all() {
     g_header_root = header__sort(g_header_root, header__cmp);
 }
 
+
+inline uint8_t header_fillchar(header_t *h) {
+    return (ptr_t)h & 0xFF;
+}
+
+static uint32_t get_block_count(uint32_t *free_count, uint32_t *locked_count, uint32_t *unlocked_count, uint32_t *weaklocked_count)
+{
+    header_t *node = g_header_root;
+    uint32_t count = 0;
+
+    while (node != NULL) {
+        if (node->flags == HEADER_FREE_BLOCK && free_count != NULL)
+            *free_count += 1;
+        else if (node->flags == HEADER_LOCKED && locked_count != NULL)
+            *locked_count += 1;
+        else if (node->flags == HEADER_UNLOCKED && unlocked_count != NULL) {
+            *unlocked_count += 1;
+            count++;
+        }
+        else if (node->flags == HEADER_WEAK_LOCKED && weaklocked_count != NULL)
+            *weaklocked_count += 1;
+
+        node = node->next;
+    }
+    return count;
+}
+static bool assert_memory_contents(header_t *h)
+{
+    uint8_t c = header_fillchar(h);
+    uint8_t *memory = (uint8_t *)h->memory;
+
+    for (int i=0; i<h->size; i++)
+        if (memory[i] != c)
+            return false;
+
+    return true;
+}
+
+
+static void assert_blocks() {
+    header_t *node = g_header_root;
+
+    while (node != NULL) {
+        if (node->flags != HEADER_FREE_BLOCK && assert_memory_contents(node) == false)
+        {
+            uint8_t c = header_fillchar(node);
+            abort();
+        }
+
+        node = node->next;
+    }
+}
+
+
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define WITH_ITER(h, init, body...) {header_t *h = init; while (h != NULL) {body; h = h->next;}}
 
 /* compacting */
 void rmcompact(int maxtime) {
-
 #ifdef DEBUG
+    uint32_t start_free = 0, start_locked = 0, start_unlocked = 0;
+    uint32_t end_free = 0, end_locked = 0, end_unlocked = 0;
+    uint32_t start_count = 0, end_count = 0;
+    get_block_count(&start_free, &start_locked, &start_unlocked, NULL);
+
+    {
+    header_t *h2 = g_header_root;
+    start_count = 0;
+    while (h2 != NULL) {
+        if (h2->flags == HEADER_UNLOCKED && h2->memory != NULL)
+            start_count++;
+        h2 = h2->next;
+    }
+    }
+
     fprintf(stderr, "******************** compact started (g_header_root = %p).\n", g_header_root);
 
     // print map
@@ -855,7 +924,6 @@ void rmcompact(int maxtime) {
         h = h->next;
     }}
     fputc('\n', stderr);
-    header_sort_all();
 #endif
 
 
@@ -1545,7 +1613,7 @@ void rmcompact(int maxtime) {
         h = h->next;
     }
 
-#ifdef DEBUG
+#if 0 // #ifdef DEBUG
     for (int i=0; i<g_free_block_slot_count; i++)
     {
         fprintf(stderr, "free block slot [%d] (size %d) = %p (header size %d)\n", i, 1<<i, g_free_block_slots[i],
@@ -1553,8 +1621,32 @@ void rmcompact(int maxtime) {
            
     }
 
-
     freeblock_verify_lower_size();
+
+#endif
+
+
+#ifdef DEBUG
+    {
+    header_t *h3 = g_header_root;
+    end_count = 0;
+    while (h3 != NULL) {
+        if (h3->flags == HEADER_UNLOCKED && h3->memory != NULL)
+            end_count++;
+        h3 = h3->next;
+    }
+    }
+
+    if (end_count != start_count)
+        abort();
+
+    get_block_count(&end_free, &end_locked, &end_unlocked, NULL);
+
+    //if (end_locked != start_locked || end_unlocked != start_unlocked)
+    if (end_unlocked != start_unlocked)
+        abort();
+
+    assert_blocks();
 #endif
 }
 
@@ -1596,6 +1688,8 @@ void rmdestroy() {
 
 handle_t rmmalloc(int size) {
     header_t *h = block_new(size);
+
+    memset(h->memory, header_fillchar(h), h->size);
 
     if (h == NULL)
         fprintf(stderr, "h = NULL.\n");
