@@ -63,7 +63,7 @@ void sanity() {
 static void full_compact(void)
 {
 #ifdef COMPACTING
-    int COMPACT_TIME = 500;
+    int COMPACT_TIME = 0;
     rmcompact(COMPACT_TIME);
 #endif // COMPACTING
 }

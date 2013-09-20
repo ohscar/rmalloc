@@ -548,7 +548,6 @@ void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap
         if (op == 'L' || op == 'M' || op == 'S')
             op = 'A';
 
-        if (op == 0)
             continue;
 
         if (handle == old_handle && op == 'A' && old_op == 'A') {
@@ -689,7 +688,7 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
         if (op == 'L' || op == 'M' || op == 'S')
             op = 'A';
 
-        if (op == 0)
+        if (op == 0 || r == 0)
             continue;
 
         if (current_op % 100000 == 0)
@@ -758,11 +757,11 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
 
                     void *memaddress = g_handle_to_address[handle];
 
-                    if (current_free++ % 100 == 0)
-                        user_handle_oom(size);
-
                     register_op(OP_FREE, handle, memaddress, s);
                     user_free(ptr, handle, &op_time);
+
+                    if (current_free++ % 100 == 0)
+                        user_handle_oom(size);
 
                     print_after_free_stats(address, s);
 
