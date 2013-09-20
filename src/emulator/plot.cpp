@@ -669,7 +669,7 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
 
     // For each op, try to allocate as large a block as possible.
     // Then, go to next op.
-    uint32_t current_op = 0;
+    uint32_t current_op = 0, current_free = 0;
 
     while (!done && !feof(fp)) {
         char line[128];
@@ -683,7 +683,7 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
             op = 'A';
 
         if (current_op % 100000 == 0)
-            fprintf(stderr, "\rOp %d - heap usage %d K                                ", current_op, g_highest_address-g_heap);
+            fprintf(stderr, "\rOp %d - heap usage %d K                                ", current_op, (g_highest_address-g_heap)/1024);
 
         if (handle == old_handle && op == 'A' && old_op == 'A') {
             // skip
@@ -747,7 +747,9 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                     //fprintf(stderr, "FREE handle %d of size %d at 0x%X\n", handle, s, (uint32_t)ptr);
 
                     void *memaddress = g_handle_to_address[handle];
-                    user_handle_oom(size);
+
+                    if (current_free++ % 100 == 0)
+                        user_handle_oom(size);
 
                     register_op(OP_FREE, handle, memaddress, s);
                     user_free(ptr, handle, &op_time);
