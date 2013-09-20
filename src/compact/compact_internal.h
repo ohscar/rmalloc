@@ -6,6 +6,12 @@
 /* header, see compact.h
  */
 
+#if __x86_64__
+typedef uint64_t ptr_t;
+#else
+typedef uint32_t ptr_t;
+#endif
+
 #define HEADER_FREE_BLOCK   0
 #define HEADER_UNLOCKED     (1<<0)
 #define HEADER_LOCKED       (1<<1)
@@ -30,9 +36,9 @@ typedef struct free_memory_block_t {
 extern "C" {
 #endif // __cplusplus
 
-typedef int (*compare_cb)(void *a, void *b);
+typedef ptr_t (*compare_cb)(void *a, void *b);
 header_t *header__sort(header_t *list, /* int is_circular, int is_double, */ compare_cb cmp);
-int header__cmp(void *a, void *b);
+ptr_t header__cmp(void *a, void *b);
 
 #ifdef __cplusplus
 }

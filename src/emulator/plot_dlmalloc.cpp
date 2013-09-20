@@ -83,7 +83,7 @@ void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddres
     *op_time = 3;
 
     if (memaddress != NULL)
-        *memaddress = (ptr + size);
+        *memaddress = (void *)((ptr_t)ptr + size);
 
     return ptr;
 }
@@ -127,7 +127,7 @@ bool user_init(uint32_t heap_size, void *heap, void *colormap, char *name) {
     g_original_size = heap_size;
     g_heap_size = heap_size;
     g_heap_end = g_heap;
-    g_heap_top = (uint8_t *)((uint32_t)g_heap_end + heap_size);
+    g_heap_top = (uint8_t *)((ptr_t)g_heap_end + heap_size);
     g_colormap = colormap;
 }
 
@@ -165,13 +165,13 @@ void *user_sbrk(int incr)
 
     incr = (incr + 3) & ~3; // align to 4-byte boundary
 
-    if ((uint32_t)g_heap_end + incr > (uint32_t)g_heap_top)
+    if ((ptr_t)g_heap_end + incr > (ptr_t)g_heap_top)
     {
         errno = ENOMEM;
         return (void*)-1;
     }
 
-    g_heap_end = (void *)((uint32_t)g_heap_end + incr);
+    g_heap_end = (void *)((ptr_t)g_heap_end + incr);
 
     return (caddr_t) prev_heap_end;
 }

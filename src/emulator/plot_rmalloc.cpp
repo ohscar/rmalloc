@@ -84,7 +84,7 @@ void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddres
     }
 
     if (memaddress != NULL)
-        *memaddress = size + ((header_t *)block)->memory;
+        *memaddress = (void *)(size + (ptr_t)(((header_t *)block)->memory));
 
     g_handle_to_block[handle] = block;
     if (g_count.find(handle) == g_count.end())
@@ -146,7 +146,7 @@ bool user_init(uint32_t heap_size, void *heap, void *colormap, char *name) {
     g_original_size = heap_size;
     g_heap_size = heap_size;
     g_heap_end = g_heap;
-    g_heap_top = (uint8_t *)((uint32_t)g_heap_end + heap_size);
+    g_heap_top = (uint8_t *)((ptr_t)g_heap_end + heap_size);
     g_colormap = colormap;
 
     rminit(heap, heap_size);

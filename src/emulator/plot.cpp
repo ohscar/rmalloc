@@ -338,7 +338,7 @@ void heap_colormap_init() {
 
 void register_op(int op, int handle, void *ptr, int ptrsize) {
     // ptr will be within g_heap
-    uint32_t offset = (uint32_t)ptr - (uint32_t)g_heap;
+    ptr_t offset = (ptr_t)ptr - (ptr_t)g_heap;
     uint32_t size = g_sizes[ptr];
 
     int cs = ceil((float)size/4.0); 
@@ -356,7 +356,7 @@ void register_op(int op, int handle, void *ptr, int ptrsize) {
         pp[i] = heap_fill;
 
     uint8_t color = (op == OP_ALLOC) ? COLOR_RED : COLOR_GREEN;
-    memset((void *)((uint32_t)g_colormap+co), color, ps);
+    memset((void *)((ptr_t)g_colormap+co), color, ps);
 
 }
 
@@ -445,7 +445,7 @@ void alloc_driver_fragmentation(FILE *fp, int num_handles, uint8_t *heap, uint32
                     void *memaddress = NULL;
                     void *ptr = user_malloc(size, handle, &op_time, &memaddress);
                     //fprintf(stderr, "NEW handle %d of size %d to 0x%X\n", handle, size, (uint32_t)ptr);
-                    if ((uint32_t)memaddress > (uint32_t)g_highest_address)
+                    if ((ptr_t)memaddress > (ptr_t)g_highest_address)
                         g_highest_address = (uint8_t *)memaddress;
 
                     g_handle_to_address[handle] = memaddress;
@@ -586,7 +586,7 @@ void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap
                     }
 
                     if (was_oom == false) {
-                        if ((uint32_t)memaddress > (uint32_t)g_highest_address)
+                        if ((ptr_t)memaddress > (ptr_t)g_highest_address)
                             g_highest_address = (uint8_t *)memaddress;
 
                         g_handle_to_address[handle] = memaddress;
@@ -724,12 +724,12 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
 
                     void *maybe_highest = user_highest_address();
                     if (maybe_highest != NULL) {
-                        uint32_t highest = (uint32_t)maybe_highest - (uint32_t)g_heap;
+                        ptr_t highest = (ptr_t)maybe_highest - (ptr_t)g_heap;
                         g_highest_address = (uint8_t *)maybe_highest;
                     } else
                     {
                         //fprintf(stderr, "NEW handle %d of size %d to 0x%X\n", handle, size, (uint32_t)ptr);
-                        if ((uint32_t)memaddress > (uint32_t)g_highest_address)
+                        if ((ptr_t)memaddress > (ptr_t)g_highest_address)
                             g_highest_address = (uint8_t *)memaddress;
                     }
 
@@ -768,7 +768,7 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
     user_handle_oom(0);
     void *maybe_highest = user_highest_address();
     if (maybe_highest != NULL) {
-        uint32_t highest = (uint32_t)maybe_highest - (uint32_t)g_heap;
+        ptr_t highest = (ptr_t)maybe_highest - (ptr_t)g_heap;
         g_highest_address = (uint8_t *)maybe_highest;
     }
 }
@@ -787,7 +787,7 @@ void plot_report(unsigned long largest_allocatable_block) {
 }
 
 int colormap_print(char *output) {
-    int end = ((uint32_t)g_highest_address-(uint32_t)g_heap)/4;
+    int end = ((ptr_t)g_highest_address-(ptr_t)g_heap)/4;
     //int end = g_colormap_size;
 #define putchar(x) (void)x
     putchar("\n"); putchar('[');
@@ -911,7 +911,7 @@ int main(int argc, char **argv) {
         user_destroy();
         fclose(fpops);
         fclose(fpstats);
-        printf("%u\n", g_highest_address - g_heap);
+        printf("%lu\n", g_highest_address - g_heap);
         return 0;
     }
 
@@ -925,7 +925,7 @@ int main(int argc, char **argv) {
     pointer_size_map_t::iterator it;
     for (it=g_pointer_free.begin(); it != g_pointer_free.end(); it++) 
         if (it->second != 1)
-            fprintf(stderr, "Pointer %x free'd %d times\n", (uint32_t)it->first, it->second);
+            fprintf(stderr, "Pointer %x free'd %d times\n", (ptr_t)it->first, it->second);
     }
     {
     handle_count_map_t::iterator it;
@@ -934,7 +934,7 @@ int main(int argc, char **argv) {
             fprintf(stderr, "Handle %d free'd %d times\n", it->first, it->second);
     }
 
-    fprintf(stderr, "highest address: 0x%X adjusted for heap start = %d kb\n", (uint32_t)g_highest_address, ((uint32_t)g_highest_address - (uint32_t)g_heap) / 1024);
+    fprintf(stderr, "highest address: 0x%X adjusted for heap start = %d kb\n", (ptr_t)g_highest_address, ((ptr_t)g_highest_address - (ptr_t)g_heap) / 1024);
 
 
     {

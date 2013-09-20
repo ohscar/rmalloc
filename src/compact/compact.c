@@ -122,10 +122,6 @@ void freeblock_verify_lower_size() {
 
 inline header_t *header_new(bool insert_in_list, bool override) {
     header_t *header = header_find_free();
-    if ((int)header == 0xb7cf0848) {
-        fprintf(stderr, "header_find_free() => 0xb7cf0848\n");
-        //abort();
-    }
     if (!header) {
         // keep one spare for the call in compact().
         // FIXME: keep one extra spare since bottom is the last one allocated,
@@ -137,18 +133,10 @@ inline header_t *header_new(bool insert_in_list, bool override) {
         if (g_header_bottom-limit > g_memory_top) {
             g_header_bottom--;
             header = g_header_bottom;
-            if ((int)header == 0xb7cf0848) {
-                fprintf(stderr, "header_find_free() => 0xb7cf0848\n");
-                //abort();
-            }
         } else {
             header = NULL;
             for (header_t *h = g_header_top; h != g_header_bottom; h--) {
                 //fprintf(stderr, "header #%d memory %p\n", g_header_top-h, h->memory);
-            }
-            if ((int)header == 0xb7cf0848) {
-                fprintf(stderr, "header_find_free() => 0xb7cf0848\n");
-                abort();
             }
         }
     }
@@ -642,7 +630,7 @@ inline header_t *freeblock_find(uint32_t size) {
             block = g_free_block_slots[k];
             g_free_block_slots[k] = block->next;
 
-            fprintf(stderr,"*1. %p -> %p (%c)?\n", block, block->header, (uint32_t)block->header&0x000000FF);
+            //fprintf(stderr,"*1. %p -> %p (%c)?\n", block, block->header, (block->header&0x000000FF));
 
             if (block->header->size > upper_size) {
                 // current next block. when moved, the next block will point to something else.
@@ -1663,14 +1651,14 @@ void rminit(void *heap, uint32_t size) {
     uint32_t count = sizeof(free_memory_block_t *)*g_free_block_slot_count;
     memset((void *)g_free_block_slots, 0, count);
 
-    g_memory_bottom = (void *)((uint32_t)heap + (uint32_t)(g_free_block_slot_count * sizeof(free_memory_block_t *)));
+    g_memory_bottom = (void *)(heap + (g_free_block_slot_count * sizeof(free_memory_block_t *)));
     g_memory_top = g_memory_bottom;
 
     g_free_header_root = NULL;
     g_free_header_end = NULL;
 
     //g_header_top = (header_t *)((uint32_t)heap + size);
-    g_header_top = (header_t *)((uint32_t)heap + size - sizeof(header_t));
+    g_header_top = (header_t *)(heap + size - sizeof(header_t));
     g_header_bottom = g_header_top;
     g_header_root = g_header_top;
     g_header_root->next = NULL;

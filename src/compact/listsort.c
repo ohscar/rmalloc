@@ -44,7 +44,7 @@
 #define FALSE 0
 #define TRUE 1
 
-int header__cmp(void *a, void *b) {
+ptr_t header__cmp(void *a, void *b) {
 
     header_t *x = (header_t *)a;
     header_t *y = (header_t *)b;
@@ -78,7 +78,7 @@ int header__cmp(void *a, void *b) {
     else if (y->memory == NULL)
         return -1;
     else
-        return (unsigned int)x->memory - (unsigned int)y->memory;
+        return (ptr_t)x->memory - (ptr_t)y->memory;
 }
 
 /*
