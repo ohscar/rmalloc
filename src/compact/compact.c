@@ -31,6 +31,10 @@ int g_header_used_count; // for spare headers in compact
 header_t *g_free_header_root;
 header_t *g_free_header_end; // always NULL as its last element.
 
+
+#define fprintf(...) 
+#define fputc(...)
+
 // code
 
 /* utility */
@@ -1472,7 +1476,8 @@ void rmcompact(int maxtime) {
                 int count = MAX(1, h->size/1024);
                 for (int i=0; i<count; i++) {
                     if (i==0)
-                        {fputc(h->flags == HEADER_FREE_BLOCK ? 'o' : 'O', stderr);fprintf(stderr, "(%p)(%c)(%p)", h, *(uint8_t *)h->memory, h->memory);}
+                        //{fputc(h->flags == HEADER_FREE_BLOCK ? 'o' : 'X', stderr);fprintf(stderr, "(%p)(%c)(%p)", h, *(uint8_t *)h->memory, h->memory);}
+                        {fputc(h->flags == HEADER_FREE_BLOCK ? 'o' : 'X', stderr);fprintf(stderr, "(%p)(%p)\n", h, h->memory);}
                     else
                     if (h->flags == HEADER_FREE_BLOCK)
                         fputc('_', stderr);
@@ -1487,6 +1492,7 @@ void rmcompact(int maxtime) {
     // rebuild free list
     memset((void *)g_free_block_slots, 0, sizeof(free_memory_block_t *) * g_free_block_slot_count);
 
+    uint32_t free_block_count = 0;
     header_t *h = g_header_root;
     while (h != NULL) {
         if (!h->memory || h->flags != HEADER_FREE_BLOCK) {
@@ -1496,6 +1502,9 @@ void rmcompact(int maxtime) {
 
         // just let the smaller headers be, in case there are any.
         if (h->size >= sizeof(free_memory_block_t)) {
+
+            free_block_count++;
+
             int k = log2_(h->size);
             free_memory_block_t *block = block_from_header(h);
 
@@ -1504,10 +1513,10 @@ void rmcompact(int maxtime) {
             // Since the free memory block slots is cleared, the blocks don't point at anything. 
             // How did this ever work?
             block->header = h; 
+            block->next = NULL;
 
 
-
-
+            // crash on g_free_block_slots[k]->next->header->size, because ->next->header == 0
             if (g_free_block_slots[k] == NULL)
                 g_free_block_slots[k] = block;
             else {

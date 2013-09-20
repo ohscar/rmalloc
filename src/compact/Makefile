@@ -1,11 +1,13 @@
 .PHONY: tests
 
 all: compact.o listsort.o
+all: CFLAGS += -O3 -march=core2
+
+debug: CFLAGS += -g -O0
+debug: compact.o listsort.o
 
 SOURCES=listsort.c compact.c
 CFLAGS=-std=gnu99
-
-CFLAGS+=-g -O0
 
 .c.o:
 	g++ -c $(CFLAGS) $<

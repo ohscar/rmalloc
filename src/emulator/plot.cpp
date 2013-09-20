@@ -76,7 +76,7 @@ uint8_t g_operation_mode;
 uint32_t g_oplimit = 0; // ./plot_foo --maxmem result.app-ops <n> # oplimit, 0 initial, then 1..N.
 
 
-#define HEAP_SIZE (64  * 1024*1024)
+#define HEAP_SIZE (1024  * 1024*1024) // 1 GB should be enough.
 
 
 uint32_t g_heap_size = HEAP_SIZE;
@@ -682,9 +682,13 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
         if (op == 'L' || op == 'M' || op == 'S')
             op = 'A';
 
+        if (current_op % 100000 == 0)
+            fprintf(stderr, "\rOp %d - heap usage %d K                                ", current_op, g_highest_address-g_heap);
+
         if (handle == old_handle && op == 'A' && old_op == 'A') {
             // skip
         } else {
+            current_op++;
             switch (op) {
                 case 'O': // Open = lock
                     
@@ -753,9 +757,10 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                     g_sizes[g_handles[handle]] = 0;
                     g_handles[handle] = NULL;
                     g_handle_to_address[handle] = NULL;
-
                 } break;
+                default: break;
             }
+
         }
     }
     user_handle_oom(0);

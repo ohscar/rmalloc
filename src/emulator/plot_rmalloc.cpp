@@ -86,7 +86,7 @@ void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddres
         *memaddress = size + ((header_t *)block)->memory;
 
     g_handle_to_block[handle] = block;
-    fprintf(stderr, "==> NEW %3d => 0x%X\n", handle, block);
+    //fprintf(stderr, "==> NEW %3d => 0x%X\n", handle, block);
 
     return block;
 }
@@ -98,7 +98,7 @@ void user_free(void *ptr, uint32_t handle, uint32_t *op_time) {
         fprintf(stderr, "user_free(0x%X, %d): bad mapping: got 0x%X\n", ptr, handle, block);
     }
 
-    fprintf(stderr, "<== FRE %3d => 0x%X\n", handle, block);
+    //fprintf(stderr, "<== FRE %3d => 0x%X\n", handle, block);
     rmfree(block);
 
     // is compacting considered cheating?

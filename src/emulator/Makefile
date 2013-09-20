@@ -1,27 +1,39 @@
 .PHONY: clean
 
+RMALLOC_BINARY=plot_rmalloc
+
+CFLAGS=-std=gnu++11 -I.. -I../compact
+
+ifneq ($(COMPACTING),)
+	CFLAGS += -DCOMPACTING
+	RMALLOC_BINARY=plot_rmalloc_compacting
+endif
+
+ifneq ($(DEBUG),)
+	CFLAGS += -DDEBUG
+endif
+
+
 #all: plot_optimal plot_dlmalloc plot_rmalloc
-all: plot_dlmalloc plot_rmalloc
+all: $(RMALLOC_BINARY) plot_dlmalloc
+all: CFLAGS += -O3 -march=core2
+
+debug: CFLAGS += -g -O0
+debug: plot_dlmalloc $(RMALLOC_BINARY)
 
 COMPACT_OBJS=../compact/compact.o ../compact/listsort.o
 SOURCES=plot.cpp plot.h #../../compact/compact.c ../../compact/listsort.c
 
-CFLAGS=-std=gnu++11 -I.. -I../compact
 
-CFLAGS+=-g -O0
 #CFLAGS+=-O3 -march=core2
 
 WARNFLAGS=-Wshadow
 
 CFLAGS += $(WARNFLAGS)  -std=gnu++0x
 
-ifneq ($(COMPACTING),)
-	CFLAGS += -DCOMPACTING
-endif
 
-
-../compact/compact.o: ../compact/compact.c
-	make -C ../compact
+#../compact/compact.o: ../compact/compact.c
+#	make -C ../compact
 
 .cpp.o:
 	g++ -c $(CFLAGS) $<
@@ -29,8 +41,8 @@ endif
 .c.o:
 	g++ -c $(CFLAGS) $<
 
-plot_rmalloc: plot_rmalloc.o plot.o $(COMPACT_OBJS) 
-	g++ -o plot_rmalloc plot_rmalloc.o plot.o $(COMPACT_OBJS)
+$(RMALLOC_BINARY): plot_rmalloc.o plot.o $(COMPACT_OBJS) 
+	g++ -o $(RMALLOC_BINARY) plot_rmalloc.o plot.o $(COMPACT_OBJS)
 
 plot_dlmalloc: plot_dlmalloc.o dlmalloc.o plot.o
 	g++ -o plot_dlmalloc plot_dlmalloc.o dlmalloc.o plot.o
@@ -42,7 +54,7 @@ plot_optimal: plot_optimal.cpp $(SOURCES)
 	g++ -g -O0 -o plot_optimal plot_optimal.cpp $(SOURCES) -fpermissive -lstdc++ -lrt
 
 clean:
-	rm -rf plot_cmalloc plot_dlmalloc plot_optimal *.o
+	rm -rf plot_rmalloc plot_rmalloc_compacting plot_dlmalloc plot_optimal *.o
 
 settings:
 	@echo COMPACTING=1 for automatic compacting after free().
