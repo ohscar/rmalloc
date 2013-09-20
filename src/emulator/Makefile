@@ -1,4 +1,5 @@
-.PHONY: clean
+
+PHONY: clean
 
 RMALLOC_BINARY=plot_rmalloc
 
@@ -9,17 +10,21 @@ ifneq ($(COMPACTING),)
 	RMALLOC_BINARY=plot_rmalloc_compacting
 endif
 
+#ifneq ($(DEBUG),)
+#	CFLAGS += -DDEBUG
+#endif
+
+
 #all: plot_optimal plot_dlmalloc plot_rmalloc
 all: $(RMALLOC_BINARY) plot_dlmalloc
 all: CFLAGS += -O3 -march=core2
 
-debug: CFLAGS += -g -DDEBUG # -O0
+debug: CFLAGS += -g -O0 -DDEBUG
 debug: plot_dlmalloc $(RMALLOC_BINARY)
 
 COMPACT_OBJS=../compact/compact.o ../compact/listsort.o
 SOURCES=plot.cpp plot.h #../../compact/compact.c ../../compact/listsort.c
 
-CFLAGS=-I.. -I../compact # -std=gnu++11
 
 #CFLAGS+=-O3 -march=core2
 
@@ -38,10 +43,10 @@ CFLAGS += $(WARNFLAGS)  -std=gnu++0x
 	g++ -c $(CFLAGS) $<
 
 $(RMALLOC_BINARY): plot_rmalloc.o plot.o $(COMPACT_OBJS) 
-	g++ -o $(RMALLOC_BINARY) plot_rmalloc.o plot.o $(COMPACT_OBJS) -lrt
+	g++ -o $(RMALLOC_BINARY) plot_rmalloc.o plot.o $(COMPACT_OBJS)
 
 plot_dlmalloc: plot_dlmalloc.o dlmalloc.o plot.o
-	g++ -o plot_dlmalloc plot_dlmalloc.o dlmalloc.o plot.o  -lrt
+	g++ -o plot_dlmalloc plot_dlmalloc.o dlmalloc.o plot.o
 
 plot_cmalloc: plot_cmalloc.cpp dlmalloc.c $(SOURCES)
 	g++ -g -O0 -o plot_cmalloc plot_cmalloc.cpp dlmalloc.c $(SOURCES) -fpermissive -lstdc++ -lrt

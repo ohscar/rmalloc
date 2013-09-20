@@ -541,10 +541,15 @@ void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap
         if (line[0] == '#')
             continue;
 
+        op = '\x0';
+
         sscanf(line, "%d %c %u %u\n", &handle, &op, &address, &size);
         // for now, don't care about the difference between load/modify/store
         if (op == 'L' || op == 'M' || op == 'S')
             op = 'A';
+
+        if (op == 0)
+            continue;
 
         if (handle == old_handle && op == 'A' && old_op == 'A') {
             // skip
@@ -677,10 +682,15 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
         if (line[0] == '#')
             continue;
 
+        op = '\x0';
+
         sscanf(line, "%d %c %u %u\n", &handle, &op, &address, &size);
         // for now, don't care about the difference between load/modify/store
         if (op == 'L' || op == 'M' || op == 'S')
             op = 'A';
+
+        if (op == 0)
+            continue;
 
         if (current_op % 100000 == 0)
             fprintf(stderr, "\rOp %d - heap usage %d K                                ", current_op, (g_highest_address-g_heap)/1024);
