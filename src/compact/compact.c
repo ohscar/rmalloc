@@ -158,8 +158,46 @@ inline header_t *header_new(bool insert_in_list, bool override) {
 /* memory block */
 
 inline free_memory_block_t *block_from_header(header_t *header) {
+    /* free_memory_block_t for a chunk of free memory is stored at the very *end* of the block.
+     *
+     * this is done so that a recently freed block can be mixed together with
+     * the block just behind the current one, if it is a valid free block.
+     */
     return (free_memory_block_t *)((uint8_t *)header->memory + header->size) - 1;
 }
+
+
+inline uint8_t header_fillchar(header_t *h) {
+    return (ptr_t)h & 0xFF;
+}
+static bool assert_memory_contents(header_t *h)
+{
+    uint8_t c = header_fillchar(h);
+    uint8_t *memory = (uint8_t *)h->memory;
+
+    for (int i=0; i<h->size; i++)
+        if (memory[i] != c)
+            return false;
+
+    return true;
+}
+
+
+static void assert_blocks() {
+    header_t *node = g_header_root;
+
+    while (node != NULL) {
+        if (node->flags != HEADER_FREE_BLOCK && assert_memory_contents(node) == false)
+        {
+            uint8_t c = header_fillchar(node);
+            abort();
+        }
+
+        node = node->next;
+    }
+}
+
+
 
 header_t *freeblock_find(uint32_t size);
 inline header_t *block_new(int size) {
@@ -170,11 +208,12 @@ inline header_t *block_new(int size) {
 #ifdef DEBUG
     freeblock_verify_lower_size();
 #endif
+    header_t *h = NULL;
  
     // XXX: Is this really the proper fix?
     if ((uint8_t *)g_memory_top+size+sizeof(header_t) < (uint8_t *)g_header_bottom) {
     //if ((uint8_t *)g_memory_top+size < (uint8_t *)g_header_bottom) {
-        header_t *h = header_new(true, false);
+        h = header_new(true, false);
         if (!h) {
             fprintf(stderr, "header_new: oom.\n");
             return NULL;
@@ -192,11 +231,9 @@ inline header_t *block_new(int size) {
 
         g_header_used_count++;
         g_memory_top = (uint8_t *)g_memory_top + size;
-
-        return h;
     } else {
         // nope. look through existing blocks
-        header_t *h = freeblock_find(size);
+        h = freeblock_find(size);
 
         // okay, we're *really* out of memory
         if (!h) {
@@ -208,9 +245,9 @@ inline header_t *block_new(int size) {
 
         g_free_block_hits++;
         g_free_block_alloc += size;
-
-        return h;
     }
+
+    return h;
 }
 
 void freeblock_print() {
@@ -249,6 +286,27 @@ inline bool freeblock_exists(free_memory_block_t *block) {
         }
     }
     return false;
+}
+
+inline void assert_memory_is_free(void *ptr) {
+    /*
+     * assert that there are no non-free blocks in which this pointer address exists.
+     *
+     * free_memory_block_t is always placed at the end of a free memory chunk,
+     * i.e. [free memory area of N bytes | free_memory_block_t]
+    */
+    header_t *h = g_header_root;
+    ptr_t p = (ptr_t)ptr;
+    while (h != NULL) {
+        if (h->flags != HEADER_FREE_BLOCK) {
+            ptr_t start = (ptr_t)h->memory;
+            ptr_t end = start + h->size;
+
+            if (p >= start && p < end)
+                abort();
+        }
+        h = h->next;
+    }
 }
 
 inline void freeblock_assert_sane(free_memory_block_t *block) {
@@ -413,6 +471,7 @@ header_t *block_free(header_t *header) {
     if (block->header->size + (uint8_t *)block->header->memory >= (void *)g_header_bottom)
         abort();
 
+
     //fprintf(stderr, "block_free(): block = %p, block->header = %p (header = %p) size %d memory %p\n", block, block->header, header, block->header->size, block->header->memory);
 
     // insert into free size block list, at the start.
@@ -443,6 +502,10 @@ header_t *block_free(header_t *header) {
 
 #ifdef DEBUG
     freeblock_checkloop(block);
+#endif
+
+#ifdef DEBUG
+    assert_blocks();
 #endif
 
 #if 0 // FUTURE WORK for forward merges
@@ -813,12 +876,9 @@ void *rmstat_highest_used_address() {
 
 void header_sort_all() {
     fprintf(stderr, "g_header_root before header_sort_all(): %p\n", g_header_root);
-    g_header_root = header__sort(g_header_root, header__cmp);
-}
-
-
-inline uint8_t header_fillchar(header_t *h) {
-    return (ptr_t)h & 0xFF;
+    //g_header_root = header__sort(g_header_root, header__cmp);
+    //header_t *header__sort(header_t *list, int is_circular, int is_double, compare_cb cmp) {
+    g_header_root = header__sort(g_header_root, 0, 0, header__cmp);
 }
 
 static uint32_t get_block_count(uint32_t *free_count, uint32_t *locked_count, uint32_t *unlocked_count, uint32_t *weaklocked_count)
@@ -842,33 +902,6 @@ static uint32_t get_block_count(uint32_t *free_count, uint32_t *locked_count, ui
     }
     return count;
 }
-static bool assert_memory_contents(header_t *h)
-{
-    uint8_t c = header_fillchar(h);
-    uint8_t *memory = (uint8_t *)h->memory;
-
-    for (int i=0; i<h->size; i++)
-        if (memory[i] != c)
-            return false;
-
-    return true;
-}
-
-
-static void assert_blocks() {
-    header_t *node = g_header_root;
-
-    while (node != NULL) {
-        if (node->flags != HEADER_FREE_BLOCK && assert_memory_contents(node) == false)
-        {
-            uint8_t c = header_fillchar(node);
-            abort();
-        }
-
-        node = node->next;
-    }
-}
-
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define WITH_ITER(h, init, body...) {header_t *h = init; while (h != NULL) {body; h = h->next;}}
@@ -962,8 +995,7 @@ void rmcompact(int maxtime) {
 
 
 
-    // FUTURE WORK to make it not having to sort the blocks?
-    // see above
+    // FUTURE WORK - see note in listsort.c about automatic adjacent free block merging.
     header_sort_all();
 
 
@@ -1574,6 +1606,7 @@ void rmcompact(int maxtime) {
         }
 
         // just let the smaller headers be, in case there are any.
+        // there should not be any, and so this test is invalid.
         if (h->size >= sizeof(free_memory_block_t)) {
 
             free_block_count++;
@@ -1588,6 +1621,8 @@ void rmcompact(int maxtime) {
             block->header = h; 
             block->next = NULL;
 
+            // this should _always_ point to (h->memory+h->size - sizeof(free_block_memory_t))
+            assert_memory_is_free((void *)block);
 
             // crash on g_free_block_slots[k]->next->header->size, because ->next->header == 0
             if (g_free_block_slots[k] == NULL)
@@ -1677,10 +1712,16 @@ void rmdestroy() {
 handle_t rmmalloc(int size) {
     header_t *h = block_new(size);
 
+    if (h == NULL) {
+        fprintf(stderr, "h = NULL.\n");
+        return NULL;
+    }
+
     memset(h->memory, header_fillchar(h), h->size);
 
-    if (h == NULL)
-        fprintf(stderr, "h = NULL.\n");
+#ifdef DEBUG
+    assert_blocks();
+#endif
 
     return (handle_t)h;
 }

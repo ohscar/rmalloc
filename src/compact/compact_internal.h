@@ -1,6 +1,8 @@
 #ifndef __compact_internal_h
 #define __compact_internal_h
 
+#define  __STDC_LIMIT_MACROS
+
 #include <stdint.h>
 
 /* header, see compact.h
@@ -8,8 +10,10 @@
 
 #if __x86_64__
 typedef uint64_t ptr_t;
+#define PTR_T_MAX UINT64_MAX
 #else
 typedef uint32_t ptr_t;
+#define PTR_T_MAX UINT32_MAX
 #endif
 
 #define HEADER_FREE_BLOCK   0
@@ -37,7 +41,7 @@ extern "C" {
 #endif // __cplusplus
 
 typedef ptr_t (*compare_cb)(void *a, void *b);
-header_t *header__sort(header_t *list, /* int is_circular, int is_double, */ compare_cb cmp);
+header_t *header__sort(header_t *list,  int is_circular, int is_double, compare_cb cmp);
 ptr_t header__cmp(void *a, void *b);
 
 #ifdef __cplusplus
