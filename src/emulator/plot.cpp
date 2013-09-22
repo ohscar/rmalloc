@@ -668,12 +668,14 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
     bool done = false;
     
     int handle, address, size, old_handle=1; /* ops always start from 0 */
+    int the_handle = 0;
     char op, old_op=0;
     uint32_t op_time;
 
     // For each op, try to allocate as large a block as possible.
     // Then, go to next op.
     uint32_t current_op = 0, current_free = 0;
+    uint32_t current_op_at_free = 0, current_op_at_new = 0, current_op_at_compact = 0;
 
     while (!done && !feof(fp)) {
         char line[128];
@@ -691,7 +693,7 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
         if (op == 0 || r == 0)
             continue;
 
-        if (current_op % 100000 == 0)
+        if (current_op % 1000 == 0)
             fprintf(stderr, "\rOp %d - heap usage %d K                                ", current_op, (g_highest_address-g_heap)/1024);
 
         if (handle == old_handle && op == 'A' && old_op == 'A') {
@@ -717,7 +719,22 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                 case 'N': {
                     //putchar('.');
                     void *memaddress = NULL;
+
+                    if (handle == 3150)
+                    {
+                        op_time = current_op;
+                    }
+
+                    if (handle == 25024)
+                    {
+                        op_time = current_op;
+                    }
                     void *ptr = user_malloc(size, handle, &op_time, &memaddress);
+
+                    if (ptr == (void *)0xb7c84cd8)
+                    {
+                        the_handle = handle;
+                    }
 
                     // XXX when to call register_op() and do coloring?
                     if (ptr == NULL) {
@@ -748,8 +765,19 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
 
                     register_op(OP_ALLOC, handle, memaddress, size);
 
+                    current_op_at_new = current_op;
                 } break;
                 case 'F': {
+
+                    if (current_op == 20750) 
+                    {
+                        /*nop*/ current_op_at_free = current_op;
+                    }
+                    if (current_op == 20850) 
+                    {
+                        /*nop*/ current_op_at_free = current_op;
+                    }
+
                     //putchar('.');
                     void *ptr = g_handles[handle];
                     int s = g_sizes[g_handles[handle]];
@@ -760,17 +788,22 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                     register_op(OP_FREE, handle, memaddress, s);
                     user_free(ptr, handle, &op_time);
 
-                    if (current_free++ % 100 == 0)
+                    if (current_free++ % 100 == 0) {
+                        current_op_at_compact = current_op;
                         user_handle_oom(size);
+                    }
 
                     print_after_free_stats(address, s);
 
                     g_sizes[g_handles[handle]] = 0;
                     g_handles[handle] = NULL;
                     g_handle_to_address[handle] = NULL;
+
+                    current_op_at_free = current_op;
                 } break;
                 default: break;
             }
+            old_op = op;
 
         }
     }

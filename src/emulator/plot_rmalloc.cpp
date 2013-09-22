@@ -77,6 +77,12 @@ static void full_compact(void)
 
 void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddress) {
 
+    /*
+    if (current_op == 20750) 
+    {
+        rmstat_set_debugging(true);
+    }
+    */
     handle_t block = rmmalloc(size);
     if (block == NULL)
     {

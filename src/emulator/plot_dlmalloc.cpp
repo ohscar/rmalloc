@@ -75,7 +75,7 @@ void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddres
     }
 
 #ifdef DEBUG
-    sanity();
+    //sanity();
 #endif
     
     g_malloc++;
@@ -96,7 +96,7 @@ void user_free(void *ptr, uint32_t handle, uint32_t *op_time) {
     g_free++;
 
 #ifdef DEBUG
-    sanity();
+    //sanity();
 #endif
 
     dlfree(ptr);
