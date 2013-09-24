@@ -27,6 +27,7 @@ header_t *g_header_top;
 header_t *g_header_bottom;
 header_t *g_header_root; // linked list
 int g_header_used_count; // for spare headers in compact
+header_t *g_last_free_header = NULL;
 
 header_t *g_free_header_root;
 header_t *g_free_header_end; // always NULL as its last element.
@@ -45,7 +46,7 @@ typedef uint32_t ptr_t;
 // code
 
 /* utility */
-inline uint32_t log2_(uint32_t n)
+uint32_t log2_(uint32_t n)
 {
     int r = 0;
     while (n >>= 1)
@@ -55,7 +56,7 @@ inline uint32_t log2_(uint32_t n)
 
 /* header */
 
-inline bool header_is_unused(header_t *header) {
+bool header_is_unused(header_t *header) {
     // FIXME: Make use of g_free_header_root / g_free_header_end -- linked
     // list. grab the first element, relink?
     //
@@ -65,7 +66,7 @@ inline bool header_is_unused(header_t *header) {
     return header && header->memory == NULL;
 }
 
-inline header_t *header_set_unused(header_t *header) {
+header_t *header_set_unused(header_t *header) {
     //fprintf(stderr, "header_set_unused (%d kb)\n", header->size/1024);
 
     // 1. root == NULL => end == NULL; root = end = header;
@@ -89,19 +90,6 @@ inline header_t *header_set_unused(header_t *header) {
     fprintf(stderr, "== header_set_unused() = %p\n", header);
     return header;
 }
-/* find first free header. which is always the *next* header.
- */
-inline header_t *header_find_free() {
-    // FIXME: make use of g_free_header_root! the first element is always the
-    // one to use?
-    header_t *h = g_header_top;
-    while (h >= g_header_bottom) {
-        if (header_is_unused(h))
-            return h;
-        h--;
-    }
-    return NULL;
-}
 
 void freeblock_verify_lower_size() {
     for (int k=0; k<g_free_block_slot_count; k++) {
@@ -120,12 +108,46 @@ void freeblock_verify_lower_size() {
     }
 }
 
-inline header_t *header_new(bool insert_in_list, bool override) {
+/* find first free header. which is always the *next* header.
+ */
+header_t *header_find_free() {
+    // FIXME: make use of g_free_header_root! the first element is always the
+    // one to use?
+    //
+    //
+    //   g_header_bottom shrinks in header_new, but always such that there are always 1 spare for compacting.
+    //
+    //   Be a lot smarter about this - maybe by keeping a linked list around.
+    //
+    //
+    //
+    header_t *h = g_last_free_header - 1;
+    while (h > g_header_bottom) {
+        if (header_is_unused(h)) {
+            g_last_free_header = h;
+            return h;
+        }
+        h--;
+    }
+
+    if (h == g_header_bottom) {
+        h = g_header_top;
+        while (h >= g_last_free_header) {
+            if (header_is_unused(h)) {
+
+                //g_last_free_header = h; ??
+                return h;
+            }
+            h--;
+        }
+    }
+    return NULL;
+}
+
+header_t *header_new(bool insert_in_list, bool override) {
     header_t *header = header_find_free();
     if (!header) {
         // keep one spare for the call in compact().
-        // FIXME: keep one extra spare since bottom is the last one allocated,
-        // but why _4_?
         int limit = 1;
         if (!override)
             limit = g_header_used_count; // worst-case scenario
@@ -135,9 +157,6 @@ inline header_t *header_new(bool insert_in_list, bool override) {
             header = g_header_bottom;
         } else {
             header = NULL;
-            for (header_t *h = g_header_top; h != g_header_bottom; h--) {
-                //fprintf(stderr, "header #%d memory %p\n", g_header_top-h, h->memory);
-            }
         }
     }
     if (header) {
@@ -159,7 +178,7 @@ inline header_t *header_new(bool insert_in_list, bool override) {
 
 /* memory block */
 
-inline free_memory_block_t *block_from_header(header_t *header) {
+free_memory_block_t *block_from_header(header_t *header) {
     /* free_memory_block_t for a chunk of free memory is stored at the very *end* of the block.
      *
      * this is done so that a recently freed block can be mixed together with
@@ -169,7 +188,7 @@ inline free_memory_block_t *block_from_header(header_t *header) {
 }
 
 
-inline uint8_t header_fillchar(header_t *h) {
+uint8_t header_fillchar(header_t *h) {
     return (ptr_t)h & 0xFF;
 }
 static bool assert_memory_contents(header_t *h)
@@ -202,7 +221,7 @@ static void assert_blocks() {
 
 
 header_t *freeblock_find(uint32_t size);
-inline header_t *block_new(int size) {
+header_t *block_new(int size) {
     // minimum size for later use in free list: header pointer, next pointer
     if (size < sizeof(free_memory_block_t))
         size = sizeof(free_memory_block_t);
@@ -265,7 +284,7 @@ void freeblock_print() {
     }
 }
 
-inline bool freeblock_exists_memory(void *ptr) {
+bool freeblock_exists_memory(void *ptr) {
     for (int i=0; i<g_free_block_slot_count; i++) {
         free_memory_block_t *b = g_free_block_slots[i];
         while (b) {
@@ -278,7 +297,7 @@ inline bool freeblock_exists_memory(void *ptr) {
     return false;
 }
 
-inline bool freeblock_exists(free_memory_block_t *block) {
+bool freeblock_exists(free_memory_block_t *block) {
     for (int i=0; i<g_free_block_slot_count; i++) {
         free_memory_block_t *b = g_free_block_slots[i];
         while (b) {
@@ -291,7 +310,7 @@ inline bool freeblock_exists(free_memory_block_t *block) {
     return false;
 }
 
-inline void assert_memory_is_free(void *ptr) {
+void assert_memory_is_free(void *ptr) {
     /*
      * assert that there are no non-free blocks in which this pointer address exists.
      *
@@ -312,7 +331,7 @@ inline void assert_memory_is_free(void *ptr) {
     }
 }
 
-inline void freeblock_assert_sane(free_memory_block_t *block) {
+void freeblock_assert_sane(free_memory_block_t *block) {
     if (block != block_from_header(block->header)) {
         int diff;
         if ((uint8_t *)block > (uint8_t *)block_from_header(block->header))
@@ -565,7 +584,7 @@ void freeblock_insert(free_memory_block_t *block) {
  * input:  [                        block]
  * output: [     rest|              block]
  */
-inline free_memory_block_t *freeblock_shrink_with_header(free_memory_block_t *block, header_t *h, uint32_t size) {
+free_memory_block_t *freeblock_shrink_with_header(free_memory_block_t *block, header_t *h, uint32_t size) {
     if (!block)
         return NULL;
 
@@ -627,7 +646,7 @@ inline free_memory_block_t *freeblock_shrink_with_header(free_memory_block_t *bl
 
     return b;
 }
-inline free_memory_block_t *freeblock_shrink(free_memory_block_t *block, uint32_t size) {
+free_memory_block_t *freeblock_shrink(free_memory_block_t *block, uint32_t size) {
     return freeblock_shrink_with_header(block, NULL, size);
 }
 
@@ -636,7 +655,7 @@ inline free_memory_block_t *freeblock_shrink(free_memory_block_t *block, uint32_
  *
  * any block that are larger than the slot's size will be moved upon traversal!
  */
-inline header_t *freeblock_find(uint32_t size) {
+header_t *freeblock_find(uint32_t size) {
     // there can be blocks of 2^k <= n < 2^(k+1)
     int target_k = log2_(size)+1;
     int k = target_k;
@@ -2056,15 +2075,16 @@ void rminit(void *heap, uint32_t size) {
     g_memory_bottom = (void *)((ptr_t)heap + (g_free_block_slot_count * sizeof(free_memory_block_t *)));
     g_memory_top = g_memory_bottom;
 
-    g_free_header_root = NULL;
-    g_free_header_end = NULL;
-
     //g_header_top = (header_t *)((uint32_t)heap + size);
     g_header_top = (header_t *)((ptr_t)heap + size - sizeof(header_t));
+    g_last_free_header = g_header_top;
     g_header_bottom = g_header_top;
     g_header_root = g_header_top;
     g_header_root->next = NULL;
     g_header_used_count = 0;
+
+    g_free_header_root = NULL;
+    g_free_header_end = NULL;
 
     header_set_unused(g_header_top);
 
@@ -2084,9 +2104,8 @@ handle_t rmmalloc(int size) {
         return NULL;
     }
 
-    memset(h->memory, header_fillchar(h), h->size);
-
 #ifdef DEBUG
+    memset(h->memory, header_fillchar(h), h->size);
     //rebuild_free_block_slots();
     //assert_blocks();
 #endif

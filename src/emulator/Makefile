@@ -19,8 +19,13 @@ endif
 all: $(RMALLOC_BINARY) plot_dlmalloc
 all: CFLAGS += -O3 -march=core2
 
-debug: CFLAGS += -g -O0 -DDEBUG
 debug: plot_dlmalloc $(RMALLOC_BINARY)
+debug: CFLAGS += -g -O0 -DDEBUG
+
+profile: PROFILING=-pg -g3
+#profile: CFLAGS += -O3 -march=core2
+profile: plot_dlmalloc $(RMALLOC_BINARY)
+
 
 COMPACT_OBJS=../compact/compact.o ../compact/listsort.o
 SOURCES=plot.cpp plot.h #../../compact/compact.c ../../compact/listsort.c
@@ -37,16 +42,16 @@ CFLAGS += $(WARNFLAGS)  -std=gnu++0x
 #	make -C ../compact
 
 .cpp.o:
-	g++ -c $(CFLAGS) $<
+	g++ $(PROFILING) -c $(CFLAGS) $<
 
 .c.o:
-	g++ -c $(CFLAGS) $<
+	g++ $(PROFILING) -c $(CFLAGS) $<
 
 $(RMALLOC_BINARY): plot_rmalloc.o plot.o $(COMPACT_OBJS) 
-	g++ -o $(RMALLOC_BINARY) plot_rmalloc.o plot.o $(COMPACT_OBJS)
+	g++ $(PROFILING) -o $(RMALLOC_BINARY) plot_rmalloc.o plot.o $(COMPACT_OBJS)
 
 plot_dlmalloc: plot_dlmalloc.o dlmalloc.o plot.o
-	g++ -o plot_dlmalloc plot_dlmalloc.o dlmalloc.o plot.o
+	g++ $(PROFILING) -o plot_dlmalloc plot_dlmalloc.o dlmalloc.o plot.o
 
 plot_cmalloc: plot_cmalloc.cpp dlmalloc.c $(SOURCES)
 	g++ -g -O0 -o plot_cmalloc plot_cmalloc.cpp dlmalloc.c $(SOURCES) -fpermissive -lstdc++ -lrt

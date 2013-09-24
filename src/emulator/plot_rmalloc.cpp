@@ -166,7 +166,6 @@ void user_reset(void) {
 }
 
 void *user_highest_address(void) {
-    // TODO: Implement me!
 
     return rmstat_highest_used_address();
     //return NULL;

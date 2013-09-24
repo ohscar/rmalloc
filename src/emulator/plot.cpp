@@ -748,6 +748,7 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                         }
                     }
 
+#if 0
                     void *maybe_highest = user_highest_address();
                     if (maybe_highest != NULL) {
                         ptr_t highest = (ptr_t)maybe_highest - (ptr_t)g_heap;
@@ -758,6 +759,10 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                         if ((ptr_t)memaddress > (ptr_t)g_highest_address)
                             g_highest_address = (uint8_t *)memaddress;
                     }
+#else
+                        if ((ptr_t)memaddress > (ptr_t)g_highest_address)
+                            g_highest_address = (uint8_t *)memaddress;
+#endif
 
                     g_handle_to_address[handle] = memaddress;
                     g_handles[handle] = ptr;
@@ -788,7 +793,7 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                     register_op(OP_FREE, handle, memaddress, s);
                     user_free(ptr, handle, &op_time);
 
-                    if (current_free++ % 100 == 0) {
+                    if (current_free++ % 1000 == 0) {
                         current_op_at_compact = current_op;
                         user_handle_oom(size);
                     }
@@ -898,6 +903,7 @@ int main(int argc, char **argv) {
         g_heap_size = (int)(0.9 * (float)g_heap_size);
         g_heap = (uint8_t *)malloc(g_heap_size);
     }
+    fprintf(stderr, "heap size: %lu\n", g_heap_size);
     g_highest_address = g_heap;
 
     if (g_total_memory_consumption > 0) {
