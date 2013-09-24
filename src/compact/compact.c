@@ -29,8 +29,7 @@ header_t *g_header_root; // linked list
 int g_header_used_count; // for spare headers in compact
 header_t *g_last_free_header = NULL;
 
-header_t *g_free_header_root;
-header_t *g_free_header_end; // always NULL as its last element.
+header_t *g_unused_header_root = NULL;
 
 static bool g_debugging = false;
 
@@ -67,27 +66,19 @@ bool header_is_unused(header_t *header) {
 }
 
 header_t *header_set_unused(header_t *header) {
-    //fprintf(stderr, "header_set_unused (%d kb)\n", header->size/1024);
-
-    // 1. root == NULL => end == NULL; root = end = header;
-    // 2. root == end => end->memory = header; end = header
-    // 3. root != end => end->memory = header; end = header
-
-#if 0
-    if (!g_free_header_root) {
-        g_free_header_root = header;
-        g_free_header_end = header;
-    } else {
-        g_free_header_end->memory = header;
-        g_free_header_end = header;
-    }
-#endif
 
     header->memory = NULL;
-    // note: do not reset the next pointer. once it's in the list, it should
-    // stay there.
 
-    fprintf(stderr, "== header_set_unused() = %p\n", header);
+    if (g_unused_header_root == NULL)
+    {
+        g_unused_header_root = header;
+    }
+    else
+    {
+        header->next_unused = g_unused_header_root;
+        g_unused_header_root = header;
+    }
+
     return header;
 }
 
@@ -110,6 +101,7 @@ void freeblock_verify_lower_size() {
 
 /* find first free header. which is always the *next* header.
  */
+#if 0
 header_t *header_find_free() {
     // FIXME: make use of g_free_header_root! the first element is always the
     // one to use?
@@ -143,32 +135,53 @@ header_t *header_find_free() {
     }
     return NULL;
 }
+#endif
 
-header_t *header_new(bool insert_in_list, bool override) {
-    header_t *header = header_find_free();
-    if (!header) {
-        // keep one spare for the call in compact().
-        int limit = 1;
-        if (!override)
-            limit = g_header_used_count; // worst-case scenario
+header_t *header_find_free(bool spare_one_for_compact) {
+    header_t *h = NULL;
+    
+    if (g_unused_header_root != NULL)
+    {
+        h = g_unused_header_root;
+        g_unused_header_root = g_unused_header_root->next_unused;
+    }
+    else
+    {
+        int limit = g_header_used_count; // worst-case scenario (XXX: which? compacting?)
+        if (spare_one_for_compact)
+            limit = 1; // we're called by compact, and we only need to be able to create one extra header.
 
-        if (g_header_bottom-limit > g_memory_top) {
+        if (g_header_bottom - limit > g_memory_top) {
             g_header_bottom--;
-            header = g_header_bottom;
-        } else {
-            header = NULL;
+
+            h = g_header_bottom;
         }
     }
+
+#ifdef DEBUG
+    if (header_is_unused(h) == false)
+        abort();
+#endif
+
+    return h;
+}
+
+header_t *header_new(bool insert_in_list, bool spare_one_for_compact) {
+    header_t *header = header_find_free(spare_one_for_compact);
     if (header) {
         header->flags = HEADER_UNLOCKED;
         header->memory = NULL;
-        if (insert_in_list == false)
+        if (insert_in_list) {
+            // insert in list
+            if (header->next == NULL && header != g_header_root) {
+                header->next = g_header_root;
+
+                g_header_root = header;
+            } // else already in list.
+        } else {
+            // don't insert into list. this is the new_free thingy which we manually insert at the correct
+            // position in the chain based on header_t::memory.
             header->next = NULL;
-
-        if (insert_in_list && header->next == NULL && header != g_header_root) {
-            header->next = g_header_root;
-
-            g_header_root = header;
         }
 
     }
@@ -2075,16 +2088,17 @@ void rminit(void *heap, uint32_t size) {
     g_memory_bottom = (void *)((ptr_t)heap + (g_free_block_slot_count * sizeof(free_memory_block_t *)));
     g_memory_top = g_memory_bottom;
 
-    //g_header_top = (header_t *)((uint32_t)heap + size);
+    // header top is located at the top of the heap space and grows downward.
+    // header bottom points to the bottom, including the last one!
     g_header_top = (header_t *)((ptr_t)heap + size - sizeof(header_t));
-    g_last_free_header = g_header_top;
     g_header_bottom = g_header_top;
     g_header_root = g_header_top;
     g_header_root->next = NULL;
     g_header_used_count = 0;
 
-    g_free_header_root = NULL;
-    g_free_header_end = NULL;
+    // newly unused headers are prepended, i.e. placed first, and g_unused_header_root is re-pointed.
+    g_unused_header_root = g_header_top;
+    g_unused_header_root->next_unused = NULL;
 
     header_set_unused(g_header_top);
 

@@ -27,6 +27,7 @@ typedef struct header_t {
     uint8_t flags;
 
     struct header_t *next;
+    struct header_t *next_unused;
 } header_t;
 
 /* free memory block, see compact.h
