@@ -45,12 +45,20 @@ typedef uint32_t ptr_t;
 // code
 
 /* utility */
+#if 0
 uint32_t log2_(uint32_t n)
 {
     int r = 0;
     while (n >>= 1)
         r++;
     return r;
+}
+#endif
+// http://stackoverflow.com/questions/994593/how-to-do-an-integer-log2-in-c
+// and http://gcc.gnu.org/onlinedocs/gcc-4.4.2/gcc/Other-Builtins.html
+uint32_t log2_(uint32_t n)
+{
+    return __builtin_ctz(n);
 }
 
 /* header */
