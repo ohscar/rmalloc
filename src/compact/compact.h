@@ -62,7 +62,7 @@ header_t *block_free(header_t *header);
 
 uint32_t rmstat_total_free_list();
 uint32_t rmstat_largest_free_block();
-void *rmstat_highest_used_address();
+void *rmstat_highest_used_address(bool full_calculation);
 void rmstat_print_headers(bool only_type); // only print the type, no headers
 void rmstat_set_debugging(bool enable);
 

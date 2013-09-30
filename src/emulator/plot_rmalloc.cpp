@@ -165,9 +165,9 @@ void user_reset(void) {
     user_init(g_original_size, g_heap, /*colormap, unused*/NULL, buffer);
 }
 
-void *user_highest_address(void) {
+void *user_highest_address(bool full_calculation) {
 
-    return rmstat_highest_used_address();
+    return rmstat_highest_used_address(full_calculation);
     //return NULL;
 }
 

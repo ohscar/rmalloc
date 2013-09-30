@@ -31,6 +31,8 @@ header_t *g_last_free_header = NULL;
 
 header_t *g_unused_header_root = NULL;
 
+header_t *g_highest_address_header = NULL;
+
 static bool g_debugging = false;
 
 #if __x86_64__
@@ -239,7 +241,12 @@ static void assert_blocks() {
     }
 }
 
-
+void update_highest_address_if_needed(header_t *h) {
+    if (h)
+    {
+        g_highest_address_header = h;
+    }
+}
 
 header_t *freeblock_find(uint32_t size);
 header_t *block_new(int size) {
@@ -261,11 +268,12 @@ header_t *block_new(int size) {
             fprintf(stderr, "header_new: oom.\n");
             return NULL;
         }
-
+#ifdef DEBUG
         if ((uint8_t *)g_memory_top+size >= (uint8_t *)g_header_bottom) {
             fprintf(stderr, "memory top (%p) + size (%d) >= %p\n", g_memory_top, size, g_header_bottom);
             abort();
         }
+#endif
 
         // just grab off the top
         h->size = size;
@@ -289,6 +297,8 @@ header_t *block_new(int size) {
         g_free_block_hits++;
         g_free_block_alloc += size;
     }
+
+    update_highest_address_if_needed(h);
 
     return h;
 }
@@ -391,13 +401,14 @@ header_t *block_free(header_t *header) {
     //assert_blocks();
 #endif
 
-    bool in_free_list = false;
 
     // FIXME: merge with previous block places blocks in a too small slot.
 
     // TODO: merge cannot work, period, since the block is already in the free list
     // and thus has the incorrect address.
 #if 0
+    bool in_free_list = false;
+
     // are there blocks before this one?
     free_memory_block_t *prevblock = (free_memory_block_t *)header->memory - 1;
     if (prevblock >= g_memory_bottom) {
@@ -461,11 +472,11 @@ header_t *block_free(header_t *header) {
             }
         }
     }
-#endif
-
     // our work is done here
     if (in_free_list)
         return header;
+#endif
+
 
     // alright, no previous or next block to merge with.
     // update the free list
@@ -504,16 +515,24 @@ header_t *block_free(header_t *header) {
     // block->foo = 42?  or do I have to memcpy()
     //
     // after a block is freed and the free_memory_block_t is written 
+    
+#if 0
     free_memory_block_t b;
     b.header = header;
     b.next = NULL;
     memcpy((void *)block, (void *)&b, sizeof(free_memory_block_t));
-
-    ///block->header = header;
-    //block->next = NULL;
+#else
+    block->header = header;
+    block->next = NULL;
+#endif
 
     if (block->header->size + (uint8_t *)block->header->memory >= (void *)g_header_bottom)
+#ifdef DEBUG
         abort();
+#else
+        return NULL;
+#endif
+
 
 
     //fprintf(stderr, "block_free(): block = %p, block->header = %p (header = %p) size %d memory %p\n", block, block->header, header, block->header->size, block->header->memory);
@@ -523,6 +542,11 @@ header_t *block_free(header_t *header) {
 
     if (block->header->size != header->size)
         abort();
+#ifdef DEBUG
+        abort();
+#else
+        return NULL;
+#endif
 
     block->next = g_free_block_slots[index];
     g_free_block_slots[index] = block;
@@ -897,24 +921,28 @@ uint32_t rmstat_largest_free_block() {
     return largest;
 }
 
-void *rmstat_highest_used_address() {
-    void *highest = NULL;
-    
-    header_t *h = g_header_root;
+void *rmstat_highest_used_address(bool full_calculation) {
+    if (full_calculation) {
+        void *highest = NULL;
+        
+        header_t *h = g_header_root;
 
-    //printf("Highest: ");
-    while (h != NULL) {
-        if (h->flags != HEADER_FREE_BLOCK) {
-            //printf("*%p ", h->memory);
-            if (h->size + (uint8_t *)h->memory > highest)
-                highest = h->size + (uint8_t *)h->memory;
-        } else
-            ;//printf("%p ", h->memory);
-        h = h->next;
+        //printf("Highest: ");
+        while (h != NULL) {
+            if (h->flags != HEADER_FREE_BLOCK) {
+                //printf("*%p ", h->memory);
+                if (h->size + (uint8_t *)h->memory > highest)
+                    highest = h->size + (uint8_t *)h->memory;
+            } else
+                ;//printf("%p ", h->memory);
+            h = h->next;
+        }
+        //printf("\n");
+
+        return highest;
+    } else {
+        return (void *)((ptr_t)g_highest_address_header->memory + g_highest_address_header->size);
     }
-    //printf("\n");
-
-    return highest;
 }
 
 void header_sort_all() {
@@ -1228,6 +1256,8 @@ void rmcompact(int maxtime) {
         }
         else
             root_last_nonfree->next = unlocked_first;
+
+        update_highest_address_if_needed(unlocked_last);
 
         root = unlocked_last;
     }
@@ -2109,6 +2139,9 @@ void rminit(void *heap, uint32_t size) {
     g_unused_header_root->next_unused = NULL;
 
     header_set_unused(g_header_top);
+    g_header_top->size = 0;
+
+    g_highest_address_header = g_header_top; // to make sure it points to _something_
 
     memset(heap, 0, size);
 }

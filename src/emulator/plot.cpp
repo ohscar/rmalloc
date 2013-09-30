@@ -677,6 +677,8 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
     uint32_t current_op = 0, current_free = 0;
     uint32_t current_op_at_free = 0, current_op_at_new = 0, current_op_at_compact = 0;
 
+    int32_t theo_used = 0;
+
     while (!done && !feof(fp)) {
         char line[128];
         char *r = fgets(line, 127, fp);
@@ -694,7 +696,7 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
             continue;
 
         if (current_op % 1000 == 0)
-            fprintf(stderr, "\rOp %d - heap usage %d K                                ", current_op, (g_highest_address-g_heap)/1024);
+            fprintf(stderr, "\rOp %d - heap usage %d K  - theo heap usage %d K                              ", current_op, (g_highest_address-g_heap)/1024, theo_used/1024);
 
         if (handle == old_handle && op == 'A' && old_op == 'A') {
             // skip
@@ -719,6 +721,7 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                 case 'N': {
                     //putchar('.');
                     void *memaddress = NULL;
+                    theo_used += size;
 
                     if (handle == 3150)
                     {
@@ -748,8 +751,8 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                         }
                     }
 
-#if 0
-                    void *maybe_highest = user_highest_address();
+#if 1
+                    void *maybe_highest = user_highest_address(/*full_calculation*/false);
                     if (maybe_highest != NULL) {
                         ptr_t highest = (ptr_t)maybe_highest - (ptr_t)g_heap;
                         g_highest_address = (uint8_t *)maybe_highest;
@@ -786,6 +789,7 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                     //putchar('.');
                     void *ptr = g_handles[handle];
                     int s = g_sizes[g_handles[handle]];
+                    theo_used -= s;
                     //fprintf(stderr, "FREE handle %d of size %d at 0x%X\n", handle, s, (uint32_t)ptr);
 
                     void *memaddress = g_handle_to_address[handle];
@@ -813,11 +817,12 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
         }
     }
     user_handle_oom(0);
-    void *maybe_highest = user_highest_address();
+    void *maybe_highest = user_highest_address(/*full_calculation*/true);
     if (maybe_highest != NULL) {
         ptr_t highest = (ptr_t)maybe_highest - (ptr_t)g_heap;
         g_highest_address = (uint8_t *)maybe_highest;
     }
+    fprintf(stderr, "\nOp %d - final heap usage %d K  - theo heap usage %d K                              ", current_op, (g_highest_address-g_heap)/1024, theo_used/1024);
 }
 
 // XXX: Make this part of the user_<op> calls!
