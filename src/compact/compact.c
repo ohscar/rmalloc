@@ -60,7 +60,8 @@ uint32_t log2_(uint32_t n)
 // and http://gcc.gnu.org/onlinedocs/gcc-4.4.2/gcc/Other-Builtins.html
 uint32_t log2_(uint32_t n)
 {
-    return __builtin_ctz(n);
+    //return __builtin_ctz(n);
+    return sizeof(n)*8 - 1 - __builtin_clz(n); // builtin_clz() is base 0
 }
 
 /* header */
@@ -541,7 +542,6 @@ header_t *block_free(header_t *header) {
     int index = log2_(header->size);
 
     if (block->header->size != header->size)
-        abort();
 #ifdef DEBUG
         abort();
 #else
