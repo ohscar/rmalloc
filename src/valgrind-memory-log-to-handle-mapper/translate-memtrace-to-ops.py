@@ -235,6 +235,7 @@ def main():
             print >> st, "# %d: %d" % (handle, opcount)
 
         stats = []
+        macro = {}
         for key in lifetime_ops.keys():
             own = lifetime_ops[key][1]
             other = lifetime_ops[key][2]
@@ -242,6 +243,20 @@ def main():
             macro_lifetime = float(other+own)/float(total_count)
             #print "+ ", macro_lifetime
             stats.append((key, micro_lifetime, macro_lifetime, own, other))
+            macro[key] = macro_lifetime
+
+
+
+        opslockedname = fname + "-lockops"
+        opslocked = open(opslockedname, "wt")
+
+        for handle, op, size, address in blocks.g_ops:
+            if op in ['N', 'F']:
+                print >> opslocked, "%d %c %d %d" % (handle, op, address, size)
+                if op == 'N' and macro.has_key(handle) and macro[handle] < 0.5:
+                    print >> opslocked, "%d L 0 0" % handle
+
+        opslocked.close()
 
         print >> st, "\nOps per handle (sorted by micro lifetime):"
         stats.sort(key=lambda x: x[1])
