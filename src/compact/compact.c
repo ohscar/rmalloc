@@ -230,6 +230,7 @@ static bool assert_memory_contents(header_t *h)
 
 static void assert_blocks() {
     header_t *node = g_header_root;
+    int which = 0;
 
     while (node != NULL) {
         if (node->flags != HEADER_FREE_BLOCK && assert_memory_contents(node) == false)
@@ -238,6 +239,7 @@ static void assert_blocks() {
             abort();
         }
 
+        which++;
         node = node->next;
     }
 }
@@ -533,7 +535,6 @@ header_t *block_free(header_t *header) {
 #else
         return NULL;
 #endif
-
 
 
     //fprintf(stderr, "block_free(): block = %p, block->header = %p (header = %p) size %d memory %p\n", block, block->header, header, block->header->size, block->header->memory);
@@ -952,7 +953,7 @@ void header_sort_all() {
     g_header_root = header__sort(g_header_root, 0, 0, header__cmp);
 }
 
-static uint32_t get_block_count(uint32_t *free_count, uint32_t *locked_count, uint32_t *unlocked_count, uint32_t *weaklocked_count)
+static uint32_t get_block_count(uint32_t *free_count, uint32_t *locked_count, uint32_t *unlocked_count, uint32_t *weaklocked_count, uint32_t *size_unlocked)
 {
     header_t *node = g_header_root;
     uint32_t count = 0;
@@ -961,10 +962,14 @@ static uint32_t get_block_count(uint32_t *free_count, uint32_t *locked_count, ui
         if (node->flags == HEADER_FREE_BLOCK && free_count != NULL)
             *free_count += 1;
         else if (node->flags == HEADER_LOCKED && locked_count != NULL)
+        {
             *locked_count += 1;
+        }
         else if (node->flags == HEADER_UNLOCKED && unlocked_count != NULL) {
             *unlocked_count += 1;
             count++;
+            if (size_unlocked)
+                *size_unlocked += node->size;
         }
         else if (node->flags == HEADER_WEAK_LOCKED && weaklocked_count != NULL)
             *weaklocked_count += 1;
@@ -974,7 +979,7 @@ static uint32_t get_block_count(uint32_t *free_count, uint32_t *locked_count, ui
     return count;
 }
 
-static uint32_t /*size*/ get_free_header_range(header_t *start, header_t **first, header_t **last)
+static uint32_t /*size*/ get_free_header_range(header_t *start, header_t **first, header_t **last, header_t **block_before_last)
 {
     header_t *h = start;
     
@@ -993,10 +998,13 @@ static uint32_t /*size*/ get_free_header_range(header_t *start, header_t **first
     }
 
     *first = start;
+    *last = start;
+    *block_before_last = NULL;
 
     uint32_t size = 0;
     while (start != NULL && start->flags == HEADER_FREE_BLOCK)
     {
+        *block_before_last = *last;
         *last = start;
         size += start->size;
 
@@ -1006,34 +1014,106 @@ static uint32_t /*size*/ get_free_header_range(header_t *start, header_t **first
     return size;
 }
 
-static uint32_t /*size*/ get_unlocked_header_range(header_t *start, header_t **first, header_t **last)
+/* 
+ * Starting from 'start', find a range of unlocked headers. Store in first and last.
+ * 
+ * TODO: If max_size > 0, set a limit on the total size of the used blocks.
+ * TODO: If max_size > 0 and no blocks were found that fits, set first = NULL and last to be the last checked block. 
+ */
+static uint32_t /*size*/ get_unlocked_header_range(header_t *start, header_t **first, header_t **last, header_t **block_before_first, uint32_t max_size, bool *passed_free_blocks)
 {
     header_t *h = start;
     
     // Find first unlocked block.
-
     while (start != NULL && start->flags != HEADER_UNLOCKED)
     {
+        if (start && start->flags == HEADER_FREE_BLOCK)
+            *passed_free_blocks = true;
+        *block_before_first = start;
         start = start->next;
     }
 
-    if (start == NULL) {
+    // No unlocked blocks found! We're done.
+    if (start == NULL)
+    {
         *first = NULL;
         *last = NULL;
         
         return 0;
     }
 
+    if (start->flags == HEADER_FREE_BLOCK)
+        *passed_free_blocks = true;
+
+
+    // We've found an unlocked block.
+
+    // If there's a size limit, skip blocks that don't fit.
+    if (max_size > 0)
+    {
+        // Search through the entire list, bypassing any locked blocks, and to the first unlocked header.
+        // Stop at any free block.
+        bool found = false;
+        while (start != NULL && start->flags != HEADER_FREE_BLOCK)
+        {
+            if (start && start->flags == HEADER_FREE_BLOCK)
+                *passed_free_blocks = true;
+
+            if (start->flags == HEADER_UNLOCKED && start->size <= max_size)
+            {
+                found = true;
+                break;
+            }
+
+            *block_before_first = start;
+
+            start = start->next;
+        }
+        if (start && start->flags == HEADER_FREE_BLOCK)
+            *passed_free_blocks = true;
+
+        if (found == false)
+        {
+        //if (start == NULL || start->flags != HEADER_UNLOCKED || start->size > max_size) {
+            // ouch!  mark last visited block and return.
+            //
+            //
+            //
+            //
+            // XXX: *last here is a free block, and not even the first block.
+            // What should it /really/ return?
+            //
+            //
+            //
+            *first = NULL;
+            //*last = start;
+            *last = NULL;
+            *block_before_first = NULL;
+            return 0;
+        }
+    }
+
+    // We have a starting point.
+
     *first = start;
+    *last = start;
 
     uint32_t size = 0;
     while (start != NULL && start->flags == HEADER_UNLOCKED)
     {
+        if (start && start->flags == HEADER_FREE_BLOCK)
+            *passed_free_blocks = true;
+
+        if (max_size > 0 && size + start->size > max_size)
+            break;
+
         *last = start;
         size += start->size;
 
         start = start->next;
     }
+    if (start && start->flags == HEADER_FREE_BLOCK)
+        *passed_free_blocks = true;
 
     return size;
 }
@@ -1131,14 +1211,26 @@ static void rebuild_free_block_slots() {
 #endif
 }
 
-void rmcompact(int maxtime) {
+void assert_list_is_sorted(header_t *root)
+{
+    header_t *prev = root;
+    while (root != NULL)
+    {
+        prev = root;
+        if (prev->memory > root->memory)
+            abort();
 
+        root = root->next;
+    }
+}
+
+void rmcompact(int maxtime) {
     // sort headers in ascending memory order. headers with ->memory == NULL are in the end.
     header_sort_all();
 
 #ifdef DEBUG
-    uint32_t start_free = 0, start_locked = 0, start_unlocked = 0;
-    get_block_count(&start_free, &start_locked, &start_unlocked, NULL);
+    uint32_t start_free = 0, start_locked = 0, start_unlocked = 0, start_size_unlocked = 0;
+    get_block_count(&start_free, &start_locked, &start_unlocked, NULL, &start_size_unlocked);
 #endif
 
     if (g_debugging)
@@ -1157,7 +1249,7 @@ void rmcompact(int maxtime) {
         clock_gettime(CLOCK_MONOTONIC, &now);
         time_diff = now.tv_sec*1000 + now.tv_nsec/1000000 - start_time.tv_sec*1000 - start_time.tv_nsec/1000000;
 
-        if (maxtime && time_diff >= maxtime) {
+        if (maxtime > 0 && time_diff >= maxtime) {
             done = true;
             break;
         } 
@@ -1172,20 +1264,77 @@ void rmcompact(int maxtime) {
 
         // Find ranges of free and unlocked blocks
 
-        header_t *free_first, *free_last;
-        uint32_t free_size = get_free_header_range(root, &free_first, &free_last);
+        header_t *free_first, *free_last, *block_before_last_free_UNUSED;
+        uint32_t free_size = get_free_header_range(root, &free_first, &free_last, &block_before_last_free_UNUSED);
         if (free_size == 0)
         {
-            break;
+            done = true;
+            continue;
+        }
+        
+        header_t *start = free_last->next;
+        
+        if (start == NULL)
+        {
+            // nothing beyond this point, stop.
+            done = true;
+            continue;
         }
 
-        header_t *start = free_last->next;
-        header_t *unlocked_first, *unlocked_last;
-        uint32_t unlocked_size = get_unlocked_header_range(start, &unlocked_first, &unlocked_last);
+        uint32_t max_size = 0;
+        if (start->flags != HEADER_UNLOCKED)
+        {
+            max_size = free_size;
+        }
+
+        header_t *unlocked_first, *unlocked_last, *block_before_first_unlocked;
+        bool passed_free_blocks = false;
+        uint32_t unlocked_size = get_unlocked_header_range(start, &unlocked_first, &unlocked_last, &block_before_first_unlocked, max_size, &passed_free_blocks);
+        if (max_size > 0 && unlocked_first == NULL)
+        {
+#if 0
+            // no blocks that fit inside current free found. try again!
+            if (unlocked_last == NULL)
+            {
+                if (free_last->next != NULL && passed_free_blocks)
+                {
+                    // there might be another chance.
+                    root = free_last->next;
+                }
+                else
+                {
+                    done = true;
+                }
+                continue;
+            }
+            else
+            {
+                root = unlocked_last;
+                continue;
+            }
+#endif
+            // no blocks that fit inside current free found. try again!
+            if (unlocked_last == NULL)
+            {
+                if (free_last->next != NULL && passed_free_blocks)
+                {
+                    // there might be another chance.
+                    root = free_last->next;
+                }
+                else
+                {
+                    done = true;
+                }
+                continue;
+            }
+        }
+
         if (unlocked_size == 0)
         {
             break;
         }
+
+        bool adjacent = free_last->next == unlocked_first;
 
         // Move unlocked blocks, squish free blocks.
          
@@ -1193,19 +1342,26 @@ void rmcompact(int maxtime) {
         if (used_offset == 0)
         {
 #ifdef DEBUG
-            abort();
+            //abort();
+            used_offset = 0;
 #endif
             break;
         }
 
+        header_t *unlocked_last_next = unlocked_last->next;
+        header_t *free_last_next = free_last->next;
+
         // Move used blocks
 
         header_t *h = unlocked_first;
+        unlocked_size = 0;
+        ptr_t unlocked_first_memory = (ptr_t)unlocked_first->memory;
         while (h != NULL && h != unlocked_last->next)
         {
             ptr_t src = (ptr_t)h->memory;
             ptr_t dest = src - used_offset;
             h->memory = (void *)dest;
+            unlocked_size += h->size;
 
             memmove((void *)dest, (void *)src, h->size);
             h = h->next;
@@ -1223,43 +1379,135 @@ void rmcompact(int maxtime) {
             h = h->next;
         }
 
-        header_t *free_memory = header_new(/*insert_in_list*/false, true);
-        free_memory->flags = HEADER_FREE_BLOCK;
-        free_memory->memory = (void *)(free_memory_start + unlocked_size);
-        free_memory->size = free_size;
-        memset(free_memory->memory, 0, free_size);
-
-        if (free_memory->memory == (void *)0x77d0e0d8 && free_size == 2620)
+        if (adjacent)
         {
+            // Place free memory in new free block header
+
+            header_t *free_memory = header_new(/*insert_in_list*/false, /*force*/true);
+            free_memory->flags = HEADER_FREE_BLOCK;
+            free_memory->memory = (void *)(free_memory_start + unlocked_size);
             free_memory->size = free_size;
+            memset(free_memory->memory, 0, free_size);
+
+            // Place free blocks at the location where the unlocked blocks were
+            // Re-link the blocks pointing to the unlocked blocks to point to the new free block.
+
+            // easy case
+            unlocked_last->next = free_memory;
+            free_memory->next = unlocked_last_next;
+        }
+        else
+        {
+            // [F1 | F2 | F3 | F4 | X1/C | X2/B | U1 | U2 | A]
+            // =>
+            // [U1 | U2 | F5 | X1/C | X2/B | (possible too big block U3) | F6 | A]
+            //
+            // * Create F6
+            // *
+            // * Possible too big block U3?
+            // * - Link B to U3
+            // * - Link U3 to F6
+            // * Else:
+            // * - Link B to F6
+            //
+            // * Link F6 to A
+            //
+            // A * Create F5
+            //   * Link LU to F5
+            //   * Link F5 to C
+            // B * Extend LU
+            //   * Link LU to C
+
+            // Create a new block F6   from the space where the used blocks were.
+            header_t *free_unlocked = header_new(/*insert_in_list*/false, /*force*/true);
+            free_unlocked->flags = HEADER_FREE_BLOCK;
+
+
+            free_unlocked->memory = (void *)unlocked_first_memory;
+            free_unlocked->size = unlocked_size;
+            memset(free_unlocked->memory, 0, free_unlocked->size); // TODO: Can be safely removed.
+
+            // Link B to F6
+            block_before_first_unlocked->next = free_unlocked;
+
+            // Link F6 to A
+            free_unlocked->next = unlocked_last_next;
+
+            if (free_size >= unlocked_size + sizeof(free_memory_block_t))
+            {
+                // Create F5
+                header_t *spare_free = header_new(/*insert_in_list*/false, /*force*/true);
+                spare_free->flags = HEADER_FREE_BLOCK;
+                spare_free->memory = (void *)((ptr_t)unlocked_first->memory + unlocked_size);
+                spare_free->size = free_size - unlocked_size;
+                memset(spare_free->memory, 0, spare_free->size); // TODO: Can be safely removed.
+
+                // Link LU to F5
+                unlocked_last->next = spare_free;
+
+                // Link F5 to C
+                spare_free->next = free_last_next;
+            }
+            else
+            {
+                // Extend LU
+                unlocked_last->size += (free_size - unlocked_size);
+                
+                // Link LU to C
+                unlocked_last->next = free_last_next;
+
+                #ifdef DEBUG
+                memset(h->memory, header_fillchar(h), h->size);
+                #endif
+            }
         }
 
-        if (free_memory == (void *)0xb7cad928)
-        {
-            free_memory->size = free_size;
-        }
-
-        // Place free blocks last
-
-        header_t *unlocked_last_next = unlocked_last->next;
-        unlocked_last->next = free_memory;
-        free_memory->next = unlocked_last_next;
 
         // Next round
 
-        if (root_last_nonfree == NULL)
-        { // first block after root is free. this means we've changed it.
+        // 
+        //
+        //
+        //
+        //
+        //
+        //
+        // XXX: If root's next (cached) is not the same as root's next _now_, that means we have changed something.
+        // Thus, relink.  Or maybe that won't work. Hmm. Check if we've done any operation with root->next, and if so, relink.
+        // Is there a difference between doing this if it's g_header_root or not?
+        //
+        //
+        //
+        //
+        //
+        //
+        //
+        //
 
-            // FIXME: g_header_root _or_ previous->next.
+
+
+        
+
+
+        // first block after root is free. this means we've changed it.
+        if (root_last_nonfree == NULL)
+        {
+            // there is a very very very very very small that unlocked_first 
             g_header_root = unlocked_first;
-            
         }
         else
+        {
             root_last_nonfree->next = unlocked_first;
+        }
 
         update_highest_address_if_needed(unlocked_last);
 
         root = unlocked_last;
+
+
+#ifdef DEBUG
+        assert_list_is_sorted(g_header_root);
+#endif
     }
 
     if (g_debugging)
@@ -1270,13 +1518,16 @@ void rmcompact(int maxtime) {
     rebuild_free_block_slots();
 
 #ifdef DEBUG
-    uint32_t end_free = 0, end_locked = 0, end_unlocked = 0;
-    get_block_count(&end_free, &end_locked, &end_unlocked, NULL);
+    uint32_t end_free = 0, end_locked = 0, end_unlocked = 0, end_size_unlocked=0;
+    get_block_count(&end_free, &end_locked, &end_unlocked, NULL, &end_size_unlocked);
 
-    if (start_unlocked != end_unlocked) {
-        printf("unlocked headers: start %d != end %d\n", start_unlocked, end_unlocked);
+    if (start_unlocked != end_unlocked && start_locked != end_locked) {
+        //printf("unlocked headers: start %d != end %d\n", start_unlocked, end_unlocked);
         abort();
-    }
+    } else
+    {
+        //printf("unlocked headers: start %d == end %d, diff size start vs end = %d\n", start_unlocked, end_unlocked, (int32_t)start_size_unlocked - (int32_t)end_size_unlocked);
+        }
 #endif
 }
 
@@ -2100,7 +2351,7 @@ void rmcompact(int maxtime) {
     if (end_count != start_count)
         abort();
 
-    get_block_count(&end_free, &end_locked, &end_unlocked, NULL);
+    get_block_count(&end_free, &end_locked, &end_unlocked, NULL, NULL);
 
     //if (end_locked != start_locked || end_unlocked != start_unlocked)
     if (end_unlocked != start_unlocked)
