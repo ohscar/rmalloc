@@ -79,9 +79,10 @@ extern void user_reset(); // basically destroy + init
 extern bool user_handle_oom(int size); // number of bytes tried to be allocated, return true if <size> bytes could be compacted.
 extern void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddress);
 extern void user_free(void *, uint32_t handle, uint32_t *op_time);
-extern void user_lock(void *);
-extern void user_unlock(void *);
+extern void *user_lock(void *); // takes whatever's returned from user_malloc()
+extern void user_unlock(void *); // takes whatever's returned from user_malloc() 
 extern void *user_highest_address(bool full_calculation); // what is the highest address allocated? NULL if not accessible.
+extern bool user_has_heap_layout_changed();
 
 /* driver code */
 

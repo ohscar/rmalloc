@@ -27,6 +27,8 @@ static void *g_heap_top = NULL; // g_heap <= end of heap < g_heap_top
 static void *g_colormap = NULL; 
 static uint32_t g_original_size = 0;
 
+static bool g_has_compacted = false;
+
 typedef std::map<handle_t, uint32_t> pointer_size_map_t;
 typedef std::map<uint32_t, handle_t> handle_block_map_t;
 typedef std::map<uint32_t, uint32_t> int_int_map_t;
@@ -65,6 +67,7 @@ static void full_compact(void)
 #ifdef COMPACTING
     int COMPACT_TIME = 0;
     rmcompact(COMPACT_TIME);
+    g_has_compacted = true;
 #endif // COMPACTING
 }
 
@@ -126,10 +129,12 @@ void user_free(void *ptr, uint32_t handle, uint32_t *op_time) {
     g_free_call_count++;
 }
 
-void user_lock(void *h) {
+void *user_lock(void *h) {
+    rmlock(h);
 }
 
 void user_unlock(void *h) {
+    rmunlock(h);
 }
 
 void user_destroy() {
@@ -171,4 +176,8 @@ void *user_highest_address(bool full_calculation) {
     //return NULL;
 }
 
+
+bool user_has_heap_layout_changed() {
+    return g_has_compacted;
+}
 

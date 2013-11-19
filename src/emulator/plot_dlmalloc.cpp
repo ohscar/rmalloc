@@ -102,7 +102,7 @@ void user_free(void *ptr, uint32_t handle, uint32_t *op_time) {
     dlfree(ptr);
 }
 
-void user_lock(void *h) {
+void *user_lock(void *h) {
 }
 
 void user_unlock(void *h) {
@@ -140,6 +140,10 @@ void user_reset(void) {
 
 void *user_highest_address(bool full_calculation) {
     return NULL;
+}
+
+bool user_has_heap_layout_changed() {
+    return false;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////

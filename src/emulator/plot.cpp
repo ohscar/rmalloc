@@ -26,6 +26,7 @@
 #include <tuple>
 #include <vector>
 #include <map>
+#include <list>
 
 // exit codes:
 // 0 = ok, 
@@ -57,6 +58,7 @@ static operation_percent_map_t g_fragmentation;
 // status of the allocator at a specific time.
 typedef std::tuple<int, int, int, float> alloc_time_stat_t;
 typedef std::vector<alloc_time_stat_t> alloc_stat_t;
+std::list<uint32_t> g_ops_order;
 
 alloc_stat_t g_alloc_stat;
 alloc_stat_t g_maxmem_stat;
@@ -156,12 +158,12 @@ void scan_block_sizes(void) {
     // The code below is used only by --maxmem
 
     // XXX: heap_size should be the highest address, i.e. double run, in order to properly calculate the theoretical free space
-    // Doing g_highest_address - g_heap does _not_ work -- it will give a zero difference.
-    //g_theoretical_free_space = (g_highest_address-g_heap) - g_theoretical_used_space - g_theoretical_overhead_space;
 
-    //g_theoretical_free_space = g_heap_size - g_theoretical_used_space - g_theoretical_overhead_space;
 
-    g_theoretical_free_space = g_total_memory_consumption - g_theoretical_used_space - g_theoretical_overhead_space;
+    // Works somewhat OK for dlmalloc, not very accurate for rmalloc. 
+    // Or really dlmalloc now either.
+    //g_theoretical_free_space = g_total_memory_consumption - g_theoretical_used_space - g_theoretical_overhead_space;
+    g_theoretical_free_space = g_heap_size;
 }
 
 
@@ -326,14 +328,18 @@ void calculate_fragmentation_percent(uint8_t op) {
 
 }
 
+void colormap_init() {
+    // keep this in sync w/ plot_fragment_image
+    memset(g_colormap, COLOR_WHITE, g_colormap_size);
+}
+
 void heap_colormap_init() {
     uint32_t *h = (uint32_t *)g_heap;
     for (int i=0; i<g_heap_size/4; i++) {
         h[i] = PAINT_INITIAL_COLOR;
     }
 
-    // keep this in sync w/ plot_fragmetn_image
-    memset(g_colormap, COLOR_WHITE, g_colormap_size);
+    colormap_init();
 }
 
 void register_op(int op, int handle, void *ptr, int ptrsize) {
@@ -358,6 +364,28 @@ void register_op(int op, int handle, void *ptr, int ptrsize) {
     uint8_t color = (op == OP_ALLOC) ? COLOR_RED : COLOR_GREEN;
     memset((void *)((ptr_t)g_colormap+co), color, ps);
 
+}
+
+/* Only called from --maxmem!
+ *
+ * In case of compacting, or other layout-changing operation,
+ * recalculate the colormap based on whatever live handles are around at the moment.
+ *
+ * That amounts to reinitializing colormap and iterating over all handles and calling register_op().
+ */
+void recalculate_colormap_from_current_live_handles() {
+    colormap_init();
+
+    std::list<uint32_t>::iterator it;
+    for (it=g_ops_order.begin(); it != g_ops_order.end(); it++) {
+        uint32_t handle = *it;
+        if (g_handles[handle] != 0) {
+            void *memaddress = g_handle_to_address[handle];
+            uint32_t size = g_sizes[g_handles[handle]];
+            
+            register_op(OP_ALLOC, handle, memaddress, size);
+        }
+    }
 }
 
 void scan_heap_update_colormap(bool create_plot) {
@@ -425,7 +453,7 @@ void alloc_driver_fragmentation(FILE *fp, int num_handles, uint8_t *heap, uint32
         } else {
 
             switch (op) {
-                case 'O': // Open = lock
+                case 'L': // Lock
                     
                     // XXX: when and how to do the color map diffs?
                     // result should be stored in a frame, but how do we get the data?
@@ -433,7 +461,7 @@ void alloc_driver_fragmentation(FILE *fp, int num_handles, uint8_t *heap, uint32
 
                     user_lock(g_handles[handle]);
                     break;
-                case 'C': // Close = unlock
+                case 'U': // Unlock
                     user_unlock(g_handles[handle]);
                     break;
                 case 'A':
@@ -534,6 +562,8 @@ void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap
     // Then, go to next op.
     uint32_t current_op = 0;
 
+    uint32_t current_used_space = 0;
+
     while (!done && !feof(fp)) {
         bool was_oom = false;
         char line[128];
@@ -548,13 +578,14 @@ void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap
         if (op == 'L' || op == 'M' || op == 'S')
             op = 'A';
 
+        if (op == 0 || r == 0)
             continue;
 
         if (handle == old_handle && op == 'A' && old_op == 'A') {
             // skip
         } else {
             switch (op) {
-                case 'O': // Open = lock
+                case 'L': // Lock
                     
                     // XXX: when and how to do the color map diffs?
                     // result should be stored in a frame, but how do we get the data?
@@ -562,7 +593,7 @@ void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap
 
                     user_lock(g_handles[handle]);
                     break;
-                case 'C': // Close = unlock
+                case 'U': // Unlock
                     user_unlock(g_handles[handle]);
                     break;
                 case 'A':
@@ -570,6 +601,11 @@ void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap
                     user_unlock(g_handles[handle]);
                     break;
                 case 'N': {
+
+                    current_used_space += size;
+
+                    g_ops_order.push_back(handle);
+
                     //putchar('.');
                     void *memaddress = NULL;
                     void *ptr = user_malloc(size, handle, &op_time, &memaddress);
@@ -590,19 +626,38 @@ void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap
                     }
 
                     if (was_oom == false) {
-                        if ((ptr_t)memaddress > (ptr_t)g_highest_address)
-                            g_highest_address = (uint8_t *)memaddress;
+
+                        void *maybe_highest = user_highest_address(/*full_calculation*/false);
+                        if (maybe_highest != NULL) {
+                            ptr_t highest = (ptr_t)maybe_highest - (ptr_t)g_heap;
+                            g_highest_address = (uint8_t *)maybe_highest;
+                        } else
+                        {
+                            //fprintf(stderr, "NEW handle %d of size %d to 0x%X\n", handle, size, (uint32_t)ptr);
+                            if ((ptr_t)memaddress > (ptr_t)g_highest_address)
+                                g_highest_address = (uint8_t *)memaddress;
+                        }
 
                         g_handle_to_address[handle] = memaddress;
                         g_handles[handle] = ptr;
                         g_sizes[g_handles[handle]] = size;
                         register_op(OP_ALLOC, handle, memaddress, size);
                     }
+                    else {
+                        // FIXME: What if?
+                    }
 
                     print_after_malloc_stats(g_handles[handle], address, size);
 
                     current_op++;
                     if (current_op > g_oplimit) {
+
+                        // in case there has been a compacting (for rmalloc), colormap is no longer valid.
+                        // thus, recalculate colormap based on /currently live/ handles.
+                        if (user_has_heap_layout_changed()) {
+                            recalculate_colormap_from_current_live_handles();
+                        }
+
                         // do calculations
                         scan_heap_update_colormap(false);
                         scan_block_sizes();
@@ -619,8 +674,14 @@ void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap
                         fprintf(stderr, "maxmem: %9u bytes (%6u kbytes = %3.2f%%)\n", 
                                 maxsize, (int)maxsize/1024, 100.0 * (float)maxsize/(float)g_theoretical_free_space);
 
+                        // skip complicated colormap calculation
+                        /*
                         g_maxmem_stat.push_back(alloc_time_stat_t(
                             g_theoretical_free_space, g_theoretical_used_space, g_theoretical_overhead_space, maxsize));
+                        */
+                        g_maxmem_stat.push_back(alloc_time_stat_t(
+                            g_theoretical_free_space, current_used_space, g_theoretical_overhead_space, maxsize));
+
                         return;
                     }
 
@@ -630,10 +691,15 @@ void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap
                     void *ptr = g_handles[handle];
                     int s = g_sizes[g_handles[handle]];
                     //fprintf(stderr, "FREE handle %d of size %d at 0x%X\n", handle, s, (uint32_t)ptr);
+                    
+                    current_used_space -= s;
 
                     void *memaddress = g_handle_to_address[handle];
                     register_op(OP_FREE, handle, memaddress, s);
                     user_free(ptr, handle, &op_time);
+
+                    g_sizes[ptr] = 0;
+                    g_handles[handle] = NULL;
 
                     print_after_free_stats(address, s);
 
@@ -653,8 +719,13 @@ void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap
                         fprintf(stderr, "%9u bytes (%6u kbytes = %3.2f%%)\n", 
                                 maxsize, (int)maxsize/1024, 100.0 * (float)maxsize/(float)g_theoretical_free_space);
 
-                        g_maxmem_stat.push_back(alloc_time_stat_t(g_theoretical_free_space,
-                                    g_theoretical_used_space, g_theoretical_overhead_space, maxsize));
+                        // skip complicated colormap calculation
+                        /*
+                        g_maxmem_stat.push_back(alloc_time_stat_t(
+                            g_theoretical_free_space, g_theoretical_used_space, g_theoretical_overhead_space, maxsize));
+                        */
+                        g_maxmem_stat.push_back(alloc_time_stat_t(
+                            g_theoretical_free_space, current_used_space, g_theoretical_overhead_space, maxsize));
                         return;
                     }
 
@@ -662,6 +733,7 @@ void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap
             }
         }
     }
+    user_handle_oom(0);
 }
 
 void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap_size, uint8_t *colormap) {
@@ -689,21 +761,21 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
 
         sscanf(line, "%d %c %u %u\n", &handle, &op, &address, &size);
         // for now, don't care about the difference between load/modify/store
-        if (op == 'L' || op == 'M' || op == 'S')
-            op = 'A';
+        // XXX: L is not Load, it's now Lock.
+        //if (op == 'L' || op == 'M' || op == 'S') op = 'A';
 
         if (op == 0 || r == 0)
             continue;
 
-        if (current_op % 1000 == 0)
-            fprintf(stderr, "\rOp %d - heap usage %d K  - theo heap usage %d K                              ", current_op, (g_highest_address-g_heap)/1024, theo_used/1024);
+        if (current_op % 10000 == 0)
+            fprintf(stderr, "\nOp %d - heap usage %d K  - theo heap usage %d K                              ", current_op, (g_highest_address-g_heap)/1024, theo_used/1024);
 
         if (handle == old_handle && op == 'A' && old_op == 'A') {
             // skip
         } else {
             current_op++;
             switch (op) {
-                case 'O': // Open = lock
+                case 'L': // Lock
                     
                     // XXX: when and how to do the color map diffs?
                     // result should be stored in a frame, but how do we get the data?
@@ -711,7 +783,7 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
 
                     user_lock(g_handles[handle]);
                     break;
-                case 'C': // Close = unlock
+                case 'U': // Unlock
                     user_unlock(g_handles[handle]);
                     break;
                 case 'A':
@@ -753,6 +825,7 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
 
 #if 1
                     void *maybe_highest = user_highest_address(/*full_calculation*/false);
+                    //void *maybe_highest = user_highest_address(/*full_calculation*/true);
                     if (maybe_highest != NULL) {
                         ptr_t highest = (ptr_t)maybe_highest - (ptr_t)g_heap;
                         g_highest_address = (uint8_t *)maybe_highest;
@@ -789,7 +862,7 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                     //putchar('.');
                     void *ptr = g_handles[handle];
                     int s = g_sizes[g_handles[handle]];
-                    theo_used -= s;
+                    //theo_used -= s;
                     //fprintf(stderr, "FREE handle %d of size %d at 0x%X\n", handle, s, (uint32_t)ptr);
 
                     void *memaddress = g_handle_to_address[handle];
@@ -797,10 +870,14 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                     register_op(OP_FREE, handle, memaddress, s);
                     user_free(ptr, handle, &op_time);
 
-                    if (current_free++ % 1000 == 0) {
+#if 0
+                    if (current_free++ % 10000 == 0) {
                         current_op_at_compact = current_op;
-                        user_handle_oom(size);
+                        //fprintf(stderr, "user_handle_oom(0) / rmcompact\n");
+                        //user_handle_oom(size);
+                        user_handle_oom(0);
                     }
+#endif
 
                     print_after_free_stats(address, s);
 
@@ -809,6 +886,16 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                     g_handle_to_address[handle] = NULL;
 
                     current_op_at_free = current_op;
+
+
+
+                    // XXX: Should not be here. Just for test!
+                    //user_handle_oom(0);
+                    //fprintf(stderr, "compact!\n");
+
+
+
+
                 } break;
                 default: break;
             }
@@ -822,7 +909,14 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
         ptr_t highest = (ptr_t)maybe_highest - (ptr_t)g_heap;
         g_highest_address = (uint8_t *)maybe_highest;
     }
-    fprintf(stderr, "\nOp %d - final heap usage %d K  - theo heap usage %d K                              ", current_op, (g_highest_address-g_heap)/1024, theo_used/1024);
+    fprintf(stderr, "\nOp %d - final heap usage %d K  - theo heap usage (w/o free()) %d K                              ", current_op, (g_highest_address-g_heap)/1024, theo_used/1024);
+
+    // ****************************************************
+    // 
+    // To get the same working heap size each time, use the theoretical max heap size instead of "actual"
+    //
+    // ****************************************************
+    g_highest_address = (uint8_t *)((ptr_t)g_heap + theo_used);
 }
 
 // XXX: Make this part of the user_<op> calls!
@@ -903,6 +997,11 @@ int main(int argc, char **argv) {
         }
     }
 
+    if (g_total_memory_consumption > 0) {
+        g_heap_size = g_total_memory_consumption;
+        g_colormap_size = g_heap_size/4;
+    }
+
     g_heap = (uint8_t *)malloc(g_heap_size);
     while (g_heap == NULL) {
         g_heap_size = (int)(0.9 * (float)g_heap_size);
@@ -911,10 +1010,6 @@ int main(int argc, char **argv) {
     fprintf(stderr, "heap size: %lu\n", g_heap_size);
     g_highest_address = g_heap;
 
-    if (g_total_memory_consumption > 0) {
-        g_heap_size = g_total_memory_consumption;
-        g_colormap_size = g_heap_size/4;
-    }
 
     g_colormap = (uint8_t *)malloc(g_colormap_size);
 
@@ -987,7 +1082,7 @@ int main(int argc, char **argv) {
             fprintf(stderr, "Handle %d free'd %d times\n", it->first, it->second);
     }
 
-    fprintf(stderr, "highest address: 0x%X adjusted for heap start = %d kb\n", (ptr_t)g_highest_address, ((ptr_t)g_highest_address - (ptr_t)g_heap) / 1024);
+    fprintf(stderr, "highest address: 0x%X adjusted for heap start (0x%X) = %d kb\n", (ptr_t)g_highest_address, (ptr_t)g_heap, ((ptr_t)g_highest_address - (ptr_t)g_heap) / 1024);
 
 
     {
