@@ -140,8 +140,9 @@ def plot_allocstats(allocstats):
 
         def ratio(op):
             #return op[opmode] / op['free']
-            return (op['free'] - op['maxmem']) / 1024.0
+            #return (op['free'] - op['maxmem']) / 1024.0
             #return op[opmode]
+            return (op['free'] - op['used'] - op['maxmem']) / 1024
 
         def ratiopercent(op):
             return (op['free'] - op['maxmem']) / op['free'] * 100.0
@@ -158,6 +159,25 @@ def plot_allocstats(allocstats):
         overhead = [op['overhead'] for op in opstats]
 
         #ax.plot(frag, 'b-', label=pretty)
+
+
+
+
+
+        p1a, = ax.plot(map(lambda x: x/1024, free), 'g-', label='Heap size')
+        p1b, = ax.plot(map(lambda x: x/1024, maxmem), 'r-', label='Allocatable (kb)')
+        p1, = ax.plot(freediff, 'y-', label='Diff allocatable vs heap_size - theo used (kb)')
+
+        ax.yaxis.tick_right()
+        ax.yaxis.set_label_position('right')
+        ax.set_ylabel('Kilobytes')
+
+
+        #lines=[p1, p1a, p1b]
+        lines=[p1a, p1b, p1]
+        plt.legend(lines, [l.get_label() for l in lines]) # loc= 2=upper left, 4=lower right, 3=lower left
+
+        """
         p1, = ax.plot(freediff, 'y-', label='Diff (kb)')
         p1a, = ax.plot(map(lambda x: x/1024, free), 'g-', label='Free: theory (kb)')
         p1b, = ax.plot(map(lambda x: x/1024, maxmem), 'r-', label='Free: actual (kb)')
@@ -174,8 +194,8 @@ def plot_allocstats(allocstats):
         ax.set_ylabel('Diff (kbytes)')
 
         lines=[p1, p2, p1a, p1b]
-        #lines=[p2]
         plt.legend(lines, [l.get_label() for l in lines], loc=3) # 2=upper left, 4=lower right, 3=lower left
+        """
 
 def main():
     if len(sys.argv) < 2:
