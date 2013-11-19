@@ -1,2 +1,7 @@
 http://infolab.stanford.edu/~cgzhu/QualPaper/FreqItemset/Mannila_sequence.pdf
 
+* Custom allocators: Fifo Allocator. (intersec's custom allocators)
+https://techtalk.intersec.com/2013/10/memory-part-4-intersecs-custom-allocators/#FIFO_allocator
+
+How TCMalloc works:
+* http://jamesgolick.com/2013/5/19/how-tcmalloc-works.html
