@@ -20,14 +20,14 @@ export DATAPOINTS=1500 # requested -- will be adjusted down if neccessary.
 export opsfile=$1
 export RESULTFILE=$(basename $opsfile)-allocstats
 
-echo -n "Calculating theoretical peak mem used by the allocator... "
+echo -n "Calculating theoretical peak mem used by the allocator ($ALLOCATOR --peakmem $opsfile)... "
 # XXX: re-enable this
 export peakmem=$($ALLOCATOR --peakmem $opsfile 2> /dev/null)
 export theory_peakmem=$peakmem
 
 #peakmem=$(echo "$peakmem*1.05/1" | bc)
 #echo "$theory_peakmem bytes. Increased by 5% => $peakmem bytes"
-echo "$theory_peakmem bytes"
+echo "($theory_peakmem bytes)"
 
 # alright, try to figure out how small we can make peakmem while still not getting OOMs.
 # this could take some time...
@@ -42,10 +42,10 @@ export OPS_COUNT=$(grep '\(N\|F\)' $opsfile | wc -l | awk '{print $1}')
 echo "ops_count (N/F ops) = $OPS_COUNT"
 
 while [[ "$done" != "1" ]]; do
-    echo "calculating maxmem for $peakmem"
+    echo "calculating maxmem for peakmem $peakmem bytes"
 
     #echo "($ALLOCATOR)--maxmem ($opsfile) ($RESULTFILE) ($fullcount) ($peakmem) ($theory_peakmem)"
-    #echo $ALLOCATOR --maxmem $opsfile $RESULTFILE $fullcount $peakmem $theory_peakmem
+    echo $ALLOCATOR --maxmem $opsfile $RESULTFILE $fullcount $peakmem $theory_peakmem
     $ALLOCATOR --maxmem $opsfile $RESULTFILE $fullcount $peakmem $theory_peakmem > /dev/null 2>&1
     status=$?
     if [[ "$status" != "0" ]]; then
