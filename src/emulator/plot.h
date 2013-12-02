@@ -24,6 +24,11 @@ typedef uint64_t ptr_t;
 typedef uint32_t ptr_t;
 #endif
 
+#define TIMER_DECL struct timespec start_time, end_time
+#define TIMER_START clock_gettime(CLOCK_MONOTONIC, &start_time)
+#define TIMER_END clock_gettime(CLOCK_MONOTONIC, &end_time)
+#define TIMER_ELAPSED (end_time.tv_sec*1000000 + end_time.tv_nsec/1000 - start_time.tv_sec*1000000 - start_time.tv_nsec/1000)
+
 /* client code */
 /*
  * colormap is a byte array of sizeof(g_heap)/4.
@@ -76,7 +81,7 @@ void user_paint(void);
 extern bool user_init(uint32_t heap_size, void *heap, void *colormap, char *name);
 extern void user_destroy();
 extern void user_reset(); // basically destroy + init
-extern bool user_handle_oom(int size); // number of bytes tried to be allocated, return true if <size> bytes could be compacted.
+extern bool user_handle_oom(int size, uint32_t *op_time); // number of bytes tried to be allocated, return true if <size> bytes could be compacted.
 extern void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddress);
 extern void user_free(void *, uint32_t handle, uint32_t *op_time);
 extern void *user_lock(void *); // takes whatever's returned from user_malloc()

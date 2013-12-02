@@ -8,6 +8,7 @@
 #include "plot.h"
 
 #include <stdio.h>
+#include <time.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -57,7 +58,13 @@ void sanity() {
 void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddress) {
     g_memory_usage += size*0.9; // XXX: *0.9 is bogus, should be just size. for plot testing purposes!
 
+    TIMER_DECL;
+
+    TIMER_START;
     void *ptr = dlmalloc(size);
+    TIMER_END;
+    if (op_time)
+        *op_time = TIMER_ELAPSED;
     if (ptr == NULL)
         return ptr;
 
@@ -80,8 +87,6 @@ void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddres
     
     g_malloc++;
 
-    *op_time = 3;
-
     if (memaddress != NULL)
         *memaddress = (void *)((ptr_t)ptr + size);
 
@@ -99,7 +104,13 @@ void user_free(void *ptr, uint32_t handle, uint32_t *op_time) {
     //sanity();
 #endif
 
+    TIMER_DECL;
+
+    TIMER_START;
     dlfree(ptr);
+    TIMER_END;
+    if (op_time)
+        *op_time = TIMER_ELAPSED;
 }
 
 void *user_lock(void *h) {
@@ -112,7 +123,8 @@ void user_destroy() {
     sanity();
 }
 
-bool user_handle_oom(int size) {
+bool user_handle_oom(int size, uint32_t *op_time) {
+    if (op_time) *op_time = 0;
     return true;
 }
 

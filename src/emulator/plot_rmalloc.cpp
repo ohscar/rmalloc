@@ -8,6 +8,7 @@
 
 #include "plot.h"
 
+#include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -79,14 +80,14 @@ static void full_compact(void)
 
 
 void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddress) {
+    TIMER_DECL;
 
-    /*
-    if (current_op == 20750) 
-    {
-        rmstat_set_debugging(true);
-    }
-    */
+    TIMER_START;
     handle_t block = rmmalloc(size);
+    TIMER_END;
+    if (op_time)
+        *op_time = TIMER_ELAPSED;
+
     if (block == NULL)
     {
         return NULL;
@@ -114,13 +115,21 @@ void user_free(void *ptr, uint32_t handle, uint32_t *op_time) {
     handle_t block = g_handle_to_block[handle];
     if ((void *)block != ptr)
     {
-        fprintf(stderr, "user_free(0x%X, %d): bad mapping: got 0x%X\n", ptr, handle, block);
+        fprintf(stderr, "user_free(0x%X, %d): bad mapping: got 0x%X\n", (ptr_t)ptr, handle, (ptr_t)block);
     }
 
     g_count[handle] -= 1;
 
     //fprintf(stderr, "<== FRE %3d => 0x%X\n", handle, block);
+    
+
+    TIMER_DECL;
+
+    TIMER_START;
     rmfree(block);
+    TIMER_END;
+    if (op_time)
+        *op_time = TIMER_ELAPSED;
 
     // is compacting considered cheating?
     //full_compact();
@@ -141,8 +150,14 @@ void user_destroy() {
     sanity();
 }
 
-bool user_handle_oom(int size) {
+bool user_handle_oom(int size, uint32_t *op_time) {
+    TIMER_DECL;
+
+    TIMER_START;
     full_compact();
+    TIMER_END;
+    if (op_time)
+        *op_time = TIMER_ELAPSED;
 
     return true;
 }

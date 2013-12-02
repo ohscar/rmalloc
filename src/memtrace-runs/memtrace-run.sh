@@ -7,9 +7,16 @@ if [[ "$1" == "" ]]; then
     exit
 fi
 
+if [[ ! -d "$1" ]]; then
+    mkdir $1
+fi
+
 echo "Getting memtrace..."
 
 ../../valgrind/vg-in-place --tool=memcheck $* 2>&1 > /dev/null | grep '^>>>' > ${theapp}/${theapp}
+
+echo "Translating..."
+
 python ../valgrind-memory-log-to-handle-mapper/translate-memtrace-to-ops.py ${theapp}/${theapp}
 
 echo "Warning: The following step is very slow. (full lifetime calculation)"

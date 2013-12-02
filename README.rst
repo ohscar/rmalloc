@@ -13,6 +13,12 @@ Lock a handle to get the memory address, unlock it when done. Unlocked memory bl
 
 Requires modifications to code using a normal malloc(), but can potentially be quicker and more memory efficient.
 
+Running test apps
+===================
+e.g.::
+
+    ALLOCATOR=./plot_rmalloc_compacting ./run_maxmem.sh /code/rmalloc/memtrace-runs/soffice2/soffice.memstat-lockops-complete
+
 Resources on the Internet and elsewhere
 ============================================================
 * Different allocators: http://publib.boulder.ibm.com/infocenter/pseries/v5r3/index.jsp?topic=/com.ibm.aix.genprogc/doc/genprogc/sys_mem_alloc.htm
