@@ -252,6 +252,7 @@ def main():
 
         for handle, op, size, address in blocks.g_ops:
             if op in ['N', 'F']:
+                address = 0 # pointless
                 print >> opslocked, "%d %c %d %d" % (handle, op, address, size)
                 if op == 'N' and macro.has_key(handle) and macro[handle] < 0.5:
                     print >> opslocked, "%d L 0 0" % handle
