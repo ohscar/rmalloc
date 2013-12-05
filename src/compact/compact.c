@@ -170,7 +170,7 @@ header_t *header_find_free(bool spare_one_for_compact) {
     }
 
 #ifdef DEBUG
-    if (header_is_unused(h) == false)
+    if (h && header_is_unused(h) == false)
         abort();
 #endif
 
