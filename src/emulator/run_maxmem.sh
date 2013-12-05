@@ -18,7 +18,7 @@ let CORES=2*$CORES
 export DATAPOINTS=1500 # requested -- will be adjusted down if neccessary.
 
 export opsfile=$1
-export RESULTFILE=$(basename $opsfile)-allocstats
+export RESULTFILE=$(basename $opsfile)-$(basename $ALLOCATOR)-allocstats
 
 echo -n "Calculating theoretical peak mem used by the allocator ($ALLOCATOR --peakmem $opsfile)... "
 # XXX: re-enable this
@@ -42,18 +42,18 @@ export OPS_COUNT=$(grep '\(N\|F\)' $opsfile | wc -l | awk '{print $1}')
 echo "ops_count (N/F ops) = $OPS_COUNT"
 
 while [[ "$done" != "1" ]]; do
-    echo "calculating maxmem for peakmem $peakmem bytes"
+    echo -n "* Calculating maxmem for peakmem $peakmem bytes..."
 
     #echo "($ALLOCATOR)--maxmem ($opsfile) ($RESULTFILE) ($fullcount) ($peakmem) ($theory_peakmem)"
-    echo $ALLOCATOR --maxmem $opsfile $RESULTFILE $fullcount $peakmem $theory_peakmem
+    #echo $ALLOCATOR --maxmem $opsfile $RESULTFILE $fullcount $peakmem $theory_peakmem
     $ALLOCATOR --maxmem $opsfile $RESULTFILE $fullcount $peakmem $theory_peakmem > /dev/null 2>&1
     status=$?
     if [[ "$status" != "0" ]]; then
         # oom, bump by 5% and retry.
         peakmem=$(echo "$peakmem*1.05/1" | bc)
-        echo
-        echo "OOM! Bump by 5% up to $peakmem bytes\n"
+        echo -e "OOM! Bump by 5% up to $peakmem bytes"
     else
+        echo -e "OK!\n"
         break
     fi
 done
@@ -130,5 +130,6 @@ rm -rf ${RESULTFILE}.part*
 # echo ']' >> dlmalloc.alloc-stats
 
 #python grapher.py dlmalloc.maxmem-stats
+echo "Generating graph from $RESULTFILE"
 python grapher.py $RESULTFILE
 
