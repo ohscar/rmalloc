@@ -17,7 +17,8 @@ Running test apps
 ===================
 e.g.::
 
-    ALLOCATOR=./plot_rmalloc_compacting ./run_maxmem.sh /code/rmalloc/memtrace-runs/soffice2/soffice.memstat-lockops-complete
+    Haddock (8912) 18:53 /code/rmalloc/src/emulator> ALLOCATOR=./plot_rmalloc_compacting ./run_maxmem.sh /code/rmalloc/src/memtrace-runs/soffice/soffice-lockopsfull 
+
 
 Resources on the Internet and elsewhere
 ============================================================
