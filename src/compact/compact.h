@@ -9,6 +9,7 @@
 #include <stdint.h>
 
 /* memory layout:
+ * if (op_time) *op_time = 0;
  * - header list grows from top of stack and downwards
  * - objects grow from bottom of stack and upwards
  * - TODO: switch around, such that the stack always grows from bottom? that

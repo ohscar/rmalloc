@@ -13,11 +13,21 @@ Lock a handle to get the memory address, unlock it when done. Unlocked memory bl
 
 Requires modifications to code using a normal malloc(), but can potentially be quicker and more memory efficient.
 
-Running test apps
-===================
+Testing allocator on lockops (plain/full) file
+===============================================
 e.g.::
 
-    Haddock (8912) 18:53 /code/rmalloc/src/emulator> ALLOCATOR=./plot_rmalloc_compacting ./run_maxmem.sh /code/rmalloc/src/memtrace-runs/soffice/soffice-lockopsfull 
+    Haddock (8912) 18:53 /code/rmalloc/src/emulator>
+    CORES=1 DISPLAY=:0 ALLOCATOR=./plot_rmalloc_compacting ./run_maxmem.sh /code/rmalloc/src/memtrace-runs/soffice/soffice-lockopsfullb
+
+Producing graphs
+==================
+Take the output from ``./run_maxmem.sh`` and give it the name of the app in the graph::
+
+    Haddock (8912) 18:53 /code/rmalloc/src/emulator>
+    python grapher.py soffice \
+        soffice-lockopsfull-plot_rmalloc_compacting-allocstats
+        soffice-lockopsfull-plot_dlmalloc-allocstats
 
 
 Resources on the Internet and elsewhere

@@ -7,14 +7,16 @@ echo "opsfile req'd"
 	exit
 fi
 
-if [[ "$ALLOCATOR" == "" ]]; then
-    echo "ALLOCATOR not set. Set it to the path to test program, e.g. ALLOCATOR=./plot_dlmalloc"
+if [[ "$ALLOCATOR" == "" || ! -f "$ALLOCATOR" ]]; then
+    echo "ALLOCATOR not set or does not exist. Set it to the path to test program, e.g. ALLOCATOR=./plot_dlmalloc"
     exit
 fi
 
 
-CORES=$(grep -c ^processor /proc/cpuinfo)
-let CORES=2*$CORES
+if [[ "$CORES" == "" ]]; then
+    CORES=$(grep -c ^processor /proc/cpuinfo)
+    let CORES=2*$CORES
+fi
 export DATAPOINTS=1500 # requested -- will be adjusted down if neccessary.
 
 export opsfile=$1

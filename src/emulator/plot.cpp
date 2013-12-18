@@ -53,12 +53,12 @@ static handle_count_map_t g_overhead_block_count;
 
 static operation_percent_map_t g_fragmentation;
 
-// <sum(used), sum(free), sum(overhead), fragmentation%, N/A, N/A, N/A, N/A, ' '> for fragmentation
-// <sum(used), sum(free), sum(overhead), maxmem, current_op_time, oom_time, current_maxmem_time, op> for maxmem
+// <sum(used), sum(free), sum(overhead), fragmentation%, N/A, N/A, N/A, N/A, ' ', size> for fragmentation
+// <sum(free), sum(used), sum(overhead), maxmem, current_op_time, oom_time, current_maxmem_time, op, size> for maxmem
 // op is 'N', 'F'
 //
 // status of the allocator at a specific time.
-typedef std::tuple<int, int, int, float, uint32_t, uint32_t, uint32_t, unsigned char> alloc_time_stat_t;
+typedef std::tuple<int, int, int, float, uint32_t, uint32_t, uint32_t, unsigned char, uint32_t> alloc_time_stat_t;
 typedef std::vector<alloc_time_stat_t> alloc_stat_t;
 std::list<uint32_t> g_ops_order;
 
@@ -324,7 +324,7 @@ void calculate_fragmentation_percent(uint8_t op) {
 
     fprintf(stderr, "Fragmentation at %4d = %.2Lf %%, total frag = %Lf, total_frag_harm = %Lf\n", sequence, frag, total_frag, total_frag_harm);
 
-    g_alloc_stat.push_back(alloc_time_stat_t(sum_free, sum_used, sum_overhead, frag, /*current_op_time*/0, /*oom_time*/0, /*optime_maxmem*/0, /*op*/' '));
+    g_alloc_stat.push_back(alloc_time_stat_t(sum_free, sum_used, sum_overhead, frag, /*current_op_time*/0, /*oom_time*/0, /*optime_maxmem*/0, /*op*/' ', /*size*/0));
 
     sequence++;
 
@@ -674,13 +674,18 @@ void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap
                             recalculate_colormap_from_current_live_handles();
                         }
 
-                        // do calculations
+                        // Colormap is broken when using compacting().
+                        // XXX: BUT MENTION IN THESIS!!!
+                        //
                         scan_heap_update_colormap(false);
                         scan_block_sizes();
+
                         fprintf(stderr, "Op #%d: Largest block from %'6u kb theoretical: ", current_op-1, g_theoretical_free_space/1024);
                         
                         // XXX: Do something with was_oom here?
                         was_oom = false;
+
+                        g_theoretical_free_space = g_heap_size - current_used_space;
 
                         uint32_t optime_maxmem = 0;
                         uint32_t maxsize = 0;
@@ -688,6 +693,8 @@ void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap
                             maxsize = calculate_maxmem(op, &optime_maxmem);
                         else
                             fprintf(stderr, "\n\nOOM!\n");
+
+
                         fprintf(stderr, "maxmem: %9u bytes (%6u kbytes = %3.2f%%)\n", 
                                 maxsize, (int)maxsize/1024, 100.0 * (float)maxsize/(float)g_theoretical_free_space);
 
@@ -709,7 +716,7 @@ void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap
                         */
                         g_maxmem_stat.push_back(alloc_time_stat_t(
                             g_theoretical_free_space, current_used_space, g_theoretical_overhead_space, maxsize,
-                            op_time, oom_time, optime_maxmem, op));
+                            op_time, oom_time, optime_maxmem, op, size));
 
                         return;
                     }
@@ -736,9 +743,15 @@ void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap
 
                     current_op++;
                     if (current_op > g_oplimit) {
-                        // do calculations
+
+                        // Colormap is broken when using compacting().
+                        // XXX: BUT MENTION IN THESIS!!!
+                        //
                         scan_heap_update_colormap(false);
                         scan_block_sizes();
+
+                        g_theoretical_free_space = g_heap_size - current_used_space;
+
                         fprintf(stderr, "Op #%d: Largest block from %'6u kb theoretical: ", current_op-1, g_theoretical_free_space/1024);
 
                         // FIXME: base g_theoretical_free_space on g_highest_address-g_heap, not g_heap_size!
@@ -747,6 +760,7 @@ void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap
                         //uint32_t maxsize = g_theoretical_free_space; //= calculate_maxmem(op);
                         uint32_t optime_maxmem = 0;
                         uint32_t maxsize = calculate_maxmem(op, &optime_maxmem);
+
 
                         fprintf(stderr, "%9u bytes (%6u kbytes = %3.2f%%)\n", 
                                 maxsize, (int)maxsize/1024, 100.0 * (float)maxsize/(float)g_theoretical_free_space);
@@ -758,7 +772,7 @@ void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap
                         */
                         g_maxmem_stat.push_back(alloc_time_stat_t(
                             g_theoretical_free_space, current_used_space, g_theoretical_overhead_space, maxsize,
-                            op_time, /*oom_time*/0, optime_maxmem, op));
+                            op_time, /*oom_time*/0, optime_maxmem, op, s));
                         return;
                     }
 
@@ -1159,9 +1173,10 @@ int main(int argc, char **argv) {
         for (it=g_maxmem_stat.begin(); it != g_maxmem_stat.end(); it++) {
             if (g_oplimit > 0)
                 fputc(',', fpstats);
-            fprintf(fpstats, "    {'op_index': %10d, 'free': %9d, 'used': %9d, 'overhead': %9d, 'maxmem': %7.2f, 'current_op_time': %9d, 'oom_time': %9d, 'optime_maxmem': %9d, 'op': '%c'}\n", g_oplimit,
+            fprintf(fpstats, "    {'op_index': %6d, 'free': %6d, 'used': %6d, 'overhead': %6d, 'maxmem': %7.2f, 'current_op_time': %6d, 'oom_time': %6d, 'optime_maxmem': %6d, 'op': '%c', 'size': %6d}\n", g_oplimit,
                     std::get<0>(*it), std::get<1>(*it), std::get<2>(*it), std::get<3>(*it),
-                    std::get<4>(*it), std::get<5>(*it), std::get<6>(*it), std::get<7>(*it));
+                    std::get<4>(*it), std::get<5>(*it), std::get<6>(*it), std::get<7>(*it),
+                    std::get<8>(*it));
         }
         }
     }

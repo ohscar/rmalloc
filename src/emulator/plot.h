@@ -24,10 +24,13 @@ typedef uint64_t ptr_t;
 typedef uint32_t ptr_t;
 #endif
 
+// Microseconds
 #define TIMER_DECL struct timespec start_time, end_time
-#define TIMER_START clock_gettime(CLOCK_MONOTONIC, &start_time)
-#define TIMER_END clock_gettime(CLOCK_MONOTONIC, &end_time)
-#define TIMER_ELAPSED (end_time.tv_sec*1000000 + end_time.tv_nsec/1000 - start_time.tv_sec*1000000 - start_time.tv_nsec/1000)
+#define TIMER_START clock_gettime(/*CLOCK_MONOTONIC*/CLOCK_PROCESS_CPUTIME_ID, &start_time)
+#define TIMER_END clock_gettime(/*CLOCK_MONOTONIC*/CLOCK_PROCESS_CPUTIME_ID, &end_time)
+//#define TIMER_ELAPSED (end_time.tv_sec*1000000 + end_time.tv_nsec/1000 - start_time.tv_sec*1000000 - start_time.tv_nsec/1000)
+//#define TIMER_ELAPSED ((end_time.tv_sec-start_time.tv_sec)*1000000 + (end_time.tv_nsec-start_time.tv_nsec)/1000)
+#define TIMER_ELAPSED ((end_time.tv_sec-start_time.tv_sec)*1000 + (end_time.tv_nsec-start_time.tv_nsec)/1)
 
 /* client code */
 /*
