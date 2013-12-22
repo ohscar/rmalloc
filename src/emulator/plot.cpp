@@ -80,13 +80,13 @@ uint8_t g_operation_mode;
 uint32_t g_oplimit = 0; // ./plot_foo --maxmem result.app-ops <n> # oplimit, 0 initial, then 1..N.
 
 
-#define HEAP_SIZE (1024  * 1024*1024) // 1 GB should be enough.
+#define HEAP_SIZE (512 * 1024*1024) // 1 GB should be enough.
 
 
 uint32_t g_heap_size = HEAP_SIZE;
 uint8_t *g_heap = NULL;
 uint8_t *g_colormap = NULL;
-uint32_t g_colormap_size = HEAP_SIZE/4;
+uint32_t g_colormap_size = HEAP_SIZE/4 + 1;
 
 uint8_t *g_highest_address = 0; // Currently ONLY used for --peakmem
 
@@ -345,9 +345,11 @@ void heap_colormap_init() {
 }
 
 void register_op(int op, int handle, void *ptr, int ptrsize, uint32_t op_time) {
+    fprintf(stderr, "op at handle %d\n", handle);
     // ptr will be within g_heap
     ptr_t offset = (ptr_t)ptr - (ptr_t)g_heap;
-    uint32_t size = g_sizes[ptr];
+    //uint32_t size = g_sizes[ptr]; // XXX: What is this for?!
+    uint32_t size = ptrsize;
 
     int cs = ceil((float)size/4.0); 
     uint32_t co = offset/4;
@@ -360,6 +362,7 @@ void register_op(int op, int handle, void *ptr, int ptrsize, uint32_t op_time) {
     //printf("marking handle %d ptr %x of size %d (and small size: %d)\n", handle, (uint32_t)ptr, size, ps);
 
     uint32_t heap_fill = (op == OP_ALLOC) ? HEAP_ALLOC : HEAP_FREE; 
+
     for (int i=0; i<ps; i++)
         pp[i] = heap_fill;
 
@@ -501,11 +504,11 @@ void alloc_driver_fragmentation(FILE *fp, int num_handles, uint8_t *heap, uint32
                         // FIXME: Recalculate all ops after compact?
                         register_op(OP_ALLOC, handle, memaddress, size, op_time);
                     }
-                    scan_heap_update_colormap(false/*create_plot*/);
+                    scan_heap_update_colormap(true/*create_plot*/);
                     print_after_malloc_stats(g_handles[handle], address, size);
 
                     scan_block_sizes();
-                    calculate_fragmentation_percent(op);
+                    //calculate_fragmentation_percent(op);
                 } break;
                 case 'F': {
                     //putchar('.');
@@ -514,14 +517,18 @@ void alloc_driver_fragmentation(FILE *fp, int num_handles, uint8_t *heap, uint32
                     //fprintf(stderr, "FREE handle %d of size %d at 0x%X\n", handle, s, (uint32_t)ptr);
                     void *memaddress = g_handle_to_address[handle];
 
-                    user_free(ptr, handle, &op_time);
+
+                    // ORDER IS IMPORTANT!  register_op marks as free.
                     register_op(OP_FREE, handle, memaddress, s, op_time);
-                    scan_heap_update_colormap(false/*create_plot*/);
+
+                    user_free(ptr, handle, &op_time);
+
+                    scan_heap_update_colormap(true/*create_plot*/);
 
                     print_after_free_stats(address, s);
 
                     scan_block_sizes();
-                    calculate_fragmentation_percent(op);
+                    //calculate_fragmentation_percent(op);
                 } break;
             }
         }
@@ -647,14 +654,14 @@ void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap
                         } else
                         {
                             //fprintf(stderr, "NEW handle %d of size %d to 0x%X\n", handle, size, (uint32_t)ptr);
-                            if ((ptr_t)memaddress > (ptr_t)g_highest_address)
-                                g_highest_address = (uint8_t *)memaddress;
+                            if ((ptr_t)memaddress + size > (ptr_t)g_highest_address)
+                                g_highest_address = (uint8_t *)memaddress + size;
                         }
 
                         g_handle_to_address[handle] = memaddress;
                         g_handles[handle] = ptr;
                         g_sizes[g_handles[handle]] = size;
-                        register_op(OP_ALLOC, handle, memaddress, size, op_time);
+                        //register_op(OP_ALLOC, handle, memaddress, size, op_time);
                     }
                     else {
                         
@@ -677,8 +684,10 @@ void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap
                         // Colormap is broken when using compacting().
                         // XXX: BUT MENTION IN THESIS!!!
                         //
+#if 0
                         scan_heap_update_colormap(false);
                         scan_block_sizes();
+#endif
 
                         fprintf(stderr, "Op #%d: Largest block from %'6u kb theoretical: ", current_op-1, g_theoretical_free_space/1024);
                         
@@ -734,7 +743,7 @@ void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap
 
                     void *memaddress = g_handle_to_address[handle];
                     user_free(ptr, handle, &op_time);
-                    register_op(OP_FREE, handle, memaddress, s, op_time);
+                    //register_op(OP_FREE, handle, memaddress, s, op_time);
 
                     g_sizes[ptr] = 0;
                     g_handles[handle] = NULL;
@@ -747,8 +756,10 @@ void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap
                         // Colormap is broken when using compacting().
                         // XXX: BUT MENTION IN THESIS!!!
                         //
+#if 0
                         scan_heap_update_colormap(false);
                         scan_block_sizes();
+#endif
 
                         g_theoretical_free_space = g_heap_size - current_used_space;
 
@@ -881,8 +892,8 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                     } else
                     {
                         //fprintf(stderr, "NEW handle %d of size %d to 0x%X\n", handle, size, (uint32_t)ptr);
-                        if ((ptr_t)memaddress > (ptr_t)g_highest_address)
-                            g_highest_address = (uint8_t *)memaddress;
+                        if ((ptr_t)memaddress + size> (ptr_t)g_highest_address)
+                            g_highest_address = (uint8_t *)memaddress + size;
                     }
 #else
                         if ((ptr_t)memaddress > (ptr_t)g_highest_address)
@@ -893,7 +904,7 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                     g_handles[handle] = ptr;
                     g_sizes[g_handles[handle]] = size;
 
-                    register_op(OP_ALLOC, handle, memaddress, size, op_time);
+                    //register_op(OP_ALLOC, handle, memaddress, size, op_time);
 
                     current_op_at_new = current_op;
                 } break;
@@ -917,7 +928,7 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                     void *memaddress = g_handle_to_address[handle];
 
                     user_free(ptr, handle, &op_time);
-                    register_op(OP_FREE, handle, memaddress, s, op_time);
+                    //register_op(OP_FREE, handle, memaddress, s, op_time);
 
 #if 0
                     if (current_free++ % 10000 == 0) {

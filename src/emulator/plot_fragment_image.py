@@ -26,7 +26,7 @@ def main():
     try:
         f = open(sys.argv[1], "rt")
     except:
-        print "couldn't open file %s for reading." % sys.argv[0]
+        print "couldn't open file %s for reading." % sys.argv[1]
         print usage
         sys.exit(1)
 

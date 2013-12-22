@@ -88,7 +88,7 @@ void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddres
     g_malloc++;
 
     if (memaddress != NULL)
-        *memaddress = (void *)((ptr_t)ptr + size);
+        *memaddress = (void *)((ptr_t)ptr);
 
     return ptr;
 }

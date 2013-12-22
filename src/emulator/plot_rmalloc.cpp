@@ -94,7 +94,7 @@ void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddres
     }
 
     if (memaddress != NULL)
-        *memaddress = (void *)(size + (ptr_t)(((header_t *)block)->memory));
+        *memaddress = (void *)((ptr_t)(((header_t *)block)->memory));
 
     g_handle_to_block[handle] = block;
     if (g_count.find(handle) == g_count.end())
