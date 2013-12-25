@@ -55,13 +55,13 @@ def plot_allocstats_multiple(app, allocstats_multiple):
         color_counter += 1
 
         opstats = allocstats['alloc_stats']
-        if allocstats['opmode'] != 'maxmem':
+        if allocstats['opmode'] != 'allocstats':
             continue
 
         # sort opstats by 'op_index'
         opstats.sort(key=lambda x: x['op_index'])
 
-        opmode = 'maxmem'
+        opmode = 'allocstats'
         pretty = "Largest block size (bytes)"
 
         driver = allocstats['driver']
@@ -159,13 +159,13 @@ def plot_allocstats_multiple(app, allocstats_multiple):
         color_counter += 1
 
         opstats = allocstats['alloc_stats']
-        if allocstats['opmode'] != 'maxmem':
+        if allocstats['opmode'] != 'allocstats':
             continue
 
         # sort opstats by 'op_index'
         opstats.sort(key=lambda x: x['op_index'])
 
-        opmode = 'maxmem'
+        opmode = 'allocstats'
         pretty = "Largest block size (bytes)"
 
         driver = allocstats['driver']
@@ -279,11 +279,11 @@ def plot_allocstats(allocstats):
     # sort opstats by 'op_index'
     opstats.sort(key=lambda x: x['op_index'])
 
-    if allocstats['opmode'] == 'fragmentation':
-        opmode = 'fragmentation'
+    if allocstats['opmode'] == 'memplot':
+        opmode = 'memplot'
         pretty = "Fragmentation (%)"
-    elif allocstats['opmode'] == 'maxmem':
-        opmode = 'maxmem'
+    elif allocstats['opmode'] == 'allocstats':
+        opmode = 'allocstats'
         pretty = "Largest block size (bytes)"
 
     driver = allocstats['driver']
@@ -297,7 +297,7 @@ def plot_allocstats(allocstats):
 
     ax = subplot(title, "Time (op)", pretty)
 
-    if opmode == 'fragmentation':
+    if opmode == 'memplot':
         max_size = 0
         for op in opstats:
             m = op['free'] + op['overhead'] + op['used']
@@ -329,7 +329,7 @@ def plot_allocstats(allocstats):
         lines=[p1, p2, p3, p4]
         plt.legend(lines, [l.get_label() for l in lines], loc=2) # upper left
 
-    elif opmode == 'maxmem':
+    elif opmode == 'allocstats':
         max_size = 0
         for op in opstats:
             m = op['free'] + op['overhead'] + op['used']

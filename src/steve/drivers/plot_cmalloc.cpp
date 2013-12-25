@@ -1,6 +1,6 @@
 /* plot_cmalloc.cpp
  */
-#include "../../compact/compact.h"
+#include "compact/compact.h"
 
 #include "plot.h"
 

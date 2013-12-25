@@ -13,15 +13,21 @@ fi
 OPSFILE=$1
 
 echo "* Generating plots."
-$ALLOCATOR --fragmentation $OPSFILE
+$ALLOCATOR --memplot $OPSFILE
 
 ANIMATION=${OPSFILE}-animation.avi
 
 rm -rf "${ANIMATION}"
 
 echo "* Producing animation AVI: $ANIMATION"
-ffmpeg -f image2 -r 20 -i ${OPSFILE}-plot-%6d.png -r 30  -vcodec mjpeg -sameq ${ANIMATION}
+ffmpeg -v quiet -f image2 -r 20 -i ${OPSFILE}-plot-%6d.png -r 30  -vcodec mjpeg -sameq ${ANIMATION} > /tmp/ffmpeg.log 2>&1 
+
+if [[ "$?" != "0" ]]; then
+    echo "* Error"
+    cat /tmp/ffmpeg.log
+fi
 
 rm -rf ${OPSFILE}-plot*png
+echo "* Animation saved to $ANIMATION"
 
 

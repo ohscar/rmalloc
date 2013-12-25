@@ -2,7 +2,7 @@
  *
  * uses dlmalloc from a user heap by overriding sbrk().
  */
-#include "../compact/compact.h"
+#include "compact.h"
 #include "dlmalloc-2.8.6.h"
 
 #include "plot.h"

@@ -88,7 +88,7 @@ rm -rf donefile.*
 let jobs=$CORES-1
 
 for i in $(seq 0 $jobs); do
-    ./run_maxmem_payload.sh donefile.$i ${corejobs[$i]} &
+    ./run_allocator_stats_payload.sh donefile.$i ${corejobs[$i]} &
 done
 
 echo "Waiting for run to finish."
@@ -132,6 +132,7 @@ rm -rf ${RESULTFILE}.part*
 # echo ']' >> dlmalloc.alloc-stats
 
 #python grapher.py dlmalloc.maxmem-stats
-echo "Generating graph from $RESULTFILE"
-python grapher.py $RESULTFILE
+echo "Generated alloctaion stats in file: $RESULTFILE"
+#echo "Generating graph from $RESULTFILE"
+#python run_maxmem_grapher.py $RESULTFILE
 

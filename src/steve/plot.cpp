@@ -71,16 +71,16 @@ uint32_t g_memory_usage = 0;
 
 
 enum {
-    OPMODE_FRAGMENTATION, // produce fragmentation graphs
-    OPMODE_MAXMEM, // produce graph of max alloc'able mem at each point in time
+    OPMODE_MEMPLOT, // produce memplot pngs/movie
+    OPMODE_ALLOCSTATS, // produce graph of max alloc'able mem at each point in time
     OPMODE_PEAKMEM, // print largest memory address minus g_heap
 };
 
 uint8_t g_operation_mode;
-uint32_t g_oplimit = 0; // ./plot_foo --maxmem result.app-ops <n> # oplimit, 0 initial, then 1..N.
+uint32_t g_oplimit = 0; // ./plot_foo --allocstats result.app-ops <n> # oplimit, 0 initial, then 1..N.
 
 
-#define HEAP_SIZE (512 * 1024*1024) // 1 GB should be enough.
+#define HEAP_SIZE (256 * 1024*1024) // 1 GB should be enough.
 
 
 uint32_t g_heap_size = HEAP_SIZE;
@@ -157,7 +157,7 @@ void scan_block_sizes(void) {
     }
 
 
-    // The code below is used only by --maxmem
+    // The code below is used only by --allocstats
 
     // XXX: heap_size should be the highest address, i.e. double run, in order to properly calculate the theoretical free space
 
@@ -371,7 +371,7 @@ void register_op(int op, int handle, void *ptr, int ptrsize, uint32_t op_time) {
 
 }
 
-/* Only called from --maxmem!
+/* Only called from --allocstats!
  *
  * In case of compacting, or other layout-changing operation,
  * recalculate the colormap based on whatever live handles are around at the moment.
@@ -433,7 +433,7 @@ void scan_heap_update_colormap(bool create_plot) {
 }
 
 /* parses ops file and calls into user alloc functions. */
-void alloc_driver_fragmentation(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap_size, uint8_t *colormap) {
+void alloc_driver_memplot(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap_size, uint8_t *colormap) {
     bool done = false;
     
     int handle, address, size, old_handle=1; /* ops always start from 0 */
@@ -568,7 +568,7 @@ uint32_t calculate_maxmem(uint8_t op, uint32_t *op_time) {
     return p == NULL ? 0 : size;
 }
 
-void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap_size, uint8_t *colormap) {
+void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap_size, uint8_t *colormap) {
     bool done = false;
     
     int handle, address, size, old_handle=1; /* ops always start from 0 */
@@ -665,7 +665,7 @@ void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap
                     }
                     else {
                         
-                        oom("\n\nmaxmem: couldn't recover trying to alloc %d bytes at handle %d (total alloc'd %u).\n", size, handle, total_size);
+                        oom("\n\nallocstats: couldn't recover trying to alloc %d bytes at handle %d (total alloc'd %u).\n", size, handle, total_size);
 
                         // FIXME: What if?
                     }
@@ -704,7 +704,7 @@ void alloc_driver_maxmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap
                             fprintf(stderr, "\n\nOOM!\n");
 
 
-                        fprintf(stderr, "maxmem: %9u bytes (%6u kbytes = %3.2f%%)\n", 
+                        fprintf(stderr, "allocstats: %9u bytes (%6u kbytes = %3.2f%%)\n", 
                                 maxsize, (int)maxsize/1024, 100.0 * (float)maxsize/(float)g_theoretical_free_space);
 
                         /*
@@ -1011,9 +1011,9 @@ int colormap_print(char *output) {
     fclose(f);
 
     char cmd[256];
-    sprintf(cmd, "python plot_fragment_image.py /tmp/fragmentplot.txt %s", output);
+    sprintf(cmd, "python run_memory_frag_animation_plot_animation.py /tmp/fragmentplot.txt %s", output);
     int r = system(cmd);
-    //printf("Plot data saved in %s\n", output);
+    //printf("Plot data saved in %s (result = %d)\n", output, r);
 }
 
 int main(int argc, char **argv) {
@@ -1025,35 +1025,35 @@ int main(int argc, char **argv) {
 
     if (argc < 3) {
         die("%d is too few.\n"
-            "usage: %s --maxmem opsfile resultfile oplimit peakmemsize theoretical_heap_size\n"
+            "usage: %s --allocstats opsfile resultfile oplimit peakmemsize theoretical_heap_size\n"
             "       oplimit = 0 => write header to <driver>.alloc_stats\n"
             "       oplimit > 0 => write free/used/overhead/maxmem per op.\n"
             "\n"
             "       %s --peakmem opsfile\n"
             "       Prints out therotical heap size used.\n"
             "\n"
-            "       %s --fragmentation opsfile\n"
+            "       %s --memplot opsfile\n"
             , argc, argv[0], argv[0], argv[0]);
     }
 
     if (argv[1][0] == '-') {
         g_opsfile = argv[2];
-        if (strcmp(argv[1], "--maxmem") == 0) {
+        if (strcmp(argv[1], "--allocstats") == 0) {
             if (argc < 5)
                 die("too few arguments.");
             g_resultsfile = argv[3];
-            g_operation_mode = OPMODE_MAXMEM;
+            g_operation_mode = OPMODE_ALLOCSTATS;
             g_oplimit = atoi(argv[4]);
             g_total_memory_consumption = atoi(argv[5]);
             g_theoretical_heap_size = atoi(argv[6]);
-            fprintf(stderr, "opmode: maxmem\n");
+            fprintf(stderr, "opmode: allocstats\n");
         }else if (strcmp(argv[1], "--peakmem") == 0) {
             g_operation_mode = OPMODE_PEAKMEM;
             fprintf(stderr, "opmode: peakmem\n");
         }
         else {
-            g_operation_mode = OPMODE_FRAGMENTATION;
-            fprintf(stderr, "opmode: fragmentation\n");
+            g_operation_mode = OPMODE_MEMPLOT;
+            fprintf(stderr, "opmode: memplot\n");
         }
     }
 
@@ -1100,7 +1100,7 @@ int main(int argc, char **argv) {
         fprintf(fpstats, "opsfile = \"%s\"\n", g_opsfile);
         fprintf(fpstats, "heap_size = %u\n", g_heap_size);
         fprintf(fpstats, "theoretical_heap_size = %u\n", g_theoretical_heap_size);
-        fprintf(fpstats, "opmode = '%s'\n", g_operation_mode == OPMODE_FRAGMENTATION ? "fragmentation" : "maxmem");
+        fprintf(fpstats, "opmode = '%s'\n", g_operation_mode == OPMODE_MEMPLOT ? "memplot" : "allocstats");
     } else {
         char buffer[512];
         if (g_resultsfile != NULL)
@@ -1109,11 +1109,11 @@ int main(int argc, char **argv) {
     }
 
     // yum, bolognese programming...
-    if (g_operation_mode == OPMODE_FRAGMENTATION) {
-        alloc_driver_fragmentation(fpops, 500*1000, g_heap, g_heap_size, g_colormap);
+    if (g_operation_mode == OPMODE_MEMPLOT) {
+        alloc_driver_memplot(fpops, 500*1000, g_heap, g_heap_size, g_colormap);
     }
-    else if (g_operation_mode == OPMODE_MAXMEM) {
-        alloc_driver_maxmem(fpops, 500*1000, g_heap, g_heap_size, g_colormap);
+    else if (g_operation_mode == OPMODE_ALLOCSTATS) {
+        alloc_driver_allocstats(fpops, 500*1000, g_heap, g_heap_size, g_colormap);
     } else if (g_operation_mode == OPMODE_PEAKMEM) {
         alloc_driver_peakmem(fpops, 500*1000, g_heap, g_heap_size, g_colormap);
         user_destroy();
@@ -1169,7 +1169,7 @@ int main(int argc, char **argv) {
     // The data that actually is read by grapher.py
 
     if (g_oplimit == 0) fprintf(fpstats, "alloc_stats = [\n");
-    if (g_operation_mode == OPMODE_FRAGMENTATION) {
+    if (g_operation_mode == OPMODE_MEMPLOT) {
         {
         alloc_stat_t::iterator it;
         for (it=g_alloc_stat.begin(); it != g_alloc_stat.end(); it++) {
@@ -1178,7 +1178,7 @@ int main(int argc, char **argv) {
         }
         }
 
-    } else if (g_operation_mode == OPMODE_MAXMEM) {
+    } else if (g_operation_mode == OPMODE_ALLOCSTATS) {
         {
         alloc_stat_t::iterator it;
         for (it=g_maxmem_stat.begin(); it != g_maxmem_stat.end(); it++) {
