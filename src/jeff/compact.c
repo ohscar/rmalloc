@@ -259,7 +259,7 @@ header_t *block_new(int size) {
 
 #ifdef DEBUG
     freeblock_verify_lower_size();
-    assert_blocks();
+    //assert_blocks();
 #endif
     header_t *h = NULL;
  
@@ -978,6 +978,28 @@ static uint32_t get_block_count(uint32_t *free_count, uint32_t *locked_count, ui
     }
     return count;
 }
+
+uint32_t rmstat_get_used_block_count(void) {
+    uint32_t fc, lc, uc, wc, su;
+    get_block_count(&fc, &lc, &uc, &wc, &su);
+    return fc + lc + uc + wc;
+}
+
+void rmstat_get_used_blocks(ptr_t *blocks) {
+    int i=0;
+    uint32_t count = rmstat_get_used_block_count();
+    header_t *h = g_header_root;
+    while (h != NULL) {
+        if (h->flags != HEADER_FREE_BLOCK) 
+            blocks[i++] = (ptr_t)h->memory;
+
+        if (i == count)
+            break;
+
+        h = h->next;
+    }
+}
+
 
 static uint32_t /*size*/ get_free_header_range(header_t *start, header_t **first, header_t **last, header_t **block_before_last)
 {
@@ -2411,7 +2433,7 @@ handle_t rmmalloc(int size) {
     }
 
 #ifdef DEBUG
-    memset(h->memory, header_fillchar(h), h->size);
+    //memset(h->memory, header_fillchar(h), h->size);
     //rebuild_free_block_slots();
     //assert_blocks();
 #endif

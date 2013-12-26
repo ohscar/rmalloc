@@ -3,8 +3,11 @@
 all: compact.o listsort.o
 all: CFLAGS += -O3 -march=core2
 
+debugcode: compact.o listsort.o
+debugcode: CFLAGS += -g -O0 -DDEBUG
+
 debug: compact.o listsort.o
-debug: CFLAGS += -g -O0 -DDEBUG
+debug: CFLAGS += -g -O0
 
 profile: compact.o listsort.o
 profile: PROFILING=-pg -g3

@@ -68,4 +68,10 @@ bool user_handle_oom(int size) {
     return true;
 }
 
+uint32_t user_get_used_block_count() {
+    return 0;
+}
+
+void user_get_used_blocks(ptr_info_t *blocks) {
+}
 

@@ -371,27 +371,6 @@ void register_op(int op, int handle, void *ptr, int ptrsize, uint32_t op_time) {
 
 }
 
-/* Only called from --allocstats!
- *
- * In case of compacting, or other layout-changing operation,
- * recalculate the colormap based on whatever live handles are around at the moment.
- *
- * That amounts to reinitializing colormap and iterating over all handles and calling register_op().
- */
-void recalculate_colormap_from_current_live_handles() {
-    colormap_init();
-
-    std::list<uint32_t>::iterator it;
-    for (it=g_ops_order.begin(); it != g_ops_order.end(); it++) {
-        uint32_t handle = *it;
-        if (g_handles[handle] != 0) {
-            void *memaddress = g_handle_to_address[handle];
-            uint32_t size = g_sizes[g_handles[handle]];
-            
-            register_op(OP_ALLOC, handle, memaddress, size, /*op_time*/0);
-        }
-    }
-}
 
 void scan_heap_update_colormap(bool create_plot) {
     static int sequence = 0;
@@ -432,6 +411,48 @@ void scan_heap_update_colormap(bool create_plot) {
     }
 }
 
+/* Only called from --allocstats!
+ *
+ * In case of compacting, or other layout-changing operation,
+ * recalculate the colormap based on whatever live handles are around at the moment.
+ *
+ * That amounts to reinitializing colormap and iterating over all handles and calling register_op().
+ */
+void recalculate_colormap_from_current_live_handles() {
+    /*
+    int32_t count = user_get_used_block_count();
+    if (count == 0)
+        return;
+
+    ptr_t *blocks = (ptr_t *)malloc(sizeof(ptr_t) * count);
+    user_get_used_blocks(blocks);
+    */
+    
+    fprintf(stderr, "* Recalculate: start\n");
+
+    colormap_init();
+    handle_pointer_map_t::iterator it;
+    for (it=g_handles.begin(); it != g_handles.end(); it++) {
+        uint32_t h = it->first;
+        void *memhandle = it->second;
+        uint32_t size = g_sizes[memhandle];
+
+        if (size != 0) {
+            void *ptr = user_lock(memhandle);
+            register_op(OP_ALLOC, h, ptr, size, /*op_time*/0);
+            scan_heap_update_colormap(false/*create_plot*/);
+            user_unlock(memhandle);
+        }
+    }
+
+    fprintf(stderr, "* Recalculate: done, create plot.\n");
+    scan_heap_update_colormap(true/*create_plot*/);
+
+    /*
+    free(blocks);
+    */
+}
+
 /* parses ops file and calls into user alloc functions. */
 void alloc_driver_memplot(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap_size, uint8_t *colormap) {
     bool done = false;
@@ -439,6 +460,7 @@ void alloc_driver_memplot(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
     int handle, address, size, old_handle=1; /* ops always start from 0 */
     char op, old_op=0;
     uint32_t op_time, op_time2, op_time3;
+    bool was_oom = false;
 
     //frame_t *current_frame = colormap_statistics();
 
@@ -457,6 +479,8 @@ void alloc_driver_memplot(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
             // skip
         } else {
 
+            was_oom = false;
+
             switch (op) {
                 case 'L': // Lock
                     
@@ -472,6 +496,10 @@ void alloc_driver_memplot(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                 case 'A':
                     user_lock(g_handles[handle]);
                     user_unlock(g_handles[handle]);
+                    break;
+                case 'O': // OOM
+                    user_handle_oom(0, &op_time);
+                    recalculate_colormap_from_current_live_handles();
                     break;
                 case 'N': {
                     //putchar('.');
@@ -494,6 +522,9 @@ void alloc_driver_memplot(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                             if (NULL == ptr) {
                                 oom("\n\nOOM!\n");
                             }
+                            was_oom = true;
+
+
                             g_handles[handle] = ptr;
                             register_op(OP_ALLOC, handle, memaddress, size, op_time);
                             g_sizes[g_handles[handle]] = size;
@@ -504,7 +535,16 @@ void alloc_driver_memplot(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                         // FIXME: Recalculate all ops after compact?
                         register_op(OP_ALLOC, handle, memaddress, size, op_time);
                     }
-                    scan_heap_update_colormap(true/*create_plot*/);
+
+
+                    // in case there has been a compacting (for rmalloc), colormap is no longer valid.
+                    // thus, recalculate colormap based on /currently live/ handles.
+                    if (was_oom) {
+                        recalculate_colormap_from_current_live_handles();
+                    } else {
+                        scan_heap_update_colormap(true/*create_plot*/);
+                    }
+
                     print_after_malloc_stats(g_handles[handle], address, size);
 
                     scan_block_sizes();
@@ -522,6 +562,9 @@ void alloc_driver_memplot(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                     register_op(OP_FREE, handle, memaddress, s, op_time);
 
                     user_free(ptr, handle, &op_time);
+
+                    // no longer in use.
+                    g_sizes[g_handles[handle]] = 0;
 
                     scan_heap_update_colormap(true/*create_plot*/);
 
@@ -674,12 +717,6 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
 
                     current_op++;
                     if (current_op > g_oplimit) {
-
-                        // in case there has been a compacting (for rmalloc), colormap is no longer valid.
-                        // thus, recalculate colormap based on /currently live/ handles.
-                        if (user_has_heap_layout_changed()) {
-                            recalculate_colormap_from_current_live_handles();
-                        }
 
                         // Colormap is broken when using compacting().
                         // XXX: BUT MENTION IN THESIS!!!
@@ -1013,7 +1050,8 @@ int colormap_print(char *output) {
     char cmd[256];
     sprintf(cmd, "python run_memory_frag_animation_plot_animation.py /tmp/fragmentplot.txt %s", output);
     int r = system(cmd);
-    //printf("Plot data saved in %s (result = %d)\n", output, r);
+    if (r != 0)
+        fprintf(stderr, "Plot data saved in %s (result = %d)\n", output, r);
 }
 
 int main(int argc, char **argv) {
@@ -1059,7 +1097,7 @@ int main(int argc, char **argv) {
 
     if (g_total_memory_consumption > 0) {
         g_heap_size = g_total_memory_consumption;
-        g_colormap_size = g_heap_size/4;
+        g_colormap_size = g_heap_size/4 + 1;
     }
 
     g_heap = (uint8_t *)malloc(g_heap_size);

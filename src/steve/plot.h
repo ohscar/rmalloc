@@ -92,6 +92,10 @@ extern void user_unlock(void *); // takes whatever's returned from user_malloc()
 extern void *user_highest_address(bool full_calculation); // what is the highest address allocated? NULL if not accessible.
 extern bool user_has_heap_layout_changed();
 
+// currently in-use memory blocks. useful after compact() has happened.
+extern uint32_t user_get_used_block_count();
+extern void user_get_used_blocks(ptr_t *blocks); // caller allocates!
+
 /* driver code */
 
 // to be called from all ops that possibly modify memory, i.e. alloc, free, compact

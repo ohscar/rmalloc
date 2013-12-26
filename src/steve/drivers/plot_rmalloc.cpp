@@ -196,3 +196,12 @@ bool user_has_heap_layout_changed() {
     return g_has_compacted;
 }
 
+uint32_t user_get_used_block_count() {
+    //return rmstat_get_used_block_count();
+    return 0;
+}
+
+void user_get_used_blocks(ptr_t *blocks) {
+    //return rmstat_get_used_blocks(blocks);
+}
+

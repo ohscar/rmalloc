@@ -158,6 +158,13 @@ bool user_has_heap_layout_changed() {
     return false;
 }
 
+uint32_t user_get_used_block_count() {
+    return 0;
+}
+
+void user_get_used_blocks(ptr_t *blocks) {
+}
+
 /////////////////////////////////////////////////////////////////////////////////////////////
 
 /* sbrk() for use with dlmalloc
