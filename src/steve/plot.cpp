@@ -94,7 +94,7 @@ char *g_opsfile = NULL;
 char *g_resultsfile = NULL;
 
 void scan_block_sizes(void);
-int colormap_print(char *output);
+int colormap_print(char *output, int sequence);
 void calculate_fragmentation_percent(uint8_t op);
 
 
@@ -353,6 +353,7 @@ void register_op(int op, int handle, void *ptr, int ptrsize, uint32_t op_time) {
 
     int cs = ceil((float)size/4.0); 
     uint32_t co = offset/4;
+    ptr_t cmptr = (ptr_t)g_colormap+co;
 
     // mark area with initial as a cleanup, otherwise too many areas will be falsely marked as overhead below.
     int ps = size/4; // floor, not to overwrite data.
@@ -367,13 +368,13 @@ void register_op(int op, int handle, void *ptr, int ptrsize, uint32_t op_time) {
         pp[i] = heap_fill;
 
     uint8_t color = (op == OP_ALLOC) ? COLOR_RED : COLOR_GREEN;
-    memset((void *)((ptr_t)g_colormap+co), color, ps);
+    memset((void *)cmptr, color, ps);
 
 }
 
 
+int g_sequence = 0;
 void scan_heap_update_colormap(bool create_plot) {
-    static int sequence = 0;
 
 #if 0 // METHOD 1
     /* go through colormap, and for each pixel that is non-green and non-red,
@@ -392,6 +393,10 @@ void scan_heap_update_colormap(bool create_plot) {
     }
 #endif
 #if 1 // METHOD 2
+
+    if (0) // g_sequence != 118 && g_sequence != 119)
+    {
+
     uint32_t *vh = (uint32_t *)g_heap;
     for (int i=0; i<g_colormap_size; i++) {
         if (vh[i] != HEAP_INITIAL &&
@@ -401,13 +406,18 @@ void scan_heap_update_colormap(bool create_plot) {
             // well, it's got to be changed then.
             g_colormap[i] = COLOR_WHITE;
     }
+
+    }
+    
 #endif
 
     if (create_plot) {
         // presto, a fresh colormap with appropriate values for green, red and white.
         char buf[256];
-        snprintf(buf, sizeof(buf), "%s-plot-%.6d.png", g_opsfile, sequence++);
-        colormap_print(buf);
+        snprintf(buf, sizeof(buf), "%s-plot-%.6d.png", g_opsfile, g_sequence);
+        colormap_print(buf, g_sequence);
+
+        g_sequence++;
     }
 }
 
@@ -429,6 +439,7 @@ void recalculate_colormap_from_current_live_handles() {
     */
     
     fprintf(stderr, "* Recalculate: start\n");
+    ptr_t highest = 0;
 
     colormap_init();
     handle_pointer_map_t::iterator it;
@@ -439,11 +450,29 @@ void recalculate_colormap_from_current_live_handles() {
 
         if (size != 0) {
             void *ptr = user_lock(memhandle);
+
+            if ((ptr_t)ptr + size > (ptr_t)highest)
+                highest = (ptr_t)ptr + size;
+
             register_op(OP_ALLOC, h, ptr, size, /*op_time*/0);
-            scan_heap_update_colormap(false/*create_plot*/);
+            //scan_heap_update_colormap(false/*create_plot*/);
             user_unlock(memhandle);
         }
     }
+    g_highest_address = (uint8_t *)highest;
+
+
+    /*
+
+    g_highest_address används för att rita ut colormap.
+    varför blir det en massa vitt efter det röda, för att sedan börja om på rött igen? det borde vara rött hela vägen i så fall.
+    är det bara felaktigt färgat, kanske?  hänger inte markörerna i heapen med?
+    */
+
+
+
+
+    // not touched.
 
     fprintf(stderr, "* Recalculate: done, create plot.\n");
     scan_heap_update_colormap(true/*create_plot*/);
@@ -461,6 +490,7 @@ void alloc_driver_memplot(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
     char op, old_op=0;
     uint32_t op_time, op_time2, op_time3;
     bool was_oom = false;
+    int opcounter = 0;
 
     //frame_t *current_frame = colormap_statistics();
 
@@ -480,6 +510,7 @@ void alloc_driver_memplot(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
         } else {
 
             was_oom = false;
+            opcounter++;
 
             switch (op) {
                 case 'L': // Lock
@@ -506,8 +537,10 @@ void alloc_driver_memplot(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                     void *memaddress = NULL;
                     void *ptr = user_malloc(size, handle, &op_time, &memaddress);
                     //fprintf(stderr, "NEW handle %d of size %d to 0x%X\n", handle, size, (uint32_t)ptr);
+                    /*
                     if ((ptr_t)memaddress > (ptr_t)g_highest_address)
                         g_highest_address = (uint8_t *)memaddress;
+                    */
 
                     g_handle_to_address[handle] = memaddress;
                     g_handles[handle] = ptr;
@@ -535,6 +568,9 @@ void alloc_driver_memplot(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                         // FIXME: Recalculate all ops after compact?
                         register_op(OP_ALLOC, handle, memaddress, size, op_time);
                     }
+
+
+                    g_highest_address = (uint8_t *)user_highest_address(/*full_recalc*/false);
 
 
                     // in case there has been a compacting (for rmalloc), colormap is no longer valid.
@@ -690,6 +726,15 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
                     if (was_oom == false) {
                         total_size += size;
 
+
+
+
+                        // XXX: always use user_highest_address()?
+
+
+
+
+
                         void *maybe_highest = user_highest_address(/*full_calculation*/false);
                         if (maybe_highest != NULL) {
                             ptr_t highest = (ptr_t)maybe_highest - (ptr_t)g_heap;
@@ -700,6 +745,8 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
                             if ((ptr_t)memaddress + size > (ptr_t)g_highest_address)
                                 g_highest_address = (uint8_t *)memaddress + size;
                         }
+
+                        // XXX
 
                         g_handle_to_address[handle] = memaddress;
                         g_handles[handle] = ptr;
@@ -1029,12 +1076,14 @@ void plot_report(unsigned long largest_allocatable_block) {
     g_counter++;
 }
 
-int colormap_print(char *output) {
+int colormap_print(char *output, int sequence) {
     int end = ((ptr_t)g_highest_address-(ptr_t)g_heap)/4;
     //int end = g_colormap_size;
 #define putchar(x) (void)x
     putchar("\n"); putchar('[');
-    FILE *f = fopen("/tmp/fragmentplot.txt", "wt");
+    char buf2[256];
+    sprintf(buf2, "/tmp/fragmentplot-%.6d.txt", sequence);
+    FILE *f = fopen(buf2, "wt");
     for (int i=0; i<end; i++) {
         switch (g_colormap[i]) {
         case COLOR_GREEN: fputc(CHAR_GREEN, f); putchar(CHAR_GREEN); break;
@@ -1048,10 +1097,9 @@ int colormap_print(char *output) {
     fclose(f);
 
     char cmd[256];
-    sprintf(cmd, "python run_memory_frag_animation_plot_animation.py /tmp/fragmentplot.txt %s", output);
+    sprintf(cmd, "python run_memory_frag_animation_plot_animation.py %s %s", buf2, output);
     int r = system(cmd);
-    if (r != 0)
-        fprintf(stderr, "Plot data saved in %s (result = %d)\n", output, r);
+    fprintf(stderr, "Plot data saved in %s (result = %d)\n", output, r);
 }
 
 int main(int argc, char **argv) {

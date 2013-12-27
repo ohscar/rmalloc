@@ -41,8 +41,8 @@ typedef uint64_t ptr_t;
 typedef uint32_t ptr_t;
 #endif
 
-#define fprintf(...) 
-#define fputc(...)
+//#define fprintf(...) 
+//#define fputc(...)
 
 // code
 
@@ -1539,6 +1539,36 @@ void rmcompact(int maxtime) {
 
     rebuild_free_block_slots();
 
+
+    // TODO: integrate into main loop.
+    ptr_t highest_used_address = (ptr_t)g_memory_bottom;
+    fprintf(stderr, "Previous top: 0x%X (bottom 0x%X)\n", g_memory_top, g_memory_bottom);
+    header_t *h = g_header_root;
+    header_t *largest_header = h;
+    int count = 0;
+    int total_size = 0;
+    ptr_t offset = 0;
+    while (h != NULL) {
+        if (!header_is_unused(h) && h->flags != HEADER_FREE_BLOCK) {
+            if ((ptr_t)h->memory + h->size > highest_used_address) {
+                highest_used_address = (ptr_t)h->memory + h->size;
+                ptr_t offset = highest_used_address - (ptr_t)g_memory_bottom;
+                fprintf(stderr, "=> USED 0x%X size %04d offset from bottom: %d bytes (%d kb)\n", h->memory, h->size, offset, offset/1024);
+                largest_header = h;
+            }
+            count++;
+            total_size += h->size;
+        }
+        else
+            fprintf(stderr, "=> FREE 0x%X size %04d offset from bottom: %d bytes (%d kb)\n", h->memory, h->size, offset, offset/1024);
+
+        h = h->next;
+    }
+
+    // Let's hope this works!
+    g_memory_top = (void *)highest_used_address;
+    fprintf(stderr, "New top (after %d items of total size %d bytes): 0x%X, topmost header at 0x%X + %d = 0x%X\n", count, total_size, g_memory_top, largest_header->memory, largest_header->size, (ptr_t)largest_header->memory + largest_header->size);
+
 #ifdef DEBUG
     uint32_t end_free = 0, end_locked = 0, end_unlocked = 0, end_size_unlocked=0;
     get_block_count(&end_free, &end_locked, &end_unlocked, NULL, &end_size_unlocked);
@@ -2359,6 +2389,25 @@ void rmcompact(int maxtime) {
 #endif
 
 
+    // TODO: integrate into main loop.
+    ptr_t highest_used_address = g_memory_bottom;
+    fprintf(stderr, "Previous top: 0x%X (bottom 0x%X)\n", g_memory_top, g_memory_bottom);
+    header_t *h = g_header_root;
+    while (h != NULL) {
+        if (h->flags != HEADER_FREE_BLOCK) {
+            if ((ptr_t)h->memory + h->size > highest_used_address) {
+                highest_used_address = (ptr_t)h->memory + h->size;
+            }
+        }
+
+        h = h->next;
+    }
+
+    // Let's hope this works!
+    g_memory_top = (void *)highest_used_address;
+    fprintf(stderr, "New top: 0x%X\n", g_memory_top);
+
+
 #ifdef DEBUG
     {
     header_t *h3 = g_header_root;
@@ -2431,6 +2480,8 @@ handle_t rmmalloc(int size) {
         fprintf(stderr, "h = NULL.\n");
         return NULL;
     }
+
+    fprintf(stderr, "NEW at 0x%X of size %04d\n", h->memory, h->size);
 
 #ifdef DEBUG
     //memset(h->memory, header_fillchar(h), h->size);
