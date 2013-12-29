@@ -27,7 +27,7 @@ if [[ "$?" != "0" ]]; then
     cat /tmp/ffmpeg.log
 fi
 
-rm -rf ${OPSFILE}-plot*png
+#rm -rf ${OPSFILE}-plot*png
 echo "* Animation saved to $ANIMATION"
 
 

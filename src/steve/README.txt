@@ -27,7 +27,7 @@ Generate allocstats
 ===================
 Run::
 
-    ALLOCATOR=./drivers/plot_dlmalloc ./run_allocator_stats.sh result.soffice-ops
+    CORES=2 ALLOCATOR=./drivers/plot_dlmalloc ./run_allocator_stats.sh result.soffice-ops
 
 Generates::
 

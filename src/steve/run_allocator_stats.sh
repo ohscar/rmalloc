@@ -48,7 +48,7 @@ while [[ "$done" != "1" ]]; do
 
     #echo "($ALLOCATOR)--maxmem ($opsfile) ($RESULTFILE) ($fullcount) ($peakmem) ($theory_peakmem)"
     #echo $ALLOCATOR --maxmem $opsfile $RESULTFILE $fullcount $peakmem $theory_peakmem
-    $ALLOCATOR --maxmem $opsfile $RESULTFILE $fullcount $peakmem $theory_peakmem > /dev/null 2>&1
+    $ALLOCATOR --allocstats $opsfile $RESULTFILE $fullcount $peakmem $theory_peakmem > /dev/null 2>&1
     status=$?
     if [[ "$status" != "0" ]]; then
         # oom, bump by 5% and retry.

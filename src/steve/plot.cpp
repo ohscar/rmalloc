@@ -346,6 +346,42 @@ void heap_colormap_init() {
 
 void register_op(int op, int handle, void *ptr, int ptrsize, uint32_t op_time) {
     fprintf(stderr, "op at handle %d\n", handle);
+
+    ptr_t aligned_ptr = (ptr_t)ptr;
+    ptr_t aligned_size = (ptr_t)ptrsize;
+
+    // not aligned?
+    if ((ptr_t)ptr & 3 != 0) {
+        aligned_ptr = ((ptr_t)ptr+4) & ~3;
+        aligned_size = ptrsize - (aligned_ptr - (ptr_t)ptr);
+    }
+
+    if (aligned_size >= 4) {
+        // ptr will be within g_heap
+        ptr_t offset = (ptr_t)aligned_ptr - (ptr_t)g_heap;
+        //uint32_t size = g_sizes[ptr]; // XXX: What is this for?!
+        uint32_t size = aligned_size;
+
+        int cs = ceil((float)aligned_size/4.0); 
+        uint32_t co = offset/4;
+        ptr_t cmptr = (ptr_t)g_colormap+co;
+
+        // mark area with initial as a cleanup, otherwise too many areas will be falsely marked as overhead below.
+        int ps = size/4; // floor, not to overwrite data.
+        uint32_t *pp = (uint32_t *)aligned_ptr;
+
+        //printf("marking handle %d ptr %x of size %d (and small size: %d)\n", handle, (uint32_t)ptr, size, ps);
+
+        uint32_t heap_fill = (op == OP_ALLOC) ? HEAP_ALLOC : HEAP_FREE; 
+
+        for (int i=0; i<ps; i++)
+            pp[i] = heap_fill;
+
+        uint8_t color = (op == OP_ALLOC) ? COLOR_RED : COLOR_GREEN;
+        memset((void *)cmptr, color, ps);
+    }
+
+#if 0 // unaligned code
     // ptr will be within g_heap
     ptr_t offset = (ptr_t)ptr - (ptr_t)g_heap;
     //uint32_t size = g_sizes[ptr]; // XXX: What is this for?!
@@ -369,6 +405,7 @@ void register_op(int op, int handle, void *ptr, int ptrsize, uint32_t op_time) {
 
     uint8_t color = (op == OP_ALLOC) ? COLOR_RED : COLOR_GREEN;
     memset((void *)cmptr, color, ps);
+#endif
 
 }
 
@@ -394,11 +431,16 @@ void scan_heap_update_colormap(bool create_plot) {
 #endif
 #if 1 // METHOD 2
 
-    if (0) // g_sequence != 118 && g_sequence != 119)
+    if (1) // XXX: This doesn't work if allocated data is not dword-aligned, leave it out for now.
     {
 
     uint32_t *vh = (uint32_t *)g_heap;
-    for (int i=0; i<g_colormap_size; i++) {
+    if ((ptr_t)vh & 3 != 0)
+        vh = (uint32_t *)(((ptr_t)vh + 4) & ~3);
+    uint32_t size = g_colormap_size;
+    if ((ptr_t)vh > (ptr_t)g_heap)
+        size -= 1;
+    for (int i=0; i<size; i++) {
         if (vh[i] != HEAP_INITIAL &&
             vh[i] != HEAP_ALLOC &&
             vh[i] != HEAP_FREE)
@@ -697,6 +739,24 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
                     user_lock(g_handles[handle]);
                     user_unlock(g_handles[handle]);
                     break;
+                case 'O': // OOM
+                    user_handle_oom(0, &op_time);
+
+#if 0
+                    //void *maybe_highest = user_highest_address(/*full_calculation*/false);
+                    void *maybe_highest = user_highest_address(/*full_calculation*/true);
+                    if (maybe_highest != NULL) {
+                        ptr_t highest = (ptr_t)maybe_highest - (ptr_t)g_heap;
+                        g_highest_address = (uint8_t *)maybe_highest;
+                    } else
+                    {
+                        //fprintf(stderr, "NEW handle %d of size %d to 0x%X\n", handle, size, (uint32_t)ptr);
+                        if ((ptr_t)memaddress + size > (ptr_t)g_highest_address)
+                            g_highest_address = (uint8_t *)memaddress + size;
+                    }
+#endif
+
+                    break;
                 case 'N': {
                     oom_time = op_time = op_time2 = op_time3 = 0;
 
@@ -726,16 +786,8 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
                     if (was_oom == false) {
                         total_size += size;
 
-
-
-
-                        // XXX: always use user_highest_address()?
-
-
-
-
-
-                        void *maybe_highest = user_highest_address(/*full_calculation*/false);
+                        //void *maybe_highest = user_highest_address(/*full_calculation*/false);
+                        void *maybe_highest = user_highest_address(/*full_calculation*/true);
                         if (maybe_highest != NULL) {
                             ptr_t highest = (ptr_t)maybe_highest - (ptr_t)g_heap;
                             g_highest_address = (uint8_t *)maybe_highest;

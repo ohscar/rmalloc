@@ -46,7 +46,7 @@ def subplot_multiple(t, xl, yl):
 def plot_allocstats_multiple(app, allocstats_multiple):
     g_multiple_figure.suptitle(app)
     #ax = subplot_multiple(title, "Time (op)", pretty)
-    ax = subplot_multiple("Time", "Op number", "")
+    ax = subplot_multiple("Time per operation (nanoseconds), logarithmic scale", "Op number", "")
     plots = []
     color_counter = 0
     for i in range(len(allocstats_multiple)):
@@ -145,14 +145,14 @@ def plot_allocstats_multiple(app, allocstats_multiple):
         ax.set_ylabel('Time (ns, log10-scale)')
 
         #plot_time, = ax2.plot(accumulated_time, plot_color, label='Time: %s %s' % (driver, opsfile))
-        plot_time, = ax.plot(accumulated_time, plot_color, label='%s: Time' % (driver))
+        plot_time, = ax.plot(accumulated_time, plot_color, label='%s' % (driver))
 
         plots.append(plot_time)
 
     plt.legend(plots, [plot.get_label() for plot in plots], loc=2) # loc= 2=upper left, 4=lower right, 3=lower left
 
     plots = []
-    ax = subplot_multiple("Allocatable", "Op number", "")
+    ax = subplot_multiple("Maximum allocatable memory after each operation from original allocation list", "Op number", "")
     for i in range(len(allocstats_multiple)):
         allocstats = allocstats_multiple[i]
         plot_color = COLORS[i]
@@ -234,7 +234,7 @@ def plot_allocstats_multiple(app, allocstats_multiple):
 
 
         #p1a, = ax.plot(map(lambda x: x/1024, free), 'g-', label='Theoretical usable space')
-        p1b, = ax.plot(map(lambda x: x/1024, maxmem), plot_color, label='%s: Allocatable' % driver)
+        p1b, = ax.plot(map(lambda x: x/1024, maxmem), plot_color, label='%s' % driver)
         #p1, = ax.plot(freediff, 'y-', label='diff Allocatable vs Theoretical')
 
         """
@@ -409,13 +409,6 @@ def plot_allocstats(allocstats):
         freediff = [10] * len(freediff)
         accumulated_time = [10] * len(accumulated_time)
         """
-
-
-
-        print accumulated_time
-        print free
-        print maxmem
-        print freediff
 
         p1a, = ax.plot(free, 'g-', label='Theoretical usable space')
         p1b, = ax.plot(maxmem, 'r-', label='Allocatable')

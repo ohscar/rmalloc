@@ -26,9 +26,9 @@ while [[ "$1" != "" ]]; do
     for i in $(seq $start $end); do
         let trueindex=$i*$SKIPDATA
         #echo -ne "\r                               \r$trueindex / $count ($i of $DATAPOINTS)"
-        $ALLOCATOR --maxmem $opsfile $RESULTFILE $trueindex $peakmem $theory_peakmem >> /tmp/log.txt 2>&1
-        #$ALLOCATOR --maxmem $opsfile $RESULTFILE $trueindex $peakmem $theory_peakmem > /dev/null 2>&1
-        echo "$donefile $ALLOCATOR --maxmem $opsfile $RESULTFILE $trueindex $peakmem $theory_peakmem ($i $SKIPDATA $OPS_COUNT $DATAPOINTS)" >> /tmp/log.txt 2>&1
+        $ALLOCATOR --allocstats $opsfile $RESULTFILE $trueindex $peakmem $theory_peakmem >> /tmp/log.txt 2>&1
+        #$ALLOCATOR --allocstats $opsfile $RESULTFILE $trueindex $peakmem $theory_peakmem > /dev/null 2>&1
+        echo "$donefile $ALLOCATOR --allocstats $opsfile $RESULTFILE $trueindex $peakmem $theory_peakmem ($i $SKIPDATA $OPS_COUNT $DATAPOINTS)" >> /tmp/log.txt 2>&1
     done
 done
 
