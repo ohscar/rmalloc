@@ -35,6 +35,8 @@
 #define die(x...) {printf(x); exit(1);}
 #define oom(x...) {printf(x); exit(2);}
 
+__attribute__ ((weak)) void rmstat_print_headers(bool){}
+
 typedef std::map<uint32_t, void *> handle_pointer_map_t;
 typedef std::map<void *, uint32_t> pointer_size_map_t;
 typedef std::map<uint32_t, uint32_t> handle_count_map_t;
@@ -711,6 +713,7 @@ uint32_t calculate_maxmem(uint8_t op, uint32_t *op_time) {
     return p == NULL ? 0 : size;
 }
 
+volatile bool dommy = true;
 void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap_size, uint8_t *colormap) {
     bool done = false;
     
@@ -751,6 +754,8 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
 
         if (op == 0 || r == 0)
             continue;
+
+        handle += handle_offset; // for when looping.
 
         if (handle == old_handle && op == 'A' && old_op == 'A') {
             // skip
@@ -845,7 +850,8 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
                     else {
                         
                         done = true;
-                        oom("We're done.");
+                        rmstat_print_headers(/*only_type*/true);
+                        oom("OOM: last handle: %d (offset = %d, highest = %d)\n", handle, handle_offset, highest_handle_no);
                         //oom("\n\nallocstats: couldn't recover trying to alloc %d bytes at handle %d (total alloc'd %u).\n", size, handle, total_size);
                         break;
 
@@ -903,6 +909,7 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
                             g_theoretical_free_space, current_used_space, g_theoretical_overhead_space, maxsize,
                             op_time, oom_time, optime_maxmem, op, size));
 
+                        fprintf(stderr, "Finished: last handle: %d (offset = %d, highest = %d)\n", handle, handle_offset, highest_handle_no);
                         return;
                     }
 
@@ -974,7 +981,7 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
 
 //    user_handle_oom(0, &op_time);
 
-
+    fprintf(stderr, "Last handle: %d (offset = %d, highest = %d)\n", handle, handle_offset, highest_handle_no);
 
 
 }

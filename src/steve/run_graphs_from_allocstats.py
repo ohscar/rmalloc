@@ -21,7 +21,9 @@ import matplotlib.pyplot as plt
 import os.path
 
 # reference value color first
-COLORS = ["b-", "r-", "g-", "b-", "y-", "m-", "c-"]
+#COLORS = ["b-", "r-", "g-", "b-", "y-", "m-", "c-"]
+#COLORS = ["k-", "k:", "k--", "k_", "k", "k", "k-."]
+COLORS = ["k--", "k", "k-.", "k_", "k ", "k", "k-."]
 g_figure = None
 g_figure_nr = 1
 
@@ -53,10 +55,6 @@ def plot_allocstats_multiple(app, allocstats_multiple):
             continue
         if len(opstats) > longest_length:
             longest_length = len(opstats)
-
-        print "longest for %s: %d" % (allocstats['driver'], longest_length)
-
-    print "longest: %d" % (longest_length)
 
     g_multiple_figure.suptitle(app)
     #ax = subplot_multiple(title, "Time (op)", pretty)
@@ -142,12 +140,8 @@ def plot_allocstats_multiple(app, allocstats_multiple):
 
             accumulated_time.append(thetime)
 
-        print "length accumulated:", len(accumulated_time), "vs:", longest_length
-
         if len(accumulated_time) < longest_length:
             accumulated_time.extend([0] * (longest_length - len(accumulated_time)))
-
-        print "length accumulated (elongated):", len(accumulated_time)
 
 
         #p1a, = ax.plot(map(lambda x: x/1024, free), 'g-', label='Theoretical usable space')
