@@ -23,7 +23,7 @@ typedef uint32_t ptr_t;
 
 typedef struct header_t {
     void *memory;
-    int size;
+    uint32_t size;
     uint8_t flags;
 
     struct header_t *next;

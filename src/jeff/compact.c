@@ -1429,27 +1429,6 @@ void rmcompact(int maxtime) {
         uint32_t unlocked_size = get_unlocked_header_range(start, &unlocked_first, &unlocked_last, &block_before_first_unlocked, max_size, &passed_free_blocks);
         if (max_size > 0 && unlocked_first == NULL)
         {
-#if 0
-            // no blocks that fit inside current free found. try again!
-            if (unlocked_last == NULL)
-            {
-                if (free_last->next != NULL && passed_free_blocks)
-                {
-                    // there might be another chance.
-                    root = free_last->next;
-                }
-                else
-                {
-                    done = true;
-                }
-                continue;
-            }
-            else
-            {
-                root = unlocked_last;
-                continue;
-            }
-#endif
             // no blocks that fit inside current free found. try again!
             if (unlocked_last == NULL)
             {
@@ -1829,8 +1808,9 @@ void rmstat_print_headers(bool only_type)
     printf("--------------------------------------------------------------------------\n");
     // display free blocks
     freeblock_print();
-    
     printf("==========================================================================\n");
+    int diff = (ptr_t)g_header_top - (ptr_t)g_header_bottom;
+    printf("Total %d live blocks, occupying %d bytes/%d kb = %.2d%% of total heap size\n", g_header_top - g_header_bottom, diff, diff/1024, (int)((float)diff*100.0/(float)g_memory_size));
 }
 
 
