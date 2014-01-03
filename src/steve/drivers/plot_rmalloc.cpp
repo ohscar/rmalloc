@@ -56,6 +56,7 @@ void sanity() {
     for (it=g_count.begin(); it != g_count.end(); it++) {
         if (it->second != 0) {
             //printf("handle %d, ptr 0x%X is non-zero: %d\n", g_handle_pointer[it->first], (uint32_t)it->first, it->second);
+            //printf("handle %d is non-zero\n", (uint32_t)it->first);
             nonzero++;
         }
     }
@@ -80,6 +81,7 @@ static void full_compact(void)
 
 
 void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddress) {
+    //printf("user_malloc(): size = %d, handle = %d\n", size, handle);
     TIMER_DECL;
 
     TIMER_START;
@@ -97,6 +99,8 @@ void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddres
         *memaddress = (void *)((ptr_t)(((header_t *)block)->memory));
 
     g_handle_to_block[handle] = block;
+    g_count[handle] = 1;
+    /*
     if (g_count.find(handle) == g_count.end())
         g_count[handle] = 1;
     else {
@@ -104,6 +108,7 @@ void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddres
         if (g_count[handle] > 1)
             fprintf(stderr, "Double malloc for handle %d\n", handle); // FIXME: this test should be here.
     }
+    */
     //fprintf(stderr, "==> NEW %3d => 0x%X\n", handle, block);
     
     g_malloc_call_count++;
@@ -118,7 +123,8 @@ void user_free(void *ptr, uint32_t handle, uint32_t *op_time) {
         fprintf(stderr, "user_free(0x%X, %d): bad mapping: got 0x%X\n", (ptr_t)ptr, handle, (ptr_t)block);
     }
 
-    g_count[handle] -= 1;
+    //g_count[handle] -= 1;
+    g_count[handle] = 0;
 
     //fprintf(stderr, "<== FRE %3d => 0x%X\n", handle, block);
     
@@ -151,6 +157,7 @@ void user_destroy() {
 }
 
 bool user_handle_oom(int size, uint32_t *op_time) {
+    fprintf(stderr, "user_handle_oom!\n");
     TIMER_DECL;
 
     TIMER_START;

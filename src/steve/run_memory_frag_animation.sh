@@ -12,8 +12,17 @@ fi
 
 OPSFILE=$1
 
+echo -n "Calculating theoretical peak mem used by the allocator ($ALLOCATOR --peakmem $opsfile)... "
+
+peakmem=$($ALLOCATOR --peakmem $OPSFILE 2> /dev/null)
+theory_peakmem=$peakmem
+#peakmem=$(echo "$peakmem*2" | bc)
+echo "($theory_peakmem bytes)"
+
+set -x
+
 echo "* Generating plots."
-$ALLOCATOR --memplot $OPSFILE
+$ALLOCATOR --memplot $OPSFILE $peakmem
 
 ANIMATION=${OPSFILE}-animation.avi
 
@@ -27,7 +36,5 @@ if [[ "$?" != "0" ]]; then
     cat /tmp/ffmpeg.log
 fi
 
-#rm -rf ${OPSFILE}-plot*png
-echo "* Animation saved to $ANIMATION"
 
 

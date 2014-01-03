@@ -3,6 +3,11 @@
 #
 # Run split-up work. Many instances of this runs.
 #
+# Input:
+# ALLOCATOR: path to file
+# RESULTFILE: where to put the data
+# OPS_COUNT
+# DATAPOINTS
 #
 # Arguments:
 #
@@ -13,7 +18,8 @@
 donefile=$1
 shift
 echo "$donefile running on $*"
-while [[ "$1" != "" ]]; do
+finished="0"
+while [[ "$1" != "" && "$finished" == "0" ]]; do
     start=$1
     let end=$start+9
 
@@ -27,6 +33,11 @@ while [[ "$1" != "" ]]; do
         let trueindex=$i*$SKIPDATA
         #echo -ne "\r                               \r$trueindex / $count ($i of $DATAPOINTS)"
         $ALLOCATOR --allocstats $opsfile $RESULTFILE $trueindex $peakmem $theory_peakmem >> /tmp/log.txt 2>&1
+        status=$?
+        if [[ "$status" != "0" ]]; then
+            finished="1"
+            break
+        fi
         #$ALLOCATOR --allocstats $opsfile $RESULTFILE $trueindex $peakmem $theory_peakmem > /dev/null 2>&1
         echo "$donefile $ALLOCATOR --allocstats $opsfile $RESULTFILE $trueindex $peakmem $theory_peakmem ($i $SKIPDATA $OPS_COUNT $DATAPOINTS)" >> /tmp/log.txt 2>&1
     done

@@ -43,7 +43,7 @@ typedef std::map<void *, void *> block_address_map_t;
 
 static handle_pointer_map_t g_handle_to_address;
 static handle_pointer_map_t g_handles;
-static pointer_size_map_t g_sizes;
+static handle_count_map_t g_sizes;
 
 static handle_count_map_t g_handle_free;
 static pointer_size_map_t g_pointer_free;
@@ -345,7 +345,7 @@ void heap_colormap_init() {
 }
 
 void register_op(int op, int handle, void *ptr, int ptrsize, uint32_t op_time) {
-    fprintf(stderr, "op at handle %d\n", handle);
+    //fprintf(stderr, "op at handle %d\n", handle);
 
     ptr_t aligned_ptr = (ptr_t)ptr;
     ptr_t aligned_size = (ptr_t)ptrsize;
@@ -488,7 +488,7 @@ void recalculate_colormap_from_current_live_handles() {
     for (it=g_handles.begin(); it != g_handles.end(); it++) {
         uint32_t h = it->first;
         void *memhandle = it->second;
-        uint32_t size = g_sizes[memhandle];
+        uint32_t size = g_sizes[h];
 
         if (size != 0) {
             void *ptr = user_lock(memhandle);
@@ -529,38 +529,45 @@ void alloc_driver_memplot(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
     bool done = false;
     
     int handle, address, size, old_handle=1; /* ops always start from 0 */
+    int highest_handle_no = 0, handle_offset = 0;
     char op, old_op=0;
     uint32_t op_time, op_time2, op_time3;
     bool was_oom = false;
     int opcounter = 0;
+    int rewind_count = 1;
 
-    //frame_t *current_frame = colormap_statistics();
-
-    while (!done && !feof(fp)) {
+    //while (!done && !feof(fp)) {
+    while (!done) {
         char line[128];
         char *r = fgets(line, 127, fp);
         if (line[0] == '#')
             continue;
+
+        if (feof(fp)) {
+            fprintf(stderr, "******************************** REWIND (count %d)\n", rewind_count++);
+            rewind(fp);
+            handle_offset += highest_handle_no;
+        }
 
         sscanf(line, "%d %c %u %u\n", &handle, &op, &address, &size);
         // for now, don't care about the difference between load/modify/store
         if (op == 'L' || op == 'M' || op == 'S')
             op = 'A';
 
+        handle += handle_offset; // for when looping.
+
         if (handle == old_handle && op == 'A' && old_op == 'A') {
             // skip
         } else {
+
+            if (handle > highest_handle_no && handle_offset == 0)
+                highest_handle_no = handle;
 
             was_oom = false;
             opcounter++;
 
             switch (op) {
                 case 'L': // Lock
-                    
-                    // XXX: when and how to do the color map diffs?
-                    // result should be stored in a frame, but how do we get the data?
-                    //colormap_paint(colormap);
-
                     user_lock(g_handles[handle]);
                     break;
                 case 'U': // Unlock
@@ -570,10 +577,12 @@ void alloc_driver_memplot(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                     user_lock(g_handles[handle]);
                     user_unlock(g_handles[handle]);
                     break;
+#if 0
                 case 'O': // OOM
                     user_handle_oom(0, &op_time);
                     recalculate_colormap_from_current_live_handles();
                     break;
+#endif
                 case 'N': {
                     //putchar('.');
                     void *memaddress = NULL;
@@ -584,9 +593,9 @@ void alloc_driver_memplot(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                         g_highest_address = (uint8_t *)memaddress;
                     */
 
-                    g_handle_to_address[handle] = memaddress;
-                    g_handles[handle] = ptr;
-                    g_sizes[g_handles[handle]] = size;
+                    //g_handle_to_address[handle] = memaddress;
+                    //g_handles[handle] = ptr;
+                    //g_sizes[g_handles[handle]] = size;
 
                     // XXX when to call register_op() and do coloring?
                     if (ptr == NULL) {
@@ -595,18 +604,29 @@ void alloc_driver_memplot(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                             ptr = user_malloc(size, handle, &op_time3, &memaddress);
                             op_time += op_time3;
                             if (NULL == ptr) {
-                                oom("\n\nOOM!\n");
+                                //oom("\n\nOOM!\n");
+                                done = true;
+                                break;
                             }
                             was_oom = true;
 
+                            recalculate_colormap_from_current_live_handles();
 
                             g_handles[handle] = ptr;
+                            g_handle_to_address[handle] = memaddress;
+                            g_handles[handle] = ptr;
                             register_op(OP_ALLOC, handle, memaddress, size, op_time);
-                            g_sizes[g_handles[handle]] = size;
+                            //g_sizes[g_handles[handle]] = size;
+                            g_sizes[handle] = size;
                         } else {
-                            oom("\n\nOOM!\n");
+                            //oom("\n\nOOM!\n");
+                            done = true;
+                            break;
                         }
                     } else {
+                        g_sizes[handle] = size;
+                        g_handle_to_address[handle] = memaddress;
+                        g_handles[handle] = ptr;
                         // FIXME: Recalculate all ops after compact?
                         register_op(OP_ALLOC, handle, memaddress, size, op_time);
                     }
@@ -631,7 +651,8 @@ void alloc_driver_memplot(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                 case 'F': {
                     //putchar('.');
                     void *ptr = g_handles[handle];
-                    int s = g_sizes[g_handles[handle]];
+                    //int s = g_sizes[g_handles[handle]];
+                    int s = g_sizes[handle];
                     //fprintf(stderr, "FREE handle %d of size %d at 0x%X\n", handle, s, (uint32_t)ptr);
                     void *memaddress = g_handle_to_address[handle];
 
@@ -642,7 +663,8 @@ void alloc_driver_memplot(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
                     user_free(ptr, handle, &op_time);
 
                     // no longer in use.
-                    g_sizes[g_handles[handle]] = 0;
+                    //g_sizes[g_handles[handle]] = 0;
+                    g_sizes[handle] = 0;
 
                     scan_heap_update_colormap(true/*create_plot*/);
 
@@ -696,6 +718,7 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
     char op, old_op=0;
     uint32_t op_time, op_time2, op_time3, oom_time;
     uint32_t total_size = 0;
+    int highest_handle_no = 0, handle_offset = 0;
 
     // For each op, try to allocate as large a block as possible.
     // Then, go to next op.  ONLY increase current_op at new/free.
@@ -710,6 +733,15 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
         if (line[0] == '#')
             continue;
 
+        if (feof(fp)) {
+            fprintf(stderr, "********************************* REWIND!\n");
+            rewind(fp);
+            handle_offset += highest_handle_no;
+            r = fgets(line, 127, fp);
+            if (line[0] == '#')
+                continue;
+        }
+
         op = '\x0';
 
         sscanf(line, "%d %c %u %u\n", &handle, &op, &address, &size);
@@ -723,6 +755,10 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
         if (handle == old_handle && op == 'A' && old_op == 'A') {
             // skip
         } else {
+
+            if (handle > highest_handle_no && handle_offset == 0)
+                highest_handle_no = handle;
+
             switch (op) {
                 case 'L': // Lock
                     
@@ -739,10 +775,10 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
                     user_lock(g_handles[handle]);
                     user_unlock(g_handles[handle]);
                     break;
+#if 0
                 case 'O': // OOM
                     user_handle_oom(0, &op_time);
 
-#if 0
                     //void *maybe_highest = user_highest_address(/*full_calculation*/false);
                     void *maybe_highest = user_highest_address(/*full_calculation*/true);
                     if (maybe_highest != NULL) {
@@ -802,12 +838,16 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
 
                         g_handle_to_address[handle] = memaddress;
                         g_handles[handle] = ptr;
-                        g_sizes[g_handles[handle]] = size;
+                        //g_sizes[g_handles[handle]] = size;
+                        g_sizes[handle] = size;
                         //register_op(OP_ALLOC, handle, memaddress, size, op_time);
                     }
                     else {
                         
-                        oom("\n\nallocstats: couldn't recover trying to alloc %d bytes at handle %d (total alloc'd %u).\n", size, handle, total_size);
+                        done = true;
+                        oom("We're done.");
+                        //oom("\n\nallocstats: couldn't recover trying to alloc %d bytes at handle %d (total alloc'd %u).\n", size, handle, total_size);
+                        break;
 
                         // FIXME: What if?
                     }
@@ -872,7 +912,8 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
 
                     //putchar('.');
                     void *ptr = g_handles[handle];
-                    int s = g_sizes[g_handles[handle]];
+                    //int s = g_sizes[g_handles[handle]];
+                    int s = g_sizes[handle];
                     //fprintf(stderr, "FREE handle %d of size %d at 0x%X\n", handle, s, (uint32_t)ptr);
                     
                     current_used_space -= s;
@@ -881,7 +922,8 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
                     user_free(ptr, handle, &op_time);
                     //register_op(OP_FREE, handle, memaddress, s, op_time);
 
-                    g_sizes[ptr] = 0;
+                    //g_sizes[ptr] = 0;
+                    g_sizes[handle] = 0;
                     g_handles[handle] = NULL;
 
                     print_after_free_stats(address, s);
@@ -927,7 +969,14 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
             }
         }
     }
-    user_handle_oom(0, &op_time);
+
+
+
+//    user_handle_oom(0, &op_time);
+
+
+
+
 }
 
 void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t heap_size, uint8_t *colormap) {
@@ -1038,7 +1087,8 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
 
                     g_handle_to_address[handle] = memaddress;
                     g_handles[handle] = ptr;
-                    g_sizes[g_handles[handle]] = size;
+                    //g_sizes[g_handles[handle]] = size;
+                    g_sizes[handle] = size;
 
                     //register_op(OP_ALLOC, handle, memaddress, size, op_time);
 
@@ -1057,7 +1107,8 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
 
                     //putchar('.');
                     void *ptr = g_handles[handle];
-                    int s = g_sizes[g_handles[handle]];
+                    //int s = g_sizes[g_handles[handle]];
+                    int s = g_sizes[handle];
                     //theo_used -= s;
                     //fprintf(stderr, "FREE handle %d of size %d at 0x%X\n", handle, s, (uint32_t)ptr);
 
@@ -1077,7 +1128,8 @@ void alloc_driver_peakmem(FILE *fp, int num_handles, uint8_t *heap, uint32_t hea
 
                     print_after_free_stats(address, s);
 
-                    g_sizes[g_handles[handle]] = 0;
+                    //g_sizes[g_handles[handle]] = 0;
+                    g_sizes[handle] = 0;
                     g_handles[handle] = NULL;
                     g_handle_to_address[handle] = NULL;
 
@@ -1150,8 +1202,8 @@ int colormap_print(char *output, int sequence) {
 
     char cmd[256];
     sprintf(cmd, "python run_memory_frag_animation_plot_animation.py %s %s", buf2, output);
-    int r = system(cmd);
-    fprintf(stderr, "Plot data saved in %s (result = %d)\n", output, r);
+    //int r = system(cmd);
+    //fprintf(stderr, "Plot data saved in %s (result = %d)\n", output, r);
 }
 
 int main(int argc, char **argv) {
@@ -1191,6 +1243,11 @@ int main(int argc, char **argv) {
         }
         else {
             g_operation_mode = OPMODE_MEMPLOT;
+            if (argc == 4) {
+                g_heap_size = atoi(argv[3]);
+                g_colormap_size = g_heap_size/4;
+                fprintf(stderr, "Restricting heap size to %d kb\n", g_heap_size/1024);
+            }
             fprintf(stderr, "opmode: memplot\n");
         }
     }
@@ -1338,5 +1395,7 @@ int main(int argc, char **argv) {
 
     free(g_colormap);
     free(g_heap);
+
+    return 0;
 }
 

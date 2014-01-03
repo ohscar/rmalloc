@@ -41,6 +41,29 @@ echo "fullcount = $fullcount"
 
 export OPS_COUNT=$(grep '\(N\|F\)' $opsfile | wc -l | awk '{print $1}')
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+export OPS_COUNT=$(echo "$OPS_COUNT*10" | bc)
+
+
+
+
+
+
+
+
+
 echo "ops_count (N/F ops) = $OPS_COUNT"
 
 while [[ "$done" != "1" ]]; do

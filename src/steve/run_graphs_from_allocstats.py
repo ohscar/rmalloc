@@ -44,6 +44,20 @@ def subplot_multiple(t, xl, yl):
     return ax
 
 def plot_allocstats_multiple(app, allocstats_multiple):
+    # figure out longest running plot and make all others as long.
+    longest_length = 0
+    for i in range(len(allocstats_multiple)):
+        allocstats = allocstats_multiple[i]
+        opstats = allocstats['alloc_stats']
+        if allocstats['opmode'] != 'allocstats':
+            continue
+        if len(opstats) > longest_length:
+            longest_length = len(opstats)
+
+        print "longest for %s: %d" % (allocstats['driver'], longest_length)
+
+    print "longest: %d" % (longest_length)
+
     g_multiple_figure.suptitle(app)
     #ax = subplot_multiple(title, "Time (op)", pretty)
     ax = subplot_multiple("Time per operation (nanoseconds), logarithmic scale", "Op number", "")
@@ -128,6 +142,14 @@ def plot_allocstats_multiple(app, allocstats_multiple):
 
             accumulated_time.append(thetime)
 
+        print "length accumulated:", len(accumulated_time), "vs:", longest_length
+
+        if len(accumulated_time) < longest_length:
+            accumulated_time.extend([0] * (longest_length - len(accumulated_time)))
+
+        print "length accumulated (elongated):", len(accumulated_time)
+
+
         #p1a, = ax.plot(map(lambda x: x/1024, free), 'g-', label='Theoretical usable space')
         #p1b, = ax.plot(map(lambda x: x/1024, maxmem), 'r-', label='Allocatable')
         #p1, = ax.plot(freediff, 'y-', label='diff Allocatable vs Theoretical')
@@ -192,46 +214,11 @@ def plot_allocstats_multiple(app, allocstats_multiple):
         used = [op['used'] for op in opstats]
         overhead = [op['overhead'] for op in opstats]
 
-        #ax.plot(frag, 'b-', label=pretty)
 
-        #
-        # Make use of size!
-        #
-        # diff(heap_size, [sum('size') until this point], actual allocated) => "difference between theoretically available and actual available"
-        #
+        maxmem = map(lambda x: x/1024, maxmem)
 
-        accumulated = False
-        logarithmic = True
-        op = opstats[0]
-        print "calculating time."
-        accumulated_time_nonlog = [op['current_op_time'] + op['oom_time']]
-        accumulated_time = [op['current_op_time'] + op['oom_time']]
-
-        if logarithmic:
-            accumulated_time[0] = log10_(accumulated_time[0])
-
-        for i in range(1, len(opstats)):
-            op = opstats[i]
-
-            current = op['current_op_time'] + op['oom_time']
-
-            previous = accumulated_time_nonlog[i-1]
-            thetime = 0
-            if accumulated:
-                thetime = previous + current
-            else:
-                if op['op'] == 'N':
-                    thetime = current
-                else:
-                    thetime = previous
-
-            accumulated_time_nonlog.append(thetime)
-            if logarithmic:
-                bef = thetime
-                thetime = log10_(thetime)
-
-            accumulated_time.append(thetime)
-
+        if len(maxmem) < longest_length:
+            maxmem.extend([0] * (longest_length - len(maxmem)))
 
         #p1a, = ax.plot(map(lambda x: x/1024, free), 'g-', label='Theoretical usable space')
         p1b, = ax.plot(map(lambda x: x/1024, maxmem), plot_color, label='%s' % driver)
