@@ -53,6 +53,7 @@ def plot_allocstats_multiple(app, allocstats_multiple):
         opstats = allocstats['alloc_stats']
         if allocstats['opmode'] != 'allocstats':
             continue
+        print "Driver %s has %d items" % (allocstats['driver'], len(opstats))
         if len(opstats) > longest_length:
             longest_length = len(opstats)
 

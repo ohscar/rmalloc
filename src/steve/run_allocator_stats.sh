@@ -17,7 +17,7 @@ if [[ "$CORES" == "" ]]; then
     CORES=$(grep -c ^processor /proc/cpuinfo)
     let CORES=2*$CORES
 fi
-export DATAPOINTS=1500 # requested -- will be adjusted down if neccessary.
+export DATAPOINTS=3000 # requested -- will be adjusted down if neccessary.
 
 export opsfile=$1
 export RESULTFILE=$(basename $opsfile)-$(basename $ALLOCATOR)-allocstats
@@ -54,7 +54,7 @@ export OPS_COUNT=$(grep '\(N\|F\)' $opsfile | wc -l | awk '{print $1}')
 
 
 
-export OPS_COUNT=$(echo "$OPS_COUNT*10" | bc)
+export OPS_COUNT=$(echo "$OPS_COUNT*20" | bc)
 
 
 

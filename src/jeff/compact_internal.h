@@ -8,6 +8,8 @@
 /* header, see compact.h
  */
 
+#define JEFF_MAX_RAM_VS_SLOWER_MALLOC 1
+
 #if __x86_64__
 typedef uint64_t ptr_t;
 #define PTR_T_MAX UINT64_MAX
@@ -27,7 +29,9 @@ typedef struct header_t {
     uint8_t flags;
 
     struct header_t *next;
+#if JEFF_MAX_RAM_VS_SLOWER_MALLOC == 0
     struct header_t *next_unused;
+#endif
 } header_t;
 
 /* free memory block, see compact.h

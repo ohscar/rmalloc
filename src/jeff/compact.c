@@ -122,6 +122,7 @@ void assert_handles_valid(header_t *header_root) {
         h++;
     }
 
+#if JEFF_MAX_RAM_VS_SLOWER_MALLOC == 0
     h = g_unused_header_root;
     while (h != NULL) {
         if ((ptr_t)h->memory == 0xbeefbabe || (ptr_t)h->next == 0xbeefbabe ||
@@ -133,12 +134,14 @@ void assert_handles_valid(header_t *header_root) {
 
         h = h->next_unused;
     }
+#endif
 }
 
 header_t *header_set_unused(header_t *header) {
 
     header->memory = NULL;
 
+#if JEFF_MAX_RAM_VS_SLOWER_MALLOC == 0
     if (g_unused_header_root == NULL)
     {
         g_unused_header_root = header;
@@ -149,6 +152,7 @@ header_t *header_set_unused(header_t *header) {
         g_unused_header_root = header;
     }
     g_unused_header_root->next_unused = 0;
+#endif
 
 #ifdef DEBUG
     assert_handles_valid(g_header_root);
@@ -177,6 +181,25 @@ void freeblock_verify_lower_size() {
 header_t *header_find_free(bool spare_two_for_compact) {
     header_t *h = NULL;
     
+#if JEFF_MAX_RAM_VS_SLOWER_MALLOC
+    h = g_header_top;
+    while (h != g_header_bottom) {
+        if (h->memory == NULL)
+            return h;
+        h--;
+    }
+    // nothing found
+    if (h == g_header_bottom) {
+        int limit = 2;
+        if (g_header_bottom - limit > g_memory_top) {
+            g_header_bottom--;
+
+            h = g_header_bottom;
+            return h;
+        } else
+            return NULL;
+    }
+#else
     if (g_unused_header_root != NULL)
     {
         h = g_unused_header_root;
@@ -195,6 +218,7 @@ header_t *header_find_free(bool spare_two_for_compact) {
             h = g_header_bottom;
         }
     }
+#endif
 
 #ifdef DEBUG
     if (h && header_is_unused(h) == false)
@@ -349,6 +373,7 @@ void dump_memory_layout() {
 
 header_t *freeblock_find(uint32_t size);
 header_t *block_new(int size) {
+    fprintf(stderr, "block new: %d\n", size);
     // minimum size for later use in free list: header pointer, next pointer
     if (size < sizeof(free_memory_block_t))
         size = sizeof(free_memory_block_t);
@@ -505,6 +530,7 @@ header_t *block_free(header_t *header) {
     if (!header || header->flags == HEADER_FREE_BLOCK)
         return header;
 
+    fprintf(stderr, "block free: 0x%X\n", header);
 #ifdef DEBUG
     freeblock_verify_lower_size();
     //assert_blocks();
@@ -1834,14 +1860,16 @@ void rminit(void *heap, uint32_t size) {
     // header top is located at the top of the heap space and grows downward.
     // header bottom points to the bottom, including the last one!
     g_header_top = (header_t *)((ptr_t)heap + size - sizeof(header_t));
-    g_header_bottom = g_header_top;
+    g_header_bottom = g_header_top - 1;
     g_header_root = g_header_top;
     g_header_root->next = NULL;
     g_header_used_count = 0;
 
     // newly unused headers are prepended, i.e. placed first, and g_unused_header_root is re-pointed.
     g_unused_header_root = g_header_top;
+#if JEFF_MAX_RAM_VS_SLOWER_MALLOC == 0
     g_unused_header_root->next_unused = NULL;
+#endif
 
     header_set_unused(g_header_top);
     g_header_top->size = 0;
