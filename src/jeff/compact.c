@@ -1365,7 +1365,7 @@ static void rebuild_free_block_slots() {
     }
 
 #ifdef DEBUG
-    assert_blocks();
+    //assert_blocks();
 #endif
 }
 
