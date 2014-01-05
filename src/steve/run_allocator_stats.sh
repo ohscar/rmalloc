@@ -53,8 +53,7 @@ export OPS_COUNT=$(grep '\(N\|F\)' $opsfile | wc -l | awk '{print $1}')
 
 
 
-
-export OPS_COUNT=$(echo "$OPS_COUNT*20" | bc)
+export OPS_COUNT=$(echo "$OPS_COUNT*15" | bc)
 
 
 
@@ -126,6 +125,8 @@ while [[ "$continue" == "1" ]]; do
             continue=1
         else
             echo "* $i done"
+            continue=0
+            break
         fi
     done
 done
@@ -155,7 +156,7 @@ rm -rf ${RESULTFILE}.part*
 # echo ']' >> dlmalloc.alloc-stats
 
 #python grapher.py dlmalloc.maxmem-stats
-echo "Generated alloctaion stats in file: $RESULTFILE"
+echo "Generated allocation stats in file: $RESULTFILE"
 #echo "Generating graph from $RESULTFILE"
 #python run_maxmem_grapher.py $RESULTFILE
 

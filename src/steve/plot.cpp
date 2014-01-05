@@ -737,8 +737,50 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
             continue;
 
         if (feof(fp)) {
-            fprintf(stderr, "********************************* REWIND!\n");
+            // MAX RAM:
+            // 5 OK = 883
+            //
+            // MAX SPEED:
+            //
+            // /4 =>
+            // Driver dlmalloc has 1141 items
+            // Driver rmmalloc has 1141 items
+            //
+            //
+            int count = handle / 3; 
+            fprintf(stderr, "********************************* REWIND! Killing off %d headers\n", count);
             rewind(fp);
+
+
+            // randomly kill off 1/3 of all headers.
+            int killed = 0;
+            while (killed < count) {
+                //int h = rand() % handle;
+                //int s = g_sizes[h];
+
+                handle_count_map_t::iterator it = g_sizes.begin();
+                int sz = rand() % g_sizes.size();
+                if (sz == 0)
+                    break;
+                int rnd = rand() % sz;
+                std::advance(it, rnd);
+                int h = it->first;
+                int s = it->second;
+
+                if (s > 0) {
+                    void *ptr = g_handles[h];
+                    current_used_space -= s;
+                    user_free(ptr, h, &op_time);
+                    killed++;
+
+                    g_sizes.erase(it);
+
+                    //g_sizes[h] = 0;
+                    g_handles[h] = NULL;
+                    g_handle_to_address[h] = NULL;
+                }
+            }
+
             handle_offset += highest_handle_no;
             r = fgets(line, 127, fp);
             if (line[0] == '#')
@@ -851,6 +893,7 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
                         
                         done = true;
                         rmstat_print_headers(/*only_type*/true);
+
                         oom("OOM: last handle: %d (offset = %d, highest = %d)\n", handle, handle_offset, highest_handle_no);
                         //oom("\n\nallocstats: couldn't recover trying to alloc %d bytes at handle %d (total alloc'd %u).\n", size, handle, total_size);
                         break;
@@ -930,7 +973,8 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
                     //register_op(OP_FREE, handle, memaddress, s, op_time);
 
                     //g_sizes[ptr] = 0;
-                    g_sizes[handle] = 0;
+                    //g_sizes[handle] = 0;
+                    g_sizes.erase(handle);
                     g_handles[handle] = NULL;
 
                     print_after_free_stats(address, s);

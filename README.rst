@@ -13,21 +13,28 @@ Lock a handle to get the memory address, unlock it when done. Unlocked memory bl
 
 Requires modifications to code using a normal malloc(), but can potentially be quicker and more memory efficient.
 
+rmmalloc can be tuned in jeff/compact_internal.h::
+
+    #define JEFF_MAX_RAM_VS_SLOWER_MALLOC 1
+
+    If enabled, a pointer to next unused block in the header is removed and replaced by a O(n) lookup for each new free header.
+
 Testing allocator on lockops (plain/full) file
 ===============================================
 e.g.::
 
     Haddock (8912) 18:53 /code/rmalloc/src/emulator>
-    CORES=1 DISPLAY=:0 ALLOCATOR=./plot_rmalloc_compacting ./run_maxmem.sh /code/rmalloc/src/memtrace-runs/soffice/soffice-lockopsfullb
+    CORES=2 DISPLAY=:0 ALLOCATOR=./drivers/plot_rmalloc_compacting ./run_allocator_stats.sh result.soffice-ops-with-O-for-oom-without-SL
+
 
 Producing graphs
 ==================
 Take the output from ``./run_maxmem.sh`` and give it the name of the app in the graph::
 
     Haddock (8912) 18:53 /code/rmalloc/src/emulator>
-    python grapher.py soffice \
-        soffice-lockopsfull-plot_rmalloc_compacting-allocstats
-        soffice-lockopsfull-plot_dlmalloc-allocstats
+    python run_graphs_from_allocstats.py soffice \
+        result.soffice-ops-with-O-for-oom-without-SL-plot_rmalloc_compacting-allocstats
+        result.soffice-ops-with-O-for-oom-without-SL-plot_dlmalloc-allocstats
 
 
 Resources on the Internet and elsewhere

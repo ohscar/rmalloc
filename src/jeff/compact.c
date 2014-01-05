@@ -44,7 +44,7 @@ typedef uint64_t ptr_t;
 typedef uint32_t ptr_t;
 #endif
 
-//#define fprintf(...) 
+#define fprintf(...) 
 #define fputc(...)
 
 // code
