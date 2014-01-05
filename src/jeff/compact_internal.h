@@ -8,7 +8,7 @@
 /* header, see compact.h
  */
 
-#define JEFF_MAX_RAM_VS_SLOWER_MALLOC 1
+#define JEFF_MAX_RAM_VS_SLOWER_MALLOC 0
 
 #if __x86_64__
 typedef uint64_t ptr_t;

@@ -69,13 +69,7 @@ uint32_t log2_(uint32_t n)
 
 /* header */
 
-bool header_is_unused(header_t *header) {
-    // FIXME: Make use of g_free_header_root / g_free_header_end -- linked
-    // list. grab the first element, relink?
-    //
-    // if memory <= g_header_top && memory >= g_header_bottom, then it is also
-    // unused.
-    //
+inline bool header_is_unused(header_t *header) {
     return header && header->memory == NULL;
 }
 
@@ -139,9 +133,18 @@ void assert_handles_valid(header_t *header_root) {
 #endif
 }
 
-header_t *header_set_unused(header_t *header) {
+inline void header_clear(header_t *h) {
+    h->memory = NULL;
+    h->size = 0;
+    h->next = NULL;
+#if JEFF_MAX_RAM_VS_SLOWER_MALLOC == 0
+    h->next_unused = NULL;
+#endif
+}
 
-    header->memory = NULL;
+inline header_t *header_set_unused(header_t *header) {
+
+    header_clear(header);
 
 #if JEFF_MAX_RAM_VS_SLOWER_MALLOC == 0
     if (g_unused_header_root == NULL)
@@ -181,6 +184,7 @@ void freeblock_verify_lower_size() {
 }
 
 header_t *header_find_free(bool spare_two_for_compact) {
+    const int limit = 2; // for compact
     header_t *h = NULL;
 
 #if JEFF_MAX_RAM_VS_SLOWER_MALLOC == 0
@@ -188,43 +192,32 @@ header_t *header_find_free(bool spare_two_for_compact) {
     {
         h = g_unused_header_root;
 
-        if ((ptr_t)h == 0x806e61c)
-        {
-            abort();
-        }
         g_unused_header_root = g_unused_header_root->next_unused;
 
         goto finish;
     }
+#else
+    h = g_header_top;
+    do {
+        // guaranteed to be OK
+        if (header_is_unused(h))
+            goto finish;
+        h--;
+    } while (h != g_header_bottom);
 #endif
 
-    if (h == NULL) {
-        h = g_header_top;
-        while (h != g_header_bottom) {
-            if (h->memory == NULL)
-                goto finish;
-            h--;
-        }
-        // nothing found
-        if (h == g_header_bottom) {
-            int limit = 2; // for compact
-            if (g_header_bottom - limit > g_memory_top) {
-                g_header_bottom--;
+    // nothing found
+    if (g_header_bottom - limit > g_memory_top) {
+        g_header_bottom--;
 
-                h = g_header_bottom;
-                goto finish;
-            }
-        }
+        h = g_header_bottom;
+        header_clear(h);
+        goto finish;
     }
 
     return NULL;
 
 finish:
-
-        if ((ptr_t)h == 0x806e61c)
-        {
-            abort();
-        }
 
 #ifdef DEBUG
     if (h && header_is_unused(h) == false)
@@ -1329,11 +1322,6 @@ static void rebuild_free_block_slots() {
         steps++;
         int k = log2_(h->size);
 
-        if (k == 11 && h == (void *)0xb7cad928)
-        {
-            k = 11;
-        }
-
         // just let the smaller headers be, in case there are any.
         // there should not be any, and so this test is invalid.
         if (h->size >= sizeof(free_memory_block_t)) {
@@ -1341,11 +1329,6 @@ static void rebuild_free_block_slots() {
             free_block_count++;
 
             free_memory_block_t *block = block_from_header(h);
-
-            if (block == (free_memory_block_t *)0x77d0eb0c)
-            {
-                block = (free_memory_block_t *)0x77d0eb0c;
-            }
 
             block->header = h; 
             block->next = NULL;
@@ -1522,10 +1505,6 @@ void rmcompact(int maxtime) {
         // Squish free blocks
 
         ptr_t free_memory_start = (ptr_t)free_first->memory;
-        if (free_memory_start == 0x806c51e)
-        {
-            dummy = true;
-        }
 
         h = free_first;
         while (h && h != free_first->next)
