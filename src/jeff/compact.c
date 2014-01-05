@@ -122,6 +122,7 @@ void assert_handles_valid(header_t *header_root) {
         h++;
     }
 
+#if 0
 #if JEFF_MAX_RAM_VS_SLOWER_MALLOC == 0
     h = g_unused_header_root;
     while (h != NULL) {
@@ -134,6 +135,7 @@ void assert_handles_valid(header_t *header_root) {
 
         h = h->next_unused;
     }
+#endif
 #endif
 }
 
@@ -151,7 +153,7 @@ header_t *header_set_unused(header_t *header) {
         header->next_unused = g_unused_header_root;
         g_unused_header_root = header;
     }
-    g_unused_header_root->next_unused = 0;
+    g_unused_header_root->next_unused = NULL;
 #endif
 
 #ifdef DEBUG
@@ -180,45 +182,49 @@ void freeblock_verify_lower_size() {
 
 header_t *header_find_free(bool spare_two_for_compact) {
     header_t *h = NULL;
-    
-#if JEFF_MAX_RAM_VS_SLOWER_MALLOC
-    h = g_header_top;
-    while (h != g_header_bottom) {
-        if (h->memory == NULL)
-            return h;
-        h--;
-    }
-    // nothing found
-    if (h == g_header_bottom) {
-        int limit = 2;
-        if (g_header_bottom - limit > g_memory_top) {
-            g_header_bottom--;
 
-            h = g_header_bottom;
-            return h;
-        } else
-            return NULL;
-    }
-#else
+#if JEFF_MAX_RAM_VS_SLOWER_MALLOC == 0
     if (g_unused_header_root != NULL)
     {
         h = g_unused_header_root;
-        g_unused_header_root = g_unused_header_root->next_unused;
-    }
-    else
-    {
-        //int limit = g_header_used_count; // worst-case scenario because it's used in freeblock_shrink_with_header() - where each block could be split once => header_used_count.
-        //if (spare_two_for_compact) limit = 2; // we're called from within rmcompact() where we only need two headers.
 
-        int limit = 2; // for compact.
-
-        if (g_header_bottom - limit > g_memory_top) {
-            g_header_bottom--;
-
-            h = g_header_bottom;
+        if ((ptr_t)h == 0x806e61c)
+        {
+            abort();
         }
+        g_unused_header_root = g_unused_header_root->next_unused;
+
+        goto finish;
     }
 #endif
+
+    if (h == NULL) {
+        h = g_header_top;
+        while (h != g_header_bottom) {
+            if (h->memory == NULL)
+                goto finish;
+            h--;
+        }
+        // nothing found
+        if (h == g_header_bottom) {
+            int limit = 2; // for compact
+            if (g_header_bottom - limit > g_memory_top) {
+                g_header_bottom--;
+
+                h = g_header_bottom;
+                goto finish;
+            }
+        }
+    }
+
+    return NULL;
+
+finish:
+
+        if ((ptr_t)h == 0x806e61c)
+        {
+            abort();
+        }
 
 #ifdef DEBUG
     if (h && header_is_unused(h) == false)
@@ -497,12 +503,10 @@ void assert_memory_is_free(void *ptr) {
 }
 
 void freeblock_assert_sane(free_memory_block_t *block) {
-    if (block != block_from_header(block->header)) {
-        int diff;
-        if ((uint8_t *)block > (uint8_t *)block_from_header(block->header))
-            diff = (uint8_t *)block - (uint8_t *)block_from_header(block->header);
-        else
-            diff = (uint8_t *)block_from_header(block->header) - (uint8_t *)block;
+    ptr_t pb = (ptr_t)block;
+    ptr_t pbfh = (ptr_t)block_from_header(block->header);
+    if (pb != pbfh) {
+        int diff = (pb > pbfh) ? pb - pbfh : pbfh - pb;
 
         fprintf(stderr, "freeblock_assert_sane(%p size %d): diff %d bytes\n", block, block->header->size, diff);
         abort();
@@ -679,6 +683,11 @@ header_t *block_free(header_t *header) {
         abort();
 #else
         return NULL;
+#endif
+
+#ifdef DEBUG
+    freeblock_assert_sane(block);
+    //assert_blocks();
 #endif
 
     block->next = g_free_block_slots[index];
@@ -1865,9 +1874,9 @@ void rminit(void *heap, uint32_t size) {
     g_header_used_count = 0;
 
     // newly unused headers are prepended, i.e. placed first, and g_unused_header_root is re-pointed.
-    g_unused_header_root = g_header_top;
 #if JEFF_MAX_RAM_VS_SLOWER_MALLOC == 0
-    g_unused_header_root->next_unused = NULL;
+    g_unused_header_root = NULL;
+    //g_unused_header_root->next_unused = NULL;
 #endif
 
     header_set_unused(g_header_top);
