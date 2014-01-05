@@ -1713,7 +1713,6 @@ void rmcompact(int maxtime) {
     header_t *largest_header = h;
     int count = 0;
     int total_size = 0;
-    ptr_t offset = 0;
     while (h != NULL) {
         if (!header_is_unused(h) && h->flags != HEADER_FREE_BLOCK) {
             if ((ptr_t)h->memory + h->size > highest_used_address) {
