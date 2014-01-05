@@ -94,6 +94,7 @@ uint8_t *g_highest_address = 0; // Currently ONLY used for --peakmem
 
 char *g_opsfile = NULL;
 char *g_resultsfile = NULL;
+float g_killpercent = 0;
 
 void scan_block_sizes(void);
 int colormap_print(char *output, int sequence);
@@ -747,7 +748,7 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
             // Driver rmmalloc has 1141 items
             //
             //
-            int count = handle / 3; 
+            int count = (int)((float)handle * g_killpercent);
             fprintf(stderr, "********************************* REWIND! Killing off %d headers\n", count);
             rewind(fp);
 
@@ -1266,7 +1267,8 @@ int main(int argc, char **argv) {
 
     if (argc < 3) {
         die("%d is too few.\n"
-            "usage: %s --allocstats opsfile resultfile oplimit peakmemsize theoretical_heap_size\n"
+            "usage: %s --allocstats opsfile resultfile killpercent oplimit peakmemsize theoretical_heap_size\n"
+            "       killpercent - 0-100 how many percent of all handles to free at each rewind.\n"
             "       oplimit = 0 => write header to <driver>.alloc_stats\n"
             "       oplimit > 0 => write free/used/overhead/maxmem per op.\n"
             "\n"
@@ -1280,13 +1282,14 @@ int main(int argc, char **argv) {
     if (argv[1][0] == '-') {
         g_opsfile = argv[2];
         if (strcmp(argv[1], "--allocstats") == 0) {
-            if (argc < 5)
-                die("too few arguments.");
+            if (argc < 8)
+                die("too few arguments\n.");
             g_resultsfile = argv[3];
             g_operation_mode = OPMODE_ALLOCSTATS;
-            g_oplimit = atoi(argv[4]);
-            g_total_memory_consumption = atoi(argv[5]);
-            g_theoretical_heap_size = atoi(argv[6]);
+            g_killpercent = (float)atoi(argv[4]) / 100.0;
+            g_oplimit = atoi(argv[5]);
+            g_total_memory_consumption = atoi(argv[6]);
+            g_theoretical_heap_size = atoi(argv[7]);
             fprintf(stderr, "opmode: allocstats\n");
         }else if (strcmp(argv[1], "--peakmem") == 0) {
             g_operation_mode = OPMODE_PEAKMEM;

@@ -1,7 +1,5 @@
 #!/bin/bash
 
-#set -x
-
 if [[ "$1" == "" || ! -f "$1" ]]; then
 echo "opsfile req'd"
 	exit
@@ -17,13 +15,19 @@ if [[ "$CORES" == "" ]]; then
     CORES=$(grep -c ^processor /proc/cpuinfo)
     let CORES=2*$CORES
 fi
+
+if [[ "$KILLPERCENT" == "" ]]; then
+    export KILLPERCENT=0
+fi
+
+echo "Killing off ${KILLPERCENT}% of currently live handles at opsfile rewind."
+
 export DATAPOINTS=3000 # requested -- will be adjusted down if neccessary.
 
 export opsfile=$1
-export RESULTFILE=$(basename $opsfile)-$(basename $ALLOCATOR)-allocstats
+export RESULTFILE=$(basename $opsfile)-$(basename $ALLOCATOR)-kill${KILLPERCENT}-allocstats
 
 echo -n "Calculating theoretical peak mem used by the allocator ($ALLOCATOR --peakmem $opsfile)... "
-# XXX: re-enable this
 export peakmem=$($ALLOCATOR --peakmem $opsfile 2> /dev/null)
 export theory_peakmem=$peakmem
 
@@ -70,7 +74,7 @@ while [[ "$done" != "1" ]]; do
 
     #echo "($ALLOCATOR)--maxmem ($opsfile) ($RESULTFILE) ($fullcount) ($peakmem) ($theory_peakmem)"
     #echo $ALLOCATOR --maxmem $opsfile $RESULTFILE $fullcount $peakmem $theory_peakmem
-    $ALLOCATOR --allocstats $opsfile $RESULTFILE $fullcount $peakmem $theory_peakmem > /dev/null 2>&1
+    $ALLOCATOR --allocstats $opsfile $RESULTFILE $KILLPERCENT $fullcount $peakmem $theory_peakmem > /dev/null 2>&1
     status=$?
     if [[ "$status" != "0" ]]; then
         # oom, bump by 5% and retry.
