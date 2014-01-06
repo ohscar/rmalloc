@@ -26,4 +26,4 @@ compact: $(SOURCES)
 	gcc -o compact $(SOURCES)
 
 clean:
-	rm -rf listsort.o compact.o run_tests compact
+	rm -rf *.o run_tests compact
