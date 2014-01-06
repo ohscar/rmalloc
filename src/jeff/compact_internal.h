@@ -32,7 +32,7 @@ typedef struct header_t {
 #if JEFF_MAX_RAM_VS_SLOWER_MALLOC == 0
     struct header_t *next_unused;
 #endif
-} header_t;
+} __attribute__ ((packed)) header_t;
 
 /* free memory block, see compact.h
  */
