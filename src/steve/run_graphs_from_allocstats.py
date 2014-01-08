@@ -53,7 +53,20 @@ def plot_allocstats_multiple(app, allocstats_multiple):
         opstats = allocstats['alloc_stats']
         if allocstats['opmode'] != 'allocstats':
             continue
-        print "Driver %s has %d items" % (allocstats['driver'], len(opstats))
+
+        opstats.sort(key=lambda x: x['op_index'])
+        allocstats_multiple[i]['alloc_stats'] = opstats
+
+        count_before_zero_maxmem = 0
+        for j in range(len(opstats)):
+            count_before_zero_maxmem += 1
+            if opstats[j]['maxmem'] == 0:
+                break
+
+        opstats = opstats[:count_before_zero_maxmem]
+        allocstats_multiple[i]['alloc_stats'] = opstats
+
+        print "Driver %s has %d items before zero maxmem" % (allocstats['driver'], len(opstats))
         if len(opstats) > longest_length:
             longest_length = len(opstats)
 
@@ -70,9 +83,6 @@ def plot_allocstats_multiple(app, allocstats_multiple):
         opstats = allocstats['alloc_stats']
         if allocstats['opmode'] != 'allocstats':
             continue
-
-        # sort opstats by 'op_index'
-        opstats.sort(key=lambda x: x['op_index'])
 
         opmode = 'allocstats'
         pretty = "Largest block size (bytes)"

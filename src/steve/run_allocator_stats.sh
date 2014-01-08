@@ -20,14 +20,14 @@ if [[ "$KILLPERCENT" == "" ]]; then
     export KILLPERCENT=0
 fi
 
-echo "Killing off ${KILLPERCENT}% of currently live handles at opsfile rewind."
+echo "* Setting: killing off ${KILLPERCENT}% of currently live handles at opsfile rewind."
 
 export DATAPOINTS=3000 # requested -- will be adjusted down if neccessary.
 
 export opsfile=$1
 export RESULTFILE=$(basename $opsfile)-$(basename $ALLOCATOR)-kill${KILLPERCENT}-allocstats
 
-echo -n "Calculating theoretical peak mem used by the allocator ($ALLOCATOR --peakmem $opsfile)... "
+echo -n "* Calculating theoretical peak mem used by the allocator ($ALLOCATOR --peakmem $opsfile)... "
 export peakmem=$($ALLOCATOR --peakmem $opsfile 2> /dev/null)
 export theory_peakmem=$peakmem
 
@@ -66,10 +66,12 @@ export OPS_COUNT=$(echo "$OPS_COUNT*15" | bc)
 
 
 
+set -x
 
 echo "ops_count (N/F ops) = $OPS_COUNT"
 
 while [[ "$done" != "1" ]]; do
+    a=$(echo $ALLOCATOR --allocstats $opsfile $RESULTFILE $KILLPERCENT $fullcount $peakmem $theory_peakmem)
     echo -n "* Calculating maxmem for peakmem $peakmem bytes..."
 
     #echo "($ALLOCATOR)--maxmem ($opsfile) ($RESULTFILE) ($fullcount) ($peakmem) ($theory_peakmem)"
@@ -85,6 +87,11 @@ while [[ "$done" != "1" ]]; do
         break
     fi
 done
+echo "* Parameters used: $a"
+echo
+
+set +x
+
 
 echo > $RESULTFILE
 
@@ -107,7 +114,7 @@ for start in $(seq 0 10 $ENDPOINTS); do
     fi
 done
 
-echo "Starting $CORES jobs."
+echo "* Starting $CORES jobs."
 
 rm -rf donefile.*
 
@@ -117,7 +124,7 @@ for i in $(seq 0 $jobs); do
     ./run_allocator_stats_payload.sh donefile.$i ${corejobs[$i]} &
 done
 
-echo "Waiting for run to finish."
+echo "* Waiting for run to finish."
 
 continue=1
 while [[ "$continue" == "1" ]]; do
@@ -128,7 +135,7 @@ while [[ "$continue" == "1" ]]; do
             #echo "* $i not yet done."
             continue=1
         else
-            echo "* $i done"
+            echo "  - $i done"
             continue=0
             break
         fi
@@ -160,7 +167,7 @@ rm -rf ${RESULTFILE}.part*
 # echo ']' >> dlmalloc.alloc-stats
 
 #python grapher.py dlmalloc.maxmem-stats
-echo "Generated allocation stats in file: $RESULTFILE"
+echo "* Generated allocation stats in file: $RESULTFILE"
 #echo "Generating graph from $RESULTFILE"
 #python run_maxmem_grapher.py $RESULTFILE
 

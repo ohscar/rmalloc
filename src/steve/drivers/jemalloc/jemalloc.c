@@ -94,6 +94,14 @@
  *******************************************************************************
  */
 
+#define malloc je_malloc
+#define calloc je_calloc
+#define valloc je_valloc
+#define realloc je_realloc
+#define free je_free
+#define memalign je_memalign
+#define sbrk user_sbrk
+
 /*
  * MALLOC_PRODUCTION disables assertions and statistics gathering.  It also
  * defaults the A and J runtime options to off.  These settings are appropriate
@@ -131,7 +139,7 @@
  * can atomically stuff object pointers into.  This can reduce arena lock
  * contention.
  */
-#define	MALLOC_LAZY_FREE
+//#define	MALLOC_LAZY_FREE
 
 /*
  * MALLOC_BALANCE enables monitoring of arena lock contention and dynamically
@@ -423,7 +431,8 @@ static const bool __isthreaded = true;
  * Size and alignment of memory chunks that are allocated by the OS's virtual
  * memory system.
  */
-#define	CHUNK_2POW_DEFAULT	20
+//#define	CHUNK_2POW_DEFAULT	20
+#define	CHUNK_2POW_DEFAULT	14 // 16kb
 
 /* Maximum number of dirty pages per arena. */
 #define	DIRTY_MAX_DEFAULT	(1U << 9)
@@ -1061,7 +1070,8 @@ static bool	opt_junk = false;
 #endif
 #ifdef MALLOC_DSS
 static bool	opt_dss = true;
-static bool	opt_mmap = true;
+static bool	opt_mmap = false;
+//static bool	opt_mmap = true;
 #endif
 static size_t	opt_dirty_max = DIRTY_MAX_DEFAULT;
 #ifdef MALLOC_LAZY_FREE

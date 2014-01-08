@@ -15,9 +15,10 @@
 #
 # Runs  plot_dlmaloc for N1..N1+9, N2..N2+9, and so on.
 #
+
 donefile=$1
 shift
-echo "$donefile running on $*"
+echo "- $donefile running on $*"
 finished="0"
 while [[ "$1" != "" && "$finished" == "0" ]]; do
     start=$1
