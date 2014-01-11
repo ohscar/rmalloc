@@ -28,6 +28,9 @@
 #include <map>
 #include <list>
 
+// to get reproducability
+#define INITIAL_RANDOM_SEED 0x42424242
+
 // exit codes:
 // 0 = ok, 
 // 1 = unused,
@@ -35,6 +38,8 @@
 #define die(x...) {printf(x); exit(1);}
 #define oom(x...) {printf(x); exit(2);}
 
+
+// XXX: ugly, and really only for debugging (?)
 __attribute__ ((weak)) void rmstat_print_headers(bool){}
 
 typedef std::map<uint32_t, void *> handle_pointer_map_t;
@@ -1356,6 +1361,9 @@ int main(int argc, char **argv) {
             sprintf(statsfile, "%s.part_%d", g_resultsfile, g_oplimit);
         fpstats = fopen(statsfile, "at");
     }
+
+    srand(INITIAL_RANDOM_SEED); 
+
 
     // yum, bolognese programming...
     if (g_operation_mode == OPMODE_MEMPLOT) {
