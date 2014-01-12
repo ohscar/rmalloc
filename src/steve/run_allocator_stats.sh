@@ -67,16 +67,18 @@ export OPS_COUNT=$(echo "$OPS_COUNT*15" | bc)
 
 
 set -x
+peakmem=$(echo "$peakmem*3" | bc)
 
 echo "ops_count (N/F ops) = $OPS_COUNT"
 
+maxmem_killpercent=0
 while [[ "$done" != "1" ]]; do
-    a=$(echo $ALLOCATOR --allocstats $opsfile $RESULTFILE $KILLPERCENT $fullcount $peakmem $theory_peakmem)
+    a=$(echo $ALLOCATOR --allocstats $opsfile $RESULTFILE $maxmem_killpercent $fullcount $peakmem $theory_peakmem)
     echo -n "* Calculating maxmem for peakmem $peakmem bytes..."
 
     #echo "($ALLOCATOR)--maxmem ($opsfile) ($RESULTFILE) ($fullcount) ($peakmem) ($theory_peakmem)"
     #echo $ALLOCATOR --maxmem $opsfile $RESULTFILE $fullcount $peakmem $theory_peakmem
-    $ALLOCATOR --allocstats $opsfile $RESULTFILE $KILLPERCENT $fullcount $peakmem $theory_peakmem > /dev/null 2>&1
+    $ALLOCATOR --allocstats $opsfile $RESULTFILE $maxmem_killpercent $fullcount $peakmem $theory_peakmem > /dev/null 2>&1
     status=$?
     if [[ "$status" != "0" ]]; then
         # oom, bump by 5% and retry.

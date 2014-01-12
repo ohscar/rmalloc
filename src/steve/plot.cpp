@@ -742,7 +742,7 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
         if (line[0] == '#')
             continue;
 
-        if (feof(fp)) {
+        if (feof(fp) && g_killpercent > 0) {
             // MAX RAM:
             // 5 OK = 883
             //
