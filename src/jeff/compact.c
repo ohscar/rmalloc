@@ -47,32 +47,9 @@ typedef uint32_t ptr_t;
 #define fprintf(...) 
 #define fputc(...)
 
-// code
 
-/* utility */
-#if 0
-uint32_t log2_(uint32_t n)
-{
-    int r = 0;
-    while (n >>= 1)
-        r++;
-    return r;
-}
-#endif
-// http://stackoverflow.com/questions/994593/how-to-do-an-integer-log2-in-c
-// and http://gcc.gnu.org/onlinedocs/gcc-4.4.2/gcc/Other-Builtins.html
-uint32_t log2_(uint32_t n)
-{
-    //return __builtin_ctz(n);
-    return sizeof(n)*8 - 1 - __builtin_clz(n); // builtin_clz() is base 0
-}
-
-/* header */
-
-inline bool header_is_unused(header_t *header) {
-    return header && header->memory == NULL;
-}
-
+void header_sort_all();
+inline bool header_is_unused(header_t *header);
 
 void assert_handles_valid(header_t *header_root) {
 
@@ -133,38 +110,6 @@ void assert_handles_valid(header_t *header_root) {
 #endif
 }
 
-inline void header_clear(header_t *h) {
-    h->memory = NULL;
-    h->size = 0;
-    h->next = NULL;
-#if JEFF_MAX_RAM_VS_SLOWER_MALLOC == 0
-    h->next_unused = NULL;
-#endif
-}
-
-inline header_t *header_set_unused(header_t *header) {
-
-    header_clear(header);
-
-#if JEFF_MAX_RAM_VS_SLOWER_MALLOC == 0
-    if (g_unused_header_root == NULL)
-    {
-        g_unused_header_root = header;
-    }
-    else
-    {
-        header->next_unused = g_unused_header_root;
-        g_unused_header_root = header;
-    }
-    g_unused_header_root->next_unused = NULL;
-#endif
-
-#ifdef DEBUG
-    assert_handles_valid(g_header_root);
-#endif
-
-    return header;
-}
 
 void freeblock_verify_lower_size() {
     for (int k=0; k<g_free_block_slot_count; k++) {
@@ -183,86 +128,7 @@ void freeblock_verify_lower_size() {
     }
 }
 
-header_t *header_find_free(bool spare_two_for_compact) {
-    const int limit = 2; // for compact
-    header_t *h = NULL;
 
-#if JEFF_MAX_RAM_VS_SLOWER_MALLOC == 0
-    if (g_unused_header_root != NULL)
-    {
-        h = g_unused_header_root;
-
-        g_unused_header_root = g_unused_header_root->next_unused;
-
-        goto finish;
-    }
-#else
-    h = g_header_top;
-    do {
-        // guaranteed to be OK
-        if (header_is_unused(h))
-            goto finish;
-        h--;
-    } while (h != g_header_bottom);
-#endif
-
-    // nothing found
-    if (g_header_bottom - limit > g_memory_top) {
-        g_header_bottom--;
-
-        h = g_header_bottom;
-        header_clear(h);
-        goto finish;
-    }
-
-    return NULL;
-
-finish:
-
-#ifdef DEBUG
-    if (h && header_is_unused(h) == false)
-        abort();
-#endif
-
-    return h;
-}
-
-header_t *header_new(bool insert_in_list, bool spare_two_for_compact) {
-    header_t *header = header_find_free(spare_two_for_compact);
-    if (header) {
-        header->flags = HEADER_UNLOCKED;
-        header->memory = NULL;
-        if (insert_in_list) {
-            // is it in list?
-            if ((header->next < g_header_bottom || header->next > g_header_top) && header != g_header_root) {
-                // nope, insert.
-                header->next = g_header_root;
-
-                g_header_root = header;
-            }
-            // it's already in the list!
-        } else {
-            // don't insert into list. this is the new_free thingy which we manually insert at the correct
-            // position in the chain based on header_t::memory.
-            header->next = NULL;
-        }
-        fprintf(stderr, "== header_new() = %p\n", header);
-    } else {
-        fprintf(stderr, "== header_new() = NULL\n", header);
-    }
-    return header;
-}
-
-/* memory block */
-
-free_memory_block_t *block_from_header(header_t *header) {
-    /* free_memory_block_t for a chunk of free memory is stored at the very *end* of the block.
-     *
-     * this is done so that a recently freed block can be mixed together with
-     * the block just behind the current one, if it is a valid free block.
-     */
-    return (free_memory_block_t *)((uint8_t *)header->memory + header->size) - 1;
-}
 
 
 uint8_t header_fillchar(header_t *h) {
@@ -294,13 +160,6 @@ static void assert_blocks() {
 
         which++;
         node = node->next;
-    }
-}
-
-void update_highest_address_if_needed(header_t *h) {
-    if (h)
-    {
-        g_highest_address_header = h;
     }
 }
 
@@ -370,6 +229,420 @@ void dump_memory_layout() {
         fclose(fp);
 }
 
+
+void freeblock_print() {
+    for (int i=0; i<g_free_block_slot_count; i++) {
+        fprintf(stderr, "%d / %d bytes / %d kb: ", i, 1<<i, (1<<i)/1024);
+        free_memory_block_t *b = g_free_block_slots[i];
+        while (b) {
+            fprintf(stderr, "{%p size %d kb} ", b, b->header->size/1024);
+            b = b->next;
+        }
+        fprintf(stderr, "\n");
+    }
+}
+
+bool freeblock_exists_memory(void *ptr) {
+    for (int i=0; i<g_free_block_slot_count; i++) {
+        free_memory_block_t *b = g_free_block_slots[i];
+        while (b) {
+            if (b->header->memory == ptr)
+                return true;
+
+            b = b->next;
+        }
+    }
+    return false;
+}
+
+bool freeblock_exists(free_memory_block_t *block) {
+    for (int i=0; i<g_free_block_slot_count; i++) {
+        free_memory_block_t *b = g_free_block_slots[i];
+        while (b) {
+            if (b == block)
+                return true;
+
+            b = b->next;
+        }
+    }
+    return false;
+}
+
+void assert_memory_is_free(void *ptr) {
+    /*
+     * assert that there are no non-free blocks in which this pointer address exists.
+     *
+     * free_memory_block_t is always placed at the end of a free memory chunk,
+     * i.e. [free memory area of N bytes | free_memory_block_t]
+    */
+    header_t *h = g_header_root;
+    ptr_t p = (ptr_t)ptr;
+    while (h != NULL) {
+        if (h->flags != HEADER_FREE_BLOCK) {
+            ptr_t start = (ptr_t)h->memory;
+            ptr_t end = start + h->size;
+
+            if (p >= start && p < end)
+                abort();
+        }
+        h = h->next;
+    }
+}
+
+free_memory_block_t *block_from_header(header_t *header) {
+    /* free_memory_block_t for a chunk of free memory is stored at the very *end* of the block.
+     *
+     * this is done so that a recently freed block can be mixed together with
+     * the block just behind the current one, if it is a valid free block.
+     */
+    return (free_memory_block_t *)((uint8_t *)header->memory + header->size) - 1;
+}
+
+void freeblock_assert_sane(free_memory_block_t *block) {
+    ptr_t pb = (ptr_t)block;
+    ptr_t pbfh = (ptr_t)block_from_header(block->header);
+    if (pb != pbfh) {
+        int diff = (pb > pbfh) ? pb - pbfh : pbfh - pb;
+
+        fprintf(stderr, "freeblock_assert_sane(%p size %d): diff %d bytes\n", block, block->header->size, diff);
+        abort();
+    }
+}
+
+bool freeblock_checkloop(free_memory_block_t *block) {
+    free_memory_block_t *a = block;
+    while (block != NULL) {
+        block = block->next;
+        if (block == a) {
+            fprintf(stderr, "loop in memory block %p slot %d\n", block, log2_(block->header->size));
+            abort();
+            return true;
+        }
+    }
+    return false;
+}
+
+
+
+uint32_t rmstat_total_free_list() {
+    uint32_t total = 0;
+    for (int i=0; i<g_free_block_slot_count; i++) {
+        free_memory_block_t *b = g_free_block_slots[i];
+        free_memory_block_t *a = b;
+        while (b != NULL) {
+            total += b->header->size;
+            b = b->next;
+            if (a == b) {
+                fprintf(stderr, "stat_total_free_list(), panic - found a loop in slot %d item %p!\n", i, a);
+                freeblock_print();
+            }
+        }
+    }
+    return total;
+}
+
+uint32_t rmstat_largest_free_block() {
+    uint32_t largest = 0;
+    for (int i=0; i<g_free_block_slot_count; i++) {
+        free_memory_block_t *b = g_free_block_slots[i];
+        free_memory_block_t *a = b;
+        while (b != NULL) {
+            if (b->header->size > largest)
+                largest = b->header->size;
+            b = b->next;
+            if (a == b) {
+                fprintf(stderr, "stat_total_free_list(), panic - found a loop in slot %d item %p!\n", i, a);
+                freeblock_print();
+            }
+        }
+    }
+    return largest;
+}
+
+void *rmstat_highest_used_address(bool full_calculation) {
+    if (full_calculation) {
+        void *highest = NULL;
+        
+        header_t *h = g_header_root;
+
+        //printf("Highest: ");
+        while (h != NULL) {
+            if (h->flags != HEADER_FREE_BLOCK) {
+                //printf("*%p ", h->memory);
+                if (h->size + (uint8_t *)h->memory > highest)
+                    highest = h->size + (uint8_t *)h->memory;
+            } else
+                ;//printf("%p ", h->memory);
+            h = h->next;
+        }
+        //printf("\n");
+
+        return highest;
+    } else {
+        return (void *)((ptr_t)g_highest_address_header->memory + g_highest_address_header->size);
+    }
+}
+
+static uint32_t get_block_count(uint32_t *free_count, uint32_t *locked_count, uint32_t *unlocked_count, uint32_t *weaklocked_count, uint32_t *size_unlocked)
+{
+    header_t *node = g_header_root;
+    uint32_t count = 0;
+
+    while (node != NULL) {
+        if (node->flags == HEADER_FREE_BLOCK && free_count != NULL)
+            *free_count += 1;
+        else if (node->flags == HEADER_LOCKED && locked_count != NULL)
+        {
+            *locked_count += 1;
+        }
+        else if (node->flags == HEADER_UNLOCKED && unlocked_count != NULL) {
+            *unlocked_count += 1;
+            count++;
+            if (size_unlocked)
+                *size_unlocked += node->size;
+        }
+        else if (node->flags == HEADER_WEAK_LOCKED && weaklocked_count != NULL)
+            *weaklocked_count += 1;
+
+        node = node->next;
+    }
+    return count;
+}
+
+uint32_t rmstat_get_used_block_count(void) {
+    uint32_t fc, lc, uc, wc, su;
+    get_block_count(&fc, &lc, &uc, &wc, &su);
+    return fc + lc + uc + wc;
+}
+
+void rmstat_get_used_blocks(ptr_t *blocks) {
+    int i=0;
+    uint32_t count = rmstat_get_used_block_count();
+    header_t *h = g_header_root;
+    while (h != NULL) {
+        if (h->flags != HEADER_FREE_BLOCK) 
+            blocks[i++] = (ptr_t)h->memory;
+
+        if (i == count)
+            break;
+
+        h = h->next;
+    }
+}
+
+
+
+void assert_list_is_sorted(header_t *root)
+{
+    header_t *prev = root;
+    while (root != NULL)
+    {
+        prev = root;
+        if (prev->memory > root->memory)
+            abort();
+
+        root = root->next;
+    }
+}
+
+volatile bool dummy = false;
+
+
+void rmstat_set_debugging(bool enable)
+{
+    g_debugging = enable;
+}
+
+
+void rmstat_print_headers(bool only_type)
+{
+    header_sort_all(); 
+
+    // decide smallest block size for printing
+    uint32_t smallest=1<<31, largest=0, total=0;
+    WITH_ITER(h, g_header_root,
+        //if (h->flags == HEADER_FREE_BLOCK) {
+            if (h->size < smallest)
+                smallest = h->size;
+            if (h->size > largest)
+                largest = h->size;
+            total += h->size;
+        //}
+    )
+    printf("\n\n\n\n==========================================================================\n");
+
+    int total_header_size = 0;
+    // print map
+    WITH_ITER(h, g_header_root, 
+        //int count = MAX(1024, h->size/smallest);
+        int count = MAX(1, h->size/smallest);
+        for (int i=0; i<count; i++) {
+            if (i==0) {
+                if (only_type == false) {
+                    putchar(h->flags == HEADER_FREE_BLOCK ? '_' : 'O');
+                    printf("(%p)(%x)(%p)", h, *(uint8_t *)h->memory, h->memory);
+                } else {
+                    putchar('.');
+                    if (h->flags == HEADER_FREE_BLOCK)
+                        putchar('_');
+                    else if (h->flags == HEADER_UNLOCKED)
+                        putchar('|');
+                    else if (h->flags == HEADER_LOCKED)
+                        putchar('X');
+                }
+            }
+            else if (h->flags == HEADER_FREE_BLOCK)
+                putchar('_');
+            else if (h->flags == HEADER_UNLOCKED)
+                putchar('|');
+            else if (h->flags == HEADER_LOCKED)
+                putchar('X');
+            
+        }
+        if (header_is_unused(h))
+            total_header_size += h->size;
+    ) putchar('\n');
+    printf("--------------------------------------------------------------------------\n");
+    // display free blocks
+    freeblock_print();
+    printf("==========================================================================\n");
+    int diff = (ptr_t)g_header_top - (ptr_t)g_header_bottom;
+    printf("Total %d live blocks, occupying %d bytes/%d kb = %.2d%% of total heap size\n", g_header_top - g_header_bottom, diff, diff/1024, (int)((float)diff*100.0/(float)g_memory_size));
+}
+
+
+/*******************************************************************************
+ *
+ * client code
+ *
+ *******************************************************************************/
+
+// code
+
+// http://stackoverflow.com/questions/994593/how-to-do-an-integer-log2-in-c
+// and http://gcc.gnu.org/onlinedocs/gcc-4.4.2/gcc/Other-Builtins.html
+uint32_t log2_(uint32_t n)
+{
+    //return __builtin_ctz(n);
+    return sizeof(n)*8 - 1 - __builtin_clz(n); // builtin_clz() is base 0
+}
+
+/* header */
+
+inline bool header_is_unused(header_t *header) {
+    return header && header->memory == NULL;
+}
+inline void header_clear(header_t *h) {
+    h->memory = NULL;
+    h->size = 0;
+    h->next = NULL;
+#if JEFF_MAX_RAM_VS_SLOWER_MALLOC == 0
+    h->next_unused = NULL;
+#endif
+}
+
+inline header_t *header_set_unused(header_t *header) {
+
+    header_clear(header);
+
+#if JEFF_MAX_RAM_VS_SLOWER_MALLOC == 0
+    if (g_unused_header_root == NULL)
+    {
+        g_unused_header_root = header;
+    }
+    else
+    {
+        header->next_unused = g_unused_header_root;
+        g_unused_header_root = header;
+    }
+    g_unused_header_root->next_unused = NULL;
+#endif
+
+#ifdef DEBUG
+    assert_handles_valid(g_header_root);
+#endif
+
+    return header;
+}
+
+header_t *header_find_free(bool spare_two_for_compact) {
+    const int limit = 2; // for compact
+    header_t *h = NULL;
+
+#if JEFF_MAX_RAM_VS_SLOWER_MALLOC == 0
+    if (g_unused_header_root != NULL)
+    {
+        h = g_unused_header_root;
+
+        g_unused_header_root = g_unused_header_root->next_unused;
+
+        goto finish;
+    }
+#else
+    h = g_header_top;
+    do {
+        // guaranteed to be OK
+        if (header_is_unused(h))
+            goto finish;
+        h--;
+    } while (h != g_header_bottom);
+#endif
+
+    // nothing found
+    if (g_header_bottom - limit > g_memory_top) {
+        g_header_bottom--;
+
+        h = g_header_bottom;
+        header_clear(h);
+        goto finish;
+    }
+
+    return NULL;
+
+finish:
+
+#ifdef DEBUG
+    if (h && header_is_unused(h) == false)
+        abort();
+#endif
+
+    return h;
+}
+header_t *header_new(bool insert_in_list, bool spare_two_for_compact) {
+    header_t *header = header_find_free(spare_two_for_compact);
+    if (header) {
+        header->flags = HEADER_UNLOCKED;
+        header->memory = NULL;
+        if (insert_in_list) {
+            // is it in list?
+            if ((header->next < g_header_bottom || header->next > g_header_top) && header != g_header_root) {
+                // nope, insert.
+                header->next = g_header_root;
+
+                g_header_root = header;
+            }
+            // it's already in the list!
+        } else {
+            // don't insert into list. this is the new_free thingy which we manually insert at the correct
+            // position in the chain based on header_t::memory.
+            header->next = NULL;
+        }
+        fprintf(stderr, "== header_new() = %p\n", header);
+    } else {
+        fprintf(stderr, "== header_new() = NULL\n", header);
+    }
+    return header;
+}
+
+/* memory block */
+
+void update_highest_address_if_needed(header_t *h) {
+    if (h)
+    {
+        g_highest_address_header = h;
+    }
+}
+
 header_t *freeblock_find(uint32_t size);
 header_t *block_new(int size) {
     fprintf(stderr, "block new: %d\n", size);
@@ -435,90 +708,6 @@ header_t *block_new(int size) {
 
     return h;
 }
-
-void freeblock_print() {
-    for (int i=0; i<g_free_block_slot_count; i++) {
-        fprintf(stderr, "%d / %d bytes / %d kb: ", i, 1<<i, (1<<i)/1024);
-        free_memory_block_t *b = g_free_block_slots[i];
-        while (b) {
-            fprintf(stderr, "{%p size %d kb} ", b, b->header->size/1024);
-            b = b->next;
-        }
-        fprintf(stderr, "\n");
-    }
-}
-
-bool freeblock_exists_memory(void *ptr) {
-    for (int i=0; i<g_free_block_slot_count; i++) {
-        free_memory_block_t *b = g_free_block_slots[i];
-        while (b) {
-            if (b->header->memory == ptr)
-                return true;
-
-            b = b->next;
-        }
-    }
-    return false;
-}
-
-bool freeblock_exists(free_memory_block_t *block) {
-    for (int i=0; i<g_free_block_slot_count; i++) {
-        free_memory_block_t *b = g_free_block_slots[i];
-        while (b) {
-            if (b == block)
-                return true;
-
-            b = b->next;
-        }
-    }
-    return false;
-}
-
-void assert_memory_is_free(void *ptr) {
-    /*
-     * assert that there are no non-free blocks in which this pointer address exists.
-     *
-     * free_memory_block_t is always placed at the end of a free memory chunk,
-     * i.e. [free memory area of N bytes | free_memory_block_t]
-    */
-    header_t *h = g_header_root;
-    ptr_t p = (ptr_t)ptr;
-    while (h != NULL) {
-        if (h->flags != HEADER_FREE_BLOCK) {
-            ptr_t start = (ptr_t)h->memory;
-            ptr_t end = start + h->size;
-
-            if (p >= start && p < end)
-                abort();
-        }
-        h = h->next;
-    }
-}
-
-void freeblock_assert_sane(free_memory_block_t *block) {
-    ptr_t pb = (ptr_t)block;
-    ptr_t pbfh = (ptr_t)block_from_header(block->header);
-    if (pb != pbfh) {
-        int diff = (pb > pbfh) ? pb - pbfh : pbfh - pb;
-
-        fprintf(stderr, "freeblock_assert_sane(%p size %d): diff %d bytes\n", block, block->header->size, diff);
-        abort();
-    }
-}
-
-bool freeblock_checkloop(free_memory_block_t *block) {
-    free_memory_block_t *a = block;
-    while (block != NULL) {
-        block = block->next;
-        if (block == a) {
-            fprintf(stderr, "loop in memory block %p slot %d\n", block, log2_(block->header->size));
-            abort();
-            return true;
-        }
-    }
-    return false;
-}
-
 /* 1. mark the block's header as free
  * 2. insert block info
  * 3. extend the free list
@@ -721,6 +910,7 @@ header_t *block_free(header_t *header) {
     g_header_used_count--;
     return header;
 }
+
 
 /* free block list */
 
@@ -1023,119 +1213,11 @@ header_t *freeblock_find(uint32_t size) {
     // no block found.
     return NULL;
 }
-
-
-uint32_t rmstat_total_free_list() {
-    uint32_t total = 0;
-    for (int i=0; i<g_free_block_slot_count; i++) {
-        free_memory_block_t *b = g_free_block_slots[i];
-        free_memory_block_t *a = b;
-        while (b != NULL) {
-            total += b->header->size;
-            b = b->next;
-            if (a == b) {
-                fprintf(stderr, "stat_total_free_list(), panic - found a loop in slot %d item %p!\n", i, a);
-                freeblock_print();
-            }
-        }
-    }
-    return total;
-}
-
-uint32_t rmstat_largest_free_block() {
-    uint32_t largest = 0;
-    for (int i=0; i<g_free_block_slot_count; i++) {
-        free_memory_block_t *b = g_free_block_slots[i];
-        free_memory_block_t *a = b;
-        while (b != NULL) {
-            if (b->header->size > largest)
-                largest = b->header->size;
-            b = b->next;
-            if (a == b) {
-                fprintf(stderr, "stat_total_free_list(), panic - found a loop in slot %d item %p!\n", i, a);
-                freeblock_print();
-            }
-        }
-    }
-    return largest;
-}
-
-void *rmstat_highest_used_address(bool full_calculation) {
-    if (full_calculation) {
-        void *highest = NULL;
-        
-        header_t *h = g_header_root;
-
-        //printf("Highest: ");
-        while (h != NULL) {
-            if (h->flags != HEADER_FREE_BLOCK) {
-                //printf("*%p ", h->memory);
-                if (h->size + (uint8_t *)h->memory > highest)
-                    highest = h->size + (uint8_t *)h->memory;
-            } else
-                ;//printf("%p ", h->memory);
-            h = h->next;
-        }
-        //printf("\n");
-
-        return highest;
-    } else {
-        return (void *)((ptr_t)g_highest_address_header->memory + g_highest_address_header->size);
-    }
-}
-
 void header_sort_all() {
     fprintf(stderr, "g_header_root before header_sort_all(): %p\n", g_header_root);
     //g_header_root = header__sort(g_header_root, header__cmp);
     //header_t *header__sort(header_t *list, int is_circular, int is_double, compare_cb cmp) {
     g_header_root = header__sort(g_header_root, 0, 0, header__cmp);
-}
-
-static uint32_t get_block_count(uint32_t *free_count, uint32_t *locked_count, uint32_t *unlocked_count, uint32_t *weaklocked_count, uint32_t *size_unlocked)
-{
-    header_t *node = g_header_root;
-    uint32_t count = 0;
-
-    while (node != NULL) {
-        if (node->flags == HEADER_FREE_BLOCK && free_count != NULL)
-            *free_count += 1;
-        else if (node->flags == HEADER_LOCKED && locked_count != NULL)
-        {
-            *locked_count += 1;
-        }
-        else if (node->flags == HEADER_UNLOCKED && unlocked_count != NULL) {
-            *unlocked_count += 1;
-            count++;
-            if (size_unlocked)
-                *size_unlocked += node->size;
-        }
-        else if (node->flags == HEADER_WEAK_LOCKED && weaklocked_count != NULL)
-            *weaklocked_count += 1;
-
-        node = node->next;
-    }
-    return count;
-}
-
-uint32_t rmstat_get_used_block_count(void) {
-    uint32_t fc, lc, uc, wc, su;
-    get_block_count(&fc, &lc, &uc, &wc, &su);
-    return fc + lc + uc + wc;
-}
-
-void rmstat_get_used_blocks(ptr_t *blocks) {
-    int i=0;
-    uint32_t count = rmstat_get_used_block_count();
-    header_t *h = g_header_root;
-    while (h != NULL) {
-        if (h->flags != HEADER_FREE_BLOCK) 
-            blocks[i++] = (ptr_t)h->memory;
-
-        if (i == count)
-            break;
-
-        h = h->next;
-    }
 }
 
 
@@ -1361,20 +1443,99 @@ static void rebuild_free_block_slots() {
 #endif
 }
 
-void assert_list_is_sorted(header_t *root)
-{
-    header_t *prev = root;
-    while (root != NULL)
-    {
-        prev = root;
-        if (prev->memory > root->memory)
-            abort();
+void rminit(void *heap, uint32_t size) {
+    g_memory_size = size;
 
-        root = root->next;
-    }
+    // +1 to round up. e.g. log2(15)==3
+    // => 0, 1, 2, but later log2(13) would map to 3!
+    // in practice, will there be such a large block?
+    g_free_block_slot_count = log2_(size) + 1; 
+    g_free_block_slots = (free_memory_block_t **)heap;
+    uint32_t count = sizeof(free_memory_block_t *)*g_free_block_slot_count;
+    memset((void *)g_free_block_slots, 0, count);
+
+    g_memory_bottom = (void *)((ptr_t)heap + (g_free_block_slot_count * sizeof(free_memory_block_t *)));
+    g_memory_top = g_memory_bottom;
+
+    // header top is located at the top of the heap space and grows downward.
+    // header bottom points to the bottom, including the last one!
+    g_header_top = (header_t *)((ptr_t)heap + size - sizeof(header_t));
+    g_header_bottom = g_header_top - 1;
+    g_header_root = g_header_top;
+    g_header_root->next = NULL;
+    g_header_used_count = 0;
+
+    // newly unused headers are prepended, i.e. placed first, and g_unused_header_root is re-pointed.
+#if JEFF_MAX_RAM_VS_SLOWER_MALLOC == 0
+    g_unused_header_root = NULL;
+    //g_unused_header_root->next_unused = NULL;
+#endif
+
+    header_set_unused(g_header_top);
+    g_header_top->size = 0;
+
+    g_highest_address_header = g_header_top; // to make sure it points to _something_
+
+    memset(heap, 0, size);
 }
 
-volatile bool dummy = false;
+void rmdestroy() {
+    // nop.
+    return;
+}
+
+handle_t rmmalloc(int size) {
+    header_t *h = block_new(size);
+#if DEBUG
+    g_memlayout_sequence++;
+    dump_memory_layout();
+    assert_handles_valid(g_header_root);
+#endif
+
+    if (h == NULL) {
+        fprintf(stderr, "h = NULL.\n");
+        return NULL;
+    }
+
+#ifdef DEBUG
+    //memset(h->memory, header_fillchar(h), h->size);
+    //rebuild_free_block_slots();
+    //assert_blocks();
+#endif
+
+    return (handle_t)h;
+}
+
+void rmfree(handle_t h) {
+    block_free((header_t *)h);
+
+#ifdef DEBUG
+    g_memlayout_sequence++;
+    dump_memory_layout();
+    assert_handles_valid(g_header_root);
+    //rebuild_free_block_slots();
+    //assert_blocks();
+#endif
+}
+
+void *rmlock(handle_t h) {
+    header_t *f = (header_t *)h;
+    f->flags = HEADER_LOCKED;
+
+    return f->memory;
+}
+void *rmweaklock(handle_t h) {
+    header_t *f = (header_t *)h;
+    f->flags = HEADER_WEAK_LOCKED;
+    
+    return f->memory;
+}
+
+void rmunlock(handle_t h) {
+    header_t *f = (header_t *)h;
+    f->flags = HEADER_UNLOCKED;
+}
+
 void rmcompact(int maxtime) {
     // sort headers in ascending memory order. headers with ->memory == NULL are in the end.
     header_sort_all();
@@ -1763,163 +1924,3 @@ void rmcompact(int maxtime) {
     g_memlayout_sequence++;
     dump_memory_layout();
 }
-
-
-void rmstat_set_debugging(bool enable)
-{
-    g_debugging = enable;
-}
-
-void rmstat_print_headers(bool only_type)
-{
-    header_sort_all(); 
-
-    // decide smallest block size for printing
-    uint32_t smallest=1<<31, largest=0, total=0;
-    WITH_ITER(h, g_header_root,
-        //if (h->flags == HEADER_FREE_BLOCK) {
-            if (h->size < smallest)
-                smallest = h->size;
-            if (h->size > largest)
-                largest = h->size;
-            total += h->size;
-        //}
-    )
-    printf("\n\n\n\n==========================================================================\n");
-
-    int total_header_size = 0;
-    // print map
-    WITH_ITER(h, g_header_root, 
-        //int count = MAX(1024, h->size/smallest);
-        int count = MAX(1, h->size/smallest);
-        for (int i=0; i<count; i++) {
-            if (i==0) {
-                if (only_type == false) {
-                    putchar(h->flags == HEADER_FREE_BLOCK ? '_' : 'O');
-                    printf("(%p)(%x)(%p)", h, *(uint8_t *)h->memory, h->memory);
-                } else {
-                    putchar('.');
-                    if (h->flags == HEADER_FREE_BLOCK)
-                        putchar('_');
-                    else if (h->flags == HEADER_UNLOCKED)
-                        putchar('|');
-                    else if (h->flags == HEADER_LOCKED)
-                        putchar('X');
-                }
-            }
-            else if (h->flags == HEADER_FREE_BLOCK)
-                putchar('_');
-            else if (h->flags == HEADER_UNLOCKED)
-                putchar('|');
-            else if (h->flags == HEADER_LOCKED)
-                putchar('X');
-            
-        }
-        if (header_is_unused(h))
-            total_header_size += h->size;
-    ) putchar('\n');
-    printf("--------------------------------------------------------------------------\n");
-    // display free blocks
-    freeblock_print();
-    printf("==========================================================================\n");
-    int diff = (ptr_t)g_header_top - (ptr_t)g_header_bottom;
-    printf("Total %d live blocks, occupying %d bytes/%d kb = %.2d%% of total heap size\n", g_header_top - g_header_bottom, diff, diff/1024, (int)((float)diff*100.0/(float)g_memory_size));
-}
-
-
-/* compacting */
-
-/* client code */
-void rminit(void *heap, uint32_t size) {
-    g_memory_size = size;
-
-    // +1 to round up. e.g. log2(15)==3
-    // => 0, 1, 2, but later log2(13) would map to 3!
-    // in practice, will there be such a large block?
-    g_free_block_slot_count = log2_(size) + 1; 
-    g_free_block_slots = (free_memory_block_t **)heap;
-    uint32_t count = sizeof(free_memory_block_t *)*g_free_block_slot_count;
-    memset((void *)g_free_block_slots, 0, count);
-
-    g_memory_bottom = (void *)((ptr_t)heap + (g_free_block_slot_count * sizeof(free_memory_block_t *)));
-    g_memory_top = g_memory_bottom;
-
-    // header top is located at the top of the heap space and grows downward.
-    // header bottom points to the bottom, including the last one!
-    g_header_top = (header_t *)((ptr_t)heap + size - sizeof(header_t));
-    g_header_bottom = g_header_top - 1;
-    g_header_root = g_header_top;
-    g_header_root->next = NULL;
-    g_header_used_count = 0;
-
-    // newly unused headers are prepended, i.e. placed first, and g_unused_header_root is re-pointed.
-#if JEFF_MAX_RAM_VS_SLOWER_MALLOC == 0
-    g_unused_header_root = NULL;
-    //g_unused_header_root->next_unused = NULL;
-#endif
-
-    header_set_unused(g_header_top);
-    g_header_top->size = 0;
-
-    g_highest_address_header = g_header_top; // to make sure it points to _something_
-
-    memset(heap, 0, size);
-}
-
-void rmdestroy() {
-    // nop.
-    return;
-}
-
-handle_t rmmalloc(int size) {
-    header_t *h = block_new(size);
-#if DEBUG
-    g_memlayout_sequence++;
-    dump_memory_layout();
-    assert_handles_valid(g_header_root);
-#endif
-
-    if (h == NULL) {
-        fprintf(stderr, "h = NULL.\n");
-        return NULL;
-    }
-
-#ifdef DEBUG
-    //memset(h->memory, header_fillchar(h), h->size);
-    //rebuild_free_block_slots();
-    //assert_blocks();
-#endif
-
-    return (handle_t)h;
-}
-
-void rmfree(handle_t h) {
-    block_free((header_t *)h);
-
-#ifdef DEBUG
-    g_memlayout_sequence++;
-    dump_memory_layout();
-    assert_handles_valid(g_header_root);
-    //rebuild_free_block_slots();
-    //assert_blocks();
-#endif
-}
-
-void *rmlock(handle_t h) {
-    header_t *f = (header_t *)h;
-    f->flags = HEADER_LOCKED;
-
-    return f->memory;
-}
-void *rmweaklock(handle_t h) {
-    header_t *f = (header_t *)h;
-    f->flags = HEADER_WEAK_LOCKED;
-    
-    return f->memory;
-}
-
-void rmunlock(handle_t h) {
-    header_t *f = (header_t *)h;
-    f->flags = HEADER_UNLOCKED;
-}
-
