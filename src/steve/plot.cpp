@@ -725,7 +725,7 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
     
     int handle, address, size, old_handle=1; /* ops always start from 0 */
     char op, old_op=0;
-    uint32_t op_time, op_time2, op_time3, oom_time;
+    uint32_t op_time, op_time2, op_time3, op_time4, oom_time;
     uint32_t total_size = 0;
     int highest_handle_no = 0, handle_offset = 0;
 
@@ -847,7 +847,7 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
 
                     break;
                 case 'N': {
-                    oom_time = op_time = op_time2 = op_time3 = 0;
+                    oom_time = op_time = op_time2 = op_time3 = op_time4 = 0;
 
                     current_used_space += size;
 
@@ -934,6 +934,12 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
                         else
                             fprintf(stderr, "\n\nOOM!\n");
 
+                        if (maxsize == 0) {
+                            if (user_handle_oom(0, &op_time4)) {
+                                maxsize = calculate_maxmem(op, &optime_maxmem);
+                            }
+                        }
+
 
                         fprintf(stderr, "allocstats: %9u bytes (%6u kbytes = %3.2f%%)\n", 
                                 maxsize, (int)maxsize/1024, 100.0 * (float)maxsize/(float)g_theoretical_free_space);
@@ -945,7 +951,7 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
                         if (op_time2 > 0 && op_time3 > 0)
                         {
                             //oom_time = op_time2; // first ops, before the real one.
-                            oom_time = op_time + op_time2; // first ops, before the real one.
+                            oom_time = op_time + op_time2 + op_time4; // first ops, before the real one.
                             op_time = op_time3;
                         }
 
