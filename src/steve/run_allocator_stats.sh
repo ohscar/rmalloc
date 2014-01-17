@@ -66,7 +66,6 @@ export OPS_COUNT=$(echo "$OPS_COUNT*15" | bc)
 
 
 
-set -x
 peakmem=$(echo "$peakmem*3" | bc)
 
 echo "ops_count (N/F ops) = $OPS_COUNT"
@@ -92,7 +91,6 @@ done
 echo "* Parameters used: $a"
 echo
 
-set +x
 
 
 echo > $RESULTFILE
@@ -138,8 +136,6 @@ while [[ "$continue" == "1" ]]; do
             continue=1
         else
             echo "  - $i done"
-            continue=0
-            break
         fi
     done
 done
