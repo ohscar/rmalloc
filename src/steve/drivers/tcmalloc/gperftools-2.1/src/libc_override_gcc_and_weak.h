@@ -70,6 +70,7 @@ void operator delete(void* p, const std::nothrow_t& nt) __THROW
 void operator delete[](void* p, const std::nothrow_t& nt) __THROW
     ALIAS(tc_deletearray_nothrow);
 
+#if 0 // mikaelj
 extern "C" {
   void* malloc(size_t size) __THROW               ALIAS(tc_malloc);
   void free(void* ptr) __THROW                    ALIAS(tc_free);
@@ -89,6 +90,7 @@ extern "C" {
   size_t malloc_size(void* p) __THROW             ALIAS(tc_malloc_size);
   size_t malloc_usable_size(void* p) __THROW      ALIAS(tc_malloc_size);
 }   // extern "C"
+#endif
 
 #undef ALIAS
 

@@ -10,10 +10,10 @@ CFLAGS=-std=gnu++11 -I../../jeff -I.. -I../..
 #endif
 
 #all: plot_optimal plot_dlmalloc plot_rmalloc
-all: plot_rmalloc_compacting plot_rmalloc_compacting_maxmem plot_rmalloc plot_dlmalloc plot_jemalloc
+all: plot_rmalloc_compacting plot_rmalloc_compacting_maxmem plot_rmalloc plot_dlmalloc plot_jemalloc plot_tcmalloc
 all: CFLAGS += -O3 -march=core2
 
-debug: plot_rmalloc_compacting plot_rmalloc_compacting_maxmem plot_rmalloc plot_dlmalloc  plot_jemalloc
+debug: plot_rmalloc_compacting plot_rmalloc_compacting_maxmem plot_rmalloc plot_dlmalloc  plot_jemalloc plot_tcmalloc
 debug: CFLAGS += -g -O0 -DDEBUG
 
 profile: PROFILING=-pg -g3
@@ -64,6 +64,9 @@ plot_rmalloc_compacting: plot_rmalloc_compacting.o plot.o $(COMPACT_OBJS)
 plot_rmalloc_compacting_maxmem: plot_rmalloc_compacting.o plot.o ../../jeff/listsort.o ../../jeff/compact_maxmem.o
 	g++ $(PROFILING) -o $@ $^
 
+plot_tcmalloc: plot_tcmalloc.o jemalloc/libjemalloc.so plot.o
+	g++ $(PROFILING)  plot_tcmalloc.o  plot.o -Ltcmalloc  -ltcmalloc  -o plot_tcmalloc
+
 plot_jemalloc: plot_jemalloc.o jemalloc/libjemalloc.so plot.o
 	g++ $(PROFILING)  plot_jemalloc.o  plot.o -Ljemalloc  -ljemalloc  -o plot_jemalloc
 
@@ -77,7 +80,7 @@ plot_optimal: plot_optimal.cpp $(SOURCES)
 	g++ -g -O0 -o plot_optimal plot_optimal.cpp $(SOURCES) -fpermissive -lstdc++ -lrt
 
 clean:
-	rm -rf plot_rmalloc plot_rmalloc_compacting plot_rmalloc_compacting_maxmem plot_dlmalloc plot_jemalloc plot_optimal *.o
+	rm -rf plot_rmalloc plot_rmalloc_compacting plot_rmalloc_compacting_maxmem plot_dlmalloc plot_jemalloc plot_tcmalloc plot_optimal *.o
 
 settings:
 	@echo COMPACTING=1 for automatic compacting after free().
