@@ -47,6 +47,16 @@ typedef uint32_t ptr_t;
 #define fprintf(...) 
 #define fputc(...)
 
+// code
+
+// http://stackoverflow.com/questions/994593/how-to-do-an-integer-log2-in-c
+// and http://gcc.gnu.org/onlinedocs/gcc-4.4.2/gcc/Other-Builtins.html
+uint32_t log2_(uint32_t n)
+{
+    //return __builtin_ctz(n);
+    return sizeof(n)*8 - 1 - __builtin_clz(n); // builtin_clz() is base 0
+}
+
 
 void header_sort_all();
 inline bool header_is_unused(header_t *header);
@@ -516,16 +526,6 @@ void rmstat_print_headers(bool only_type)
  * client code
  *
  *******************************************************************************/
-
-// code
-
-// http://stackoverflow.com/questions/994593/how-to-do-an-integer-log2-in-c
-// and http://gcc.gnu.org/onlinedocs/gcc-4.4.2/gcc/Other-Builtins.html
-uint32_t log2_(uint32_t n)
-{
-    //return __builtin_ctz(n);
-    return sizeof(n)*8 - 1 - __builtin_clz(n); // builtin_clz() is base 0
-}
 
 /* header */
 
@@ -1792,7 +1792,7 @@ void rmcompact(int maxtime) {
 
                 #ifdef DEBUG
                 //memset(h->memory, 0x45, h->size);
-                memset(h->memory, header_fillchar(h), h->size);
+                //memset(h->memory, header_fillchar(h), h->size);
                 assert_handles_valid(unlocked_first);
                 #endif
             }
