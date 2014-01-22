@@ -5,3 +5,7 @@ https://techtalk.intersec.com/2013/10/memory-part-4-intersecs-custom-allocators/
 
 How TCMalloc works:
 * http://jamesgolick.com/2013/5/19/how-tcmalloc-works.html
+
+
+Malloc/free i separat tråd. Har tabell med utvärderingsprogram.
+http://www.ece.ncsu.edu/arpers/Papers/MMT_MEDEA_PRESENTATION.pdf
