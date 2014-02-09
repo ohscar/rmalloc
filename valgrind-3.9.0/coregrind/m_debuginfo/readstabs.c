@@ -54,7 +54,20 @@
 
 /* --- !!! --- EXTERNAL HEADERS start --- !!! --- */
 #if defined(VGO_linux)
-#  include <a.out.h> /* stabs defns */
+//#  include <a.out.h> /* stabs defns */
+struct nlist
+{
+  union
+    {
+      char *n_name;
+      struct nlist *n_next;
+      long n_strx;
+    } n_un;
+  unsigned char n_type;
+  char n_other;
+  short n_desc;
+  unsigned long n_value;
+};
 #elif defined(VGO_darwin)
 #  include <mach-o/nlist.h>
 #  define n_other n_sect
