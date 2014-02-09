@@ -58,6 +58,10 @@ static ULong cmalloc_bs_mallocd = 0;
    depth to show. */
 #define MEMPOOL_DEBUG_STACKTRACE_DEPTH 16
 
+// approximation to not print all loads
+void *g_memory_start = (void *)0xffffffff;
+void *g_memory_end = NULL;
+ 
 
 /*------------------------------------------------------------*/
 /*--- Tracking malloc'd and free'd blocks                  ---*/
@@ -401,6 +405,18 @@ void* MC_(new_block) ( ThreadId tid,
       MC_(make_mem_undefined_w_otag)( p, szB, ecu | MC_OKIND_HEAP );
    }
 
+    if (g_memory_start > (void *)p)
+        g_memory_start = (void *)p;
+    if (g_memory_end < (unsigned int)p + (unsigned int)szB)
+        g_memory_end = p + szB;
+
+#if OUTPUT_FORMAT == HUMAN
+    VG_(printf)("new_block(%u, align=%u) -> 0%x (start - end = 0%x to 0%x)\n", (unsigned int)szB,
+            (unsigned int)alignB, (void *)p, g_memory_start, g_memory_end);
+#else
+    VG_(printf)(">>> N %lu %lu\n", (unsigned int)p, (unsigned int)szB);
+#endif
+
    return (void*)p;
 }
 
@@ -499,6 +515,13 @@ void MC_(handle_free) ( ThreadId tid, Addr p, UInt rzB, MC_AllocKind kind )
    MC_Chunk* mc;
 
    cmalloc_n_frees++;
+
+#if OUTPUT_FORMAT == HUMAN
+    VG_(printf)("hnewandle_free(%p)\n", (void *)p);
+#else
+    VG_(printf)(">>> F %lu %lu\n", (unsigned int)p, 0);
+#endif
+
 
    mc = VG_(HT_remove) ( MC_(malloc_list), (UWord)p );
    if (mc == NULL) {

@@ -47,13 +47,13 @@
 /* #undef GLIBC_2_14 */
 
 /* Define to 1 if you're using glibc 2.15.x */
-#define GLIBC_2_15 1
+/* #undef GLIBC_2_15 */
 
 /* Define to 1 if you're using glibc 2.16.x */
 /* #undef GLIBC_2_16 */
 
 /* Define to 1 if you're using glibc 2.17.x */
-/* #undef GLIBC_2_17 */
+#define GLIBC_2_17 1
 
 /* Define to 1 if you're using glibc 2.18.x */
 /* #undef GLIBC_2_18 */

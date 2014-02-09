@@ -34,6 +34,9 @@
 
 #define MC_(str)    VGAPPEND(vgMemCheck_,str)
 
+#define HUMAN 0
+#define COMPUTER 1
+#define OUTPUT_FORMAT COMPUTER
 
 /* This is a private header file for use only within the
    memcheck/ directory. */
