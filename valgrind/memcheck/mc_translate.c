@@ -4145,8 +4145,6 @@ void do_shadow_Store ( MCEnv* mce,
    Char*    hname = NULL;
    IRConst* c;
 
-   //VG_(printf)("do_shadow_Store: addr = %p\n", (void *)addr);
-
    tyAddr = mce->hWordTy;
    mkAdd  = tyAddr==Ity_I32 ? Iop_Add32 : Iop_Add64;
    tl_assert( tyAddr == Ity_I32 || tyAddr == Ity_I64 );
