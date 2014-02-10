@@ -31,6 +31,8 @@
 // to get reproducability
 #define INITIAL_RANDOM_SEED 0x42424242
 
+#define KILLPERCENT_FOR_NOT_REWINDING 1000
+
 // exit codes:
 // 0 = ok, 
 // 1 = unused,
@@ -742,7 +744,7 @@ void alloc_driver_allocstats(FILE *fp, int num_handles, uint8_t *heap, uint32_t 
         if (line[0] == '#')
             continue;
 
-        if (feof(fp) && g_killpercent > 0) {
+        if (feof(fp) && g_killpercent < KILLPERCENT_FOR_NOT_REWINDING) {
             // MAX RAM:
             // 5 OK = 883
             //

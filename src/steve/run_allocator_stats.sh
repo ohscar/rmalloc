@@ -56,21 +56,22 @@ export OPS_COUNT=$(grep '\(N\|F\)' $opsfile | wc -l | awk '{print $1}')
 
 
 
+# useful for soffice?
+#export OPS_COUNT=$(echo "$OPS_COUNT*15" | bc)
 
-export OPS_COUNT=$(echo "$OPS_COUNT*15" | bc)
-
-
-
-
+export OPS_COUNT=$(echo "$OPS_COUNT*2" | bc)
 
 
 
+
+
+set -x
 
 peakmem=$(echo "$peakmem*3" | bc)
 
 echo "ops_count (N/F ops) = $OPS_COUNT"
 
-maxmem_killpercent=0
+maxmem_killpercent=1000
 while [[ "$done" != "1" ]]; do
     a=$(echo $ALLOCATOR --allocstats $opsfile $RESULTFILE $maxmem_killpercent $fullcount $peakmem $theory_peakmem)
     echo -n "* Calculating maxmem for peakmem $peakmem bytes..."
@@ -90,6 +91,8 @@ while [[ "$done" != "1" ]]; do
 done
 echo "* Parameters used: $a"
 echo
+
+set +x
 
 
 
