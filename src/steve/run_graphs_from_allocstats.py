@@ -21,9 +21,10 @@ import matplotlib.pyplot as plt
 import os.path
 
 # reference value color first
-#COLORS = ["b-", "r-", "g-", "b-", "y-", "m-", "c-"]
+COLORS = ["b-", "r-", "g-", "b-", "y-", "m-", "c-"]
 #COLORS = ["k-", "k:", "k--", "k_", "k", "k", "k-."]
-COLORS = ["k--", "k", "k-.", "k_", "k ", "k", "k-."]
+#COLORS = ["k--", "g", "r-.", "y_", "k ", "k", "k-."]
+#COLORS = ["k--", "g", "r-.", "y_", "k ", "k", "k-."]
 g_figure = None
 g_figure_nr = 1
 
