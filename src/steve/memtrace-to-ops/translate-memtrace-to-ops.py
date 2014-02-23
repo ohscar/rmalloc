@@ -63,6 +63,7 @@ def process_ops():
         * figure out how many ops in total
         * TODO calculate life time (handle_op_count / all_op_count (within lifetime))
     """
+    print "Handle ops..."
     handle_ops = {}
     total_ops = 0
     for op in blocks.g_ops:
@@ -74,9 +75,15 @@ def process_ops():
                 total_ops += 1
             except:
                 print "Handle", op[0], "has no previous new associated:", op
+    print "Handle ops... done."
 
+    print "Lifetime ops... (%d ops)" % (len(blocks.g_ops))
     lifetime_ops = {}
+    i = 0
     for op in blocks.g_ops:
+        if i % 10000 == 0:
+            print "\rOp %.10d" % i,
+        i += 1
         #print "+", op
         if op[1] == 'N':
             # live, own count, other count
@@ -96,6 +103,7 @@ def process_ops():
             #print "lifetime op other", lifetime_ops[key]
             except:
                 print "Handle", op[0], "has no previous new associated:", op
+    print "Lifetime ops... done"
 
     return handle_ops, lifetime_ops, total_ops
 
@@ -166,7 +174,7 @@ def main():
     chars = "-\|/"
     chari = 0
     for line in f.xreadlines():
-        if i % 500000 == 0:
+        if i % 5000 == 0:
             chari += 1
             print " ->", chars[chari % 4], "%lu MB" % (bytes / 1048576.0), "\r",
 
@@ -201,7 +209,9 @@ def main():
 
     #sys.exit(0)
 
+    print "Processing ops."
     handle_ops, lifetime_ops, total_count = process_ops()
+    print "Done processing ops."
 
     length = blocks.length()
     del blocks.g_blocks
@@ -238,6 +248,10 @@ def main():
         macro = {}
         for key in lifetime_ops.keys():
             own = lifetime_ops[key][1]
+            if own == 0: # this can't really happen though!
+                own = 1
+            if total_count == 0:
+                total_count = 1
             other = lifetime_ops[key][2]
             micro_lifetime = float(other)/float(own)
             macro_lifetime = float(other+own)/float(total_count)
@@ -250,6 +264,8 @@ def main():
         opslockedname = fname + "-lockops"
         opslocked = open(opslockedname, "wt")
 
+        print "Saving lockops:", opslockedname, "...",
+
         for handle, op, size, address in blocks.g_ops:
             if op in ['N', 'F']:
                 address = 0 # pointless
@@ -258,7 +274,9 @@ def main():
                     print >> opslocked, "%d L 0 0" % handle
 
         opslocked.close()
+        print "Saved."
 
+	"""
         print >> st, "\nOps per handle (sorted by micro lifetime):"
         stats.sort(key=lambda x: x[1])
         for handle, micro_lifetime, macro_lifetime, own, other in stats:
@@ -280,5 +298,7 @@ def main():
 
         xlabel = "Macro lifetime (others ops within own lifetime + own ops)/total_count"
         plot_histogram(xs, xlabel, fname+"-macro")
+	"""
+
 main()
 
