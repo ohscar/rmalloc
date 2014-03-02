@@ -1246,8 +1246,8 @@ void plot_report(unsigned long largest_allocatable_block) {
 }
 
 int colormap_print(char *output, int sequence) {
-    int end = ((ptr_t)g_highest_address-(ptr_t)g_heap)/4;
-    //int end = g_colormap_size;
+    //int end = ((ptr_t)g_highest_address-(ptr_t)g_heap)/4;
+    int end = g_colormap_size;
 #define putchar(x) (void)x
     putchar("\n"); putchar('[');
     char buf2[256];
@@ -1267,7 +1267,7 @@ int colormap_print(char *output, int sequence) {
 
     char cmd[256];
     sprintf(cmd, "python run_memory_frag_animation_plot_animation.py %s %s", buf2, output);
-    //int r = system(cmd);
+    int r = system(cmd);
     //fprintf(stderr, "Plot data saved in %s (result = %d)\n", output, r);
 }
 
