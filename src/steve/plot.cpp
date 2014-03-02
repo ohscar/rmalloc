@@ -1308,7 +1308,7 @@ int main(int argc, char **argv) {
             g_operation_mode = OPMODE_PEAKMEM;
             fprintf(stderr, "opmode: peakmem\n");
         }
-        else {
+        else if (strcmp(argv[1], "--memplot") == 0) {
             g_operation_mode = OPMODE_MEMPLOT;
             if (argc == 4) {
                 g_heap_size = atoi(argv[3]);
@@ -1316,6 +1316,8 @@ int main(int argc, char **argv) {
                 fprintf(stderr, "Restricting heap size to %d kb\n", g_heap_size/1024);
             }
             fprintf(stderr, "opmode: memplot\n");
+        } else {
+            die("bad argument %s, exiting.\n", argv[1]);
         }
     }
 
