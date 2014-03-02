@@ -1,0 +1,3211 @@
+From 82c55f6f22301d4cf29e8a74d96db47e906286a7 Mon Sep 17 00:00:00 2001
+From: Mikael Jansson <mail@mikael.jansson.be>
+Date: Sun, 22 Jul 2012 11:20:20 +0200
+Subject: [PATCH 1/6] Valgrind malloc/free instrumentation.
+
+Modified 'memcheck' for instrumenting free/malloc calls, printing out
+size/id/address of allocated/freed blocks for later use with custom allocator.
+
+translate.py, translate-2.py, translate-3.2.py does different passes at the
+results for post-processing. It takes a fair amount of time and requires a
+64-bit computer with lots of RAM and free disk space. Unfortunately, the order
+(and when) to call the translate apps aren't documented. Check the source for
+which files to apply them on.
+---
+ valgrind/lackey/Makefile.am            |  49 ++++++
+ valgrind/lackey/lk_main.c              | 148 +++++++++++++++-
+ valgrind/memcheck/mc_include.h         |   3 +
+ valgrind/memcheck/mc_malloc_wrappers.c |  24 +++
+ valgrind/memcheck/mc_translate.c       | 301 ++++++++++++++++++++++++++++++++-
+ 5 files changed, 514 insertions(+), 11 deletions(-)
+
+diff --git a/valgrind/lackey/Makefile.am b/valgrind/lackey/Makefile.am
+index 39ada21..1a4caa4 100644
+--- a/valgrind/lackey/Makefile.am
++++ b/valgrind/lackey/Makefile.am
+@@ -16,40 +16,89 @@ LACKEY_SOURCES_COMMON = lk_main.c
+ lackey_@VGCONF_ARCH_PRI@_@VGCONF_OS@_SOURCES      = \
+ 	$(LACKEY_SOURCES_COMMON)
+ lackey_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CPPFLAGS     = \
+ 	$(AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+ lackey_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CFLAGS       = \
+ 	$(AM_CFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+ lackey_@VGCONF_ARCH_PRI@_@VGCONF_OS@_DEPENDENCIES = \
+ 	$(TOOL_DEPENDENCIES_@VGCONF_PLATFORM_PRI_CAPS@)
+ lackey_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LDADD        = \
+ 	$(TOOL_LDADD_@VGCONF_PLATFORM_PRI_CAPS@)
+ lackey_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LDFLAGS      = \
+ 	$(TOOL_LDFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
+ lackey_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LINK = \
+ 	$(top_builddir)/coregrind/link_tool_exe_@VGCONF_OS@ \
+ 	@VALT_LOAD_ADDRESS_PRI@ \
+ 	$(LINK) \
+ 	$(lackey_@VGCONF_ARCH_PRI@_@VGCONF_OS@_CFLAGS) \
+ 	$(lackey_@VGCONF_ARCH_PRI@_@VGCONF_OS@_LDFLAGS)
+ 
+ if VGCONF_HAVE_PLATFORM_SEC
+ lackey_@VGCONF_ARCH_SEC@_@VGCONF_OS@_SOURCES      = \
+ 	$(LACKEY_SOURCES_COMMON)
+ lackey_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CPPFLAGS     = \
+ 	$(AM_CPPFLAGS_@VGCONF_PLATFORM_SEC_CAPS@)
+ lackey_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CFLAGS       = \
+ 	$(AM_CFLAGS_@VGCONF_PLATFORM_SEC_CAPS@)
+ lackey_@VGCONF_ARCH_SEC@_@VGCONF_OS@_DEPENDENCIES = \
+ 	$(TOOL_DEPENDENCIES_@VGCONF_PLATFORM_SEC_CAPS@)
+ lackey_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LDADD        = \
+ 	$(TOOL_LDADD_@VGCONF_PLATFORM_SEC_CAPS@)
+ lackey_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LDFLAGS      = \
+ 	$(TOOL_LDFLAGS_@VGCONF_PLATFORM_SEC_CAPS@)
+ lackey_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LINK = \
+ 	$(top_builddir)/coregrind/link_tool_exe_@VGCONF_OS@ \
+ 	@VALT_LOAD_ADDRESS_SEC@ \
+ 	$(LINK) \
+ 	$(lackey_@VGCONF_ARCH_SEC@_@VGCONF_OS@_CFLAGS) \
+ 	$(lackey_@VGCONF_ARCH_SEC@_@VGCONF_OS@_LDFLAGS)
+ endif
+ 
++
++#----------------------------------------------------------------------------
++# vgpreload_lackey-<platform>.so
++#----------------------------------------------------------------------------
++
++noinst_PROGRAMS += vgpreload_lackey-@VGCONF_ARCH_PRI@-@VGCONF_OS@.so
++if VGCONF_HAVE_PLATFORM_SEC
++noinst_PROGRAMS += vgpreload_lackey-@VGCONF_ARCH_SEC@-@VGCONF_OS@.so
++endif
++
++if VGCONF_OS_IS_DARWIN
++noinst_DSYMS = $(noinst_PROGRAMS)
++endif
++
++VGPRELOAD_LACKEY_SOURCES_COMMON = 
++
++vgpreload_lackey_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_SOURCES      = \
++	$(VGPRELOAD_LACKEY_SOURCES_COMMON)
++vgpreload_lackey_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_CPPFLAGS     = \
++	$(AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
++vgpreload_lackey_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_CFLAGS       = \
++	$(AM_CFLAGS_@VGCONF_PLATFORM_PRI_CAPS@) $(AM_CFLAGS_PIC) -O2
++vgpreload_lackey_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_DEPENDENCIES = \
++	$(LIBREPLACEMALLOC_@VGCONF_PLATFORM_PRI_CAPS@)
++vgpreload_lackey_@VGCONF_ARCH_PRI@_@VGCONF_OS@_so_LDFLAGS      = \
++	$(PRELOAD_LDFLAGS_@VGCONF_PLATFORM_PRI_CAPS@) \
++	$(LIBREPLACEMALLOC_LDFLAGS_@VGCONF_PLATFORM_PRI_CAPS@)
++
++if VGCONF_HAVE_PLATFORM_SEC
++vgpreload_lackey_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_SOURCES      = \
++	$(VGPRELOAD_LACKEY_SOURCES_COMMON)
++vgpreload_lackey_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_CPPFLAGS     = \
++	$(AM_CPPFLAGS_@VGCONF_PLATFORM_SEC_CAPS@)
++vgpreload_lackey_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_CFLAGS       = \
++	$(AM_CFLAGS_@VGCONF_PLATFORM_SEC_CAPS@) $(AM_CFLAGS_PIC) -O2
++vgpreload_lackey_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_DEPENDENCIES = \
++	$(LIBREPLACEMALLOC_@VGCONF_PLATFORM_SEC_CAPS@)
++vgpreload_lackey_@VGCONF_ARCH_SEC@_@VGCONF_OS@_so_LDFLAGS      = \
++	$(PRELOAD_LDFLAGS_@VGCONF_PLATFORM_SEC_CAPS@) \
++	$(LIBREPLACEMALLOC_LDFLAGS_@VGCONF_PLATFORM_SEC_CAPS@)
++endif
++
++# mc_replace_strmem.c runs on the simulated CPU, and it often appears
++# in stack traces shown to the user.  It is built with
++# -fno-omit-frame-pointer so as to guarantee robust backtraces on x86,
++# on which CFI based unwinding is not the "normal" case and so is
++# sometimes fragile.
++mc_replace_strmem.o: CFLAGS += -fno-omit-frame-pointer
++
+diff --git a/valgrind/lackey/lk_main.c b/valgrind/lackey/lk_main.c
+index 5d22d1b..ae24b7a 100644
+--- a/valgrind/lackey/lk_main.c
++++ b/valgrind/lackey/lk_main.c
+@@ -140,80 +140,88 @@
+ // uses the same basic technique for tracing memory accesses, but also groups
+ // events together for processing into twos and threes so that fewer C calls
+ // are made and things run faster.
+ //
+ // Specific Details about --trace-superblocks=yes
+ // ----------------------------------------------
+ // Valgrind splits code up into single entry, multiple exit blocks
+ // known as superblocks.  By itself, --trace-superblocks=yes just
+ // prints a message as each superblock is run:
+ //
+ //  SB 04013170
+ //  SB 04013177
+ //  SB 04013173
+ //  SB 04013177
+ //
+ // The hex number is the address of the first instruction in the
+ // superblock.  You can see the relationship more obviously if you use
+ // --trace-superblocks=yes and --trace-mem=yes together.  Then a "SB"
+ // message at address X is immediately followed by an "instr:" message
+ // for that address, as the first instruction in the block is
+ // executed, for example:
+ //
+ //  SB 04014073
+ //  I  04014073,3
+ //   L 7FEFFF7F8,8
+ //  I  04014076,4
+ //  I  0401407A,3
+ //  I  0401407D,3
+ //  I  04014080,3
+ //  I  04014083,6
+ 
+ 
+ #include "pub_tool_basics.h"
+ #include "pub_tool_tooliface.h"
+ #include "pub_tool_libcassert.h"
+ #include "pub_tool_libcprint.h"
+ #include "pub_tool_debuginfo.h"
+ #include "pub_tool_libcbase.h"
+ #include "pub_tool_options.h"
+ #include "pub_tool_machine.h"     // VG_(fnptr_to_fnentry)
++#include "pub_tool_mallocfree.h"
++#include "pub_tool_replacemalloc.h"
++
++#define HUMAN 1
++#define COMPUTER 2
++
++#define OUTPUT_FORMAT COMPUTER // HUMAN
++
+ 
+ /*------------------------------------------------------------*/
+ /*--- Command line options                                 ---*/
+ /*------------------------------------------------------------*/
+ 
+ /* Command line options controlling instrumentation kinds, as described at
+  * the top of this file. */
+ static Bool clo_basic_counts    = True;
+ static Bool clo_detailed_counts = False;
+ static Bool clo_trace_mem       = False;
+ static Bool clo_trace_sbs       = False;
+ 
+ /* The name of the function of which the number of calls (under
+  * --basic-counts=yes) is to be counted, with default. Override with command
+  * line option --fnname. */
+ static Char* clo_fnname = "main";
+ 
+ static Bool lk_process_cmd_line_option(Char* arg)
+ {
+    if VG_STR_CLO(arg, "--fnname", clo_fnname) {}
+    else if VG_BOOL_CLO(arg, "--basic-counts",      clo_basic_counts) {}
+    else if VG_BOOL_CLO(arg, "--detailed-counts",   clo_detailed_counts) {}
+    else if VG_BOOL_CLO(arg, "--trace-mem",         clo_trace_mem) {}
+    else if VG_BOOL_CLO(arg, "--trace-superblocks", clo_trace_sbs) {}
+    else
+       return False;
+    
+    tl_assert(clo_fnname);
+    tl_assert(clo_fnname[0]);
+    return True;
+ }
+ 
+ static void lk_print_usage(void)
+ {  
+    VG_(printf)(
+ "    --basic-counts=no|yes     count instructions, jumps, etc. [yes]\n"
+ "    --detailed-counts=no|yes  count loads, stores and alu ops [no]\n"
+ "    --trace-mem=no|yes        trace all loads and stores [no]\n"
+ "    --trace-superblocks=no|yes  trace all superblock entries [no]\n"
+ "    --fnname=<name>           count calls to <name> (only used if\n"
+@@ -405,99 +413,118 @@ typedef
+       IRAtom*    addr;
+       Int        size;
+    }
+    Event;
+ 
+ /* Up to this many unnotified events are allowed.  Must be at least two,
+    so that reads and writes to the same address can be merged into a modify.
+    Beyond that, larger numbers just potentially induce more spilling due to
+    extending live ranges of address temporaries. */
+ #define N_EVENTS 4
+ 
+ /* Maintain an ordered list of memory events which are outstanding, in
+    the sense that no IR has yet been generated to do the relevant
+    helper calls.  The SB is scanned top to bottom and memory events
+    are added to the end of the list, merging with the most recent
+    notified event where possible (Dw immediately following Dr and
+    having the same size and EA can be merged).
+ 
+    This merging is done so that for architectures which have
+    load-op-store instructions (x86, amd64), the instr is treated as if
+    it makes just one memory reference (a modify), rather than two (a
+    read followed by a write at the same address).
+ 
+    At various points the list will need to be flushed, that is, IR
+    generated from it.  That must happen before any possible exit from
+    the block (the end, or an IRStmt_Exit).  Flushing also takes place
+    when there is no space to add a new event.
+ 
+    If we require the simulation statistics to be up to date with
+    respect to possible memory exceptions, then the list would have to
+    be flushed before each memory reference.  That's a pain so we don't
+    bother.
+ 
+    Flushing the list consists of walking it start to end and emitting
+    instrumentation IR for each event, in the order in which they
+    appear. */
+ 
+ static Event events[N_EVENTS];
+ static Int   events_used = 0;
+ 
++// approximation to not print all loads
++static void *g_memory_start = (void *)0xffffffff;
++static void *g_memory_end = NULL;
++
+ 
+ static VG_REGPARM(2) void trace_instr(Addr addr, SizeT size)
+ {
+-   VG_(printf)("I  %08lx,%lu\n", addr, size);
++   //VG_(printf)("I  %08lx,%lu\n", addr, size);
+ }
+ 
+ static VG_REGPARM(2) void trace_load(Addr addr, SizeT size)
+ {
+-   VG_(printf)(" L %08lx,%lu\n", addr, size);
++    //if (addr >= (unsigned int)g_memory_start && addr+size < (unsigned int)g_memory_end)
++#if OUTPUT_FORMAT == HUMAN
++       VG_(printf)(" L %08lx,%lu\n", addr, size);
++#else
++       VG_(printf)("('load', 0x%lx, %lu)\n", addr, size);
++#endif
+ }
+ 
+ static VG_REGPARM(2) void trace_store(Addr addr, SizeT size)
+ {
+-   VG_(printf)(" S %08lx,%lu\n", addr, size);
++    //if (addr >= (unsigned int)g_memory_start && addr+size < (unsigned int)g_memory_end)
++#if OUTPUT_FORMAT == HUMAN
++       VG_(printf)(" S %08lx,%lu\n", addr, size);
++#else
++       VG_(printf)("('store', 0x%lx, %lu)\n", addr, size);
++#endif
+ }
+ 
+ static VG_REGPARM(2) void trace_modify(Addr addr, SizeT size)
+ {
+-   VG_(printf)(" M %08lx,%lu\n", addr, size);
++    //if (addr >= (unsigned int)g_memory_start && addr+size < (unsigned int)g_memory_end)
++#if OUTPUT_FORMAT == HUMAN
++       VG_(printf)(" M %08lx,%lu\n", addr, size);
++#else
++       VG_(printf)("('modify', 0x%lx, %lu)\n", addr, size);
++#endif
+ }
+ 
+ 
+ static void flushEvents(IRSB* sb)
+ {
+    Int        i;
+    Char*      helperName;
+    void*      helperAddr;
+    IRExpr**   argv;
+    IRDirty*   di;
+    Event*     ev;
+ 
+    for (i = 0; i < events_used; i++) {
+ 
+       ev = &events[i];
+       
+       // Decide on helper fn to call and args to pass it.
+       switch (ev->ekind) {
+          case Event_Ir: helperName = "trace_instr";
+                         helperAddr =  trace_instr;  break;
+ 
+          case Event_Dr: helperName = "trace_load";
+                         helperAddr =  trace_load;   break;
+ 
+          case Event_Dw: helperName = "trace_store";
+                         helperAddr =  trace_store;  break;
+ 
+          case Event_Dm: helperName = "trace_modify";
+                         helperAddr =  trace_modify; break;
+          default:
+             tl_assert(0);
+       }
+ 
+       // Add the helper.
+       argv = mkIRExprVec_2( ev->addr, mkIRExpr_HWord( ev->size ) );
+       di   = unsafeIRDirty_0_N( /*regparms*/2, 
+                                 helperName, VG_(fnptr_to_fnentry)( helperAddr ),
+                                 argv );
+       addStmtToIRSB( sb, IRStmt_Dirty(di) );
+    }
+@@ -544,81 +571,85 @@ void addEvent_Dr ( IRSB* sb, IRAtom* daddr, Int dsize )
+ }
+ 
+ static
+ void addEvent_Dw ( IRSB* sb, IRAtom* daddr, Int dsize )
+ {
+    Event* lastEvt;
+    Event* evt;
+    tl_assert(clo_trace_mem);
+    tl_assert(isIRAtom(daddr));
+    tl_assert(dsize >= 1 && dsize <= MAX_DSIZE);
+ 
+    // Is it possible to merge this write with the preceding read?
+    lastEvt = &events[events_used-1];
+    if (events_used > 0
+     && lastEvt->ekind == Event_Dr
+     && lastEvt->size  == dsize
+     && eqIRAtom(lastEvt->addr, daddr))
+    {
+       lastEvt->ekind = Event_Dm;
+       return;
+    }
+ 
+    // No.  Add as normal.
+    if (events_used == N_EVENTS)
+       flushEvents(sb);
+    tl_assert(events_used >= 0 && events_used < N_EVENTS);
+    evt = &events[events_used];
+    evt->ekind = Event_Dw;
+    evt->size  = dsize;
+    evt->addr  = daddr;
+    events_used++;
+ }
+ 
+ 
+ /*------------------------------------------------------------*/
+ /*--- Stuff for --trace-superblocks                        ---*/
+ /*------------------------------------------------------------*/
+ 
+ static void trace_superblock(Addr addr)
+ {
++#if OUTPUT_FORMAT == HUMAN
+    VG_(printf)("SB %08lx\n", addr);
++#else
++   VG_(printf)("('superblock', 0%lx)\n", addr);
++#endif
+ }
+ 
+ 
+ /*------------------------------------------------------------*/
+ /*--- Basic tool functions                                 ---*/
+ /*------------------------------------------------------------*/
+ 
+ static void lk_post_clo_init(void)
+ {
+    Int op, tyIx;
+ 
+    if (clo_detailed_counts) {
+       for (op = 0; op < N_OPS; op++)
+          for (tyIx = 0; tyIx < N_TYPES; tyIx++)
+             detailCounts[op][tyIx] = 0;
+    }
+ }
+ 
+ static
+ IRSB* lk_instrument ( VgCallbackClosure* closure,
+                       IRSB* sbIn, 
+                       VexGuestLayout* layout, 
+                       VexGuestExtents* vge,
+                       IRType gWordTy, IRType hWordTy )
+ {
+    IRDirty*   di;
+    Int        i;
+    IRSB*      sbOut;
+    Char       fnname[100];
+    IRType     type;
+    IRTypeEnv* tyenv = sbIn->tyenv;
+    Addr       iaddr = 0, dst;
+    UInt       ilen = 0;
+    Bool       condition_inverted = False;
+ 
+    if (gWordTy != hWordTy) {
+       /* We don't currently support this case. */
+       VG_(tool_panic)("host/guest word size mismatch");
+    }
+ 
+@@ -926,63 +957,172 @@ static void lk_fini(Int exitcode)
+ 
+       VG_(umsg)("\n");
+       VG_(umsg)("Jccs:\n");
+       VG_(umsg)("  total:         %'llu\n", total_Jccs);
+       VG_(percentify)(taken_Jccs, (total_Jccs ? total_Jccs : 1),
+          percentify_decs, percentify_size, percentify_buf);
+       VG_(umsg)("  taken:         %'llu (%s)\n",
+          taken_Jccs, percentify_buf);
+       
+       VG_(umsg)("\n");
+       VG_(umsg)("Executed:\n");
+       VG_(umsg)("  SBs entered:   %'llu\n", n_SBs_entered);
+       VG_(umsg)("  SBs completed: %'llu\n", n_SBs_completed);
+       VG_(umsg)("  guest instrs:  %'llu\n", n_guest_instrs);
+       VG_(umsg)("  IRStmts:       %'llu\n", n_IRStmts);
+       
+       VG_(umsg)("\n");
+       VG_(umsg)("Ratios:\n");
+       tl_assert(n_SBs_entered); // Paranoia time.
+       VG_(umsg)("  guest instrs : SB entered  = %'llu : 10\n",
+          10 * n_guest_instrs / n_SBs_entered);
+       VG_(umsg)("       IRStmts : SB entered  = %'llu : 10\n",
+          10 * n_IRStmts / n_SBs_entered);
+       tl_assert(n_guest_instrs); // Paranoia time.
+       VG_(umsg)("       IRStmts : guest instr = %'llu : 10\n",
+          10 * n_IRStmts / n_guest_instrs);
+    }
+ 
+    if (clo_detailed_counts) {
+       VG_(umsg)("\n");
+       VG_(umsg)("IR-level counts by type:\n");
+       print_details();
+    }
+ 
+    if (clo_basic_counts) {
+       VG_(umsg)("\n");
+       VG_(umsg)("Exit code:       %d\n", exitcode);
+    }
+ }
+ 
++static void *new_block(ThreadId tid, Addr p, SizeT szB, SizeT alignB, Bool is_zeroed)
++{
++    p = (Addr)VG_(cli_malloc)( alignB, szB );
++    if (!p)
++        return NULL;
++    if (is_zeroed) {
++        VG_(memset)((void*)p, 0, szB);
++    }
++
++    if (g_memory_start > (void *)p)
++        g_memory_start = (void *)p;
++    if (g_memory_end < (unsigned int)p + (unsigned int)szB)
++        g_memory_end = p + szB;
++
++#if OUTPUT_FORMAT == HUMAN
++    VG_(printf)("new_block(%u, align=%u) -> 0%x (start - end = 0%x to 0%x)\n", (unsigned int)szB,
++            (unsigned int)alignB, (void *)p, g_memory_start, g_memory_end);
++#else
++    VG_(printf)("('new', %lu, 0x%lx)\n", (unsigned int)szB, (void *)p);
++#endif
++    return (void *)p;
++}
++
++static void handle_free(ThreadId tid, Addr addr)
++{
++#if OUTPUT_FORMAT == HUMAN
++    VG_(printf)("handle_free(%p)\n", (void *)addr);
++#else
++    VG_(printf)("('free', 0x%lx)\n", addr);
++#endif
++    VG_(cli_free)((void *)addr);
++}
++
++
++static void* lk_malloc( ThreadId tid, SizeT n)
++{
++    return new_block(tid, /*Addr p*/0, n, VG_(clo_alignment), /*is_zeroed*/False);
++}
++
++static void* lk___builtin_new ( ThreadId tid, SizeT n )
++{
++    return new_block(tid, /*Addr p*/0, n, VG_(clo_alignment), /*is_zeroed*/False);
++}
++static void* lk___builtin_vec_new ( ThreadId tid, SizeT n )
++{
++    return new_block(tid, /*Addr p*/0, n, VG_(clo_alignment), /*is_zeroed*/False);
++}
++
++static void* lk_memalign ( ThreadId tid, SizeT alignB, SizeT n )
++{
++    //VG_(printf)("lk_memalign(%u, align=%u)\n", (unsigned int)n, (unsigned int)alignB);
++    return new_block(tid, /*Addr p*/0, n, alignB, /*is_zeroed*/False);
++}
++static void* lk_calloc ( ThreadId tid, SizeT nmemb, SizeT size1 )
++{
++    return new_block(tid, /*Addr p*/0, nmemb*size1, VG_(clo_alignment), /*is_zeroed*/True);
++}
++static void lk_free ( ThreadId tid, void* p )
++{
++    handle_free(tid, (Addr)p);
++}
++
++static void lk___builtin_delete ( ThreadId tid, void* p )
++{
++    handle_free(tid, (Addr)p);
++}
++
++static void lk___builtin_vec_delete ( ThreadId tid, void* p )
++{
++    handle_free(tid, (Addr)p);
++}
++
++static void* lk_realloc ( ThreadId tid, void* p_old, SizeT new_szB )
++{
++    return new_block(tid, /*Addr p*/(Addr)p_old, new_szB, VG_(clo_alignment), /*is_zeroed*/False);
++}
++
++static SizeT lk_malloc_usable_size ( ThreadId tid, void* p )
++{
++#if  0
++   MC_Chunk* mc = VG_(HT_lookup) ( MC_(malloc_list), (UWord)p );
++
++   // There may be slop, but pretend there isn't because only the asked-for
++   // area will be marked as addressable.
++   return ( mc ? mc->szB : 0 );
++    return 0;
++#endif
++
++    VG_(printf)("# lk_malloc_usable_size: %p\n", p);
++
++    return 0;
++}
++
++#define LK_MALLOC_REDZONE_SZB    16
++
+ static void lk_pre_clo_init(void)
+ {
+    VG_(details_name)            ("Lackey");
+    VG_(details_version)         (NULL);
+    VG_(details_description)     ("an example Valgrind tool");
+    VG_(details_copyright_author)(
+       "Copyright (C) 2002-2011, and GNU GPL'd, by Nicholas Nethercote.");
+    VG_(details_bug_reports_to)  (VG_BUGS_TO);
+    VG_(details_avg_translation_sizeB) ( 200 );
+ 
+    VG_(basic_tool_funcs)          (lk_post_clo_init,
+                                    lk_instrument,
+                                    lk_fini);
+    VG_(needs_command_line_options)(lk_process_cmd_line_option,
+                                    lk_print_usage,
+                                    lk_print_debug_usage);
++
++   /*
++   VG_(needs_malloc_replacement)  (lk_malloc,
++                                   lk___builtin_new,
++                                   lk___builtin_vec_new,
++                                   lk_memalign,
++                                   lk_calloc,
++                                   lk_free,
++                                   lk___builtin_delete,
++                                   lk___builtin_vec_delete,
++                                   lk_realloc,
++                                   NULL, //lk_malloc_usable_size, 
++                                   LK_MALLOC_REDZONE_SZB );
++*/
+ }
+ 
+ VG_DETERMINE_INTERFACE_VERSION(lk_pre_clo_init)
+ 
+ /*--------------------------------------------------------------------*/
+ /*--- end                                                lk_main.c ---*/
+ /*--------------------------------------------------------------------*/
+diff --git a/valgrind/memcheck/mc_include.h b/valgrind/memcheck/mc_include.h
+index 017868e..c9aee77 100644
+--- a/valgrind/memcheck/mc_include.h
++++ b/valgrind/memcheck/mc_include.h
+@@ -1,76 +1,79 @@
+ 
+ /*--------------------------------------------------------------------*/
+ /*--- A header file for all parts of the MemCheck tool.            ---*/
+ /*---                                                 mc_include.h ---*/
+ /*--------------------------------------------------------------------*/
+ 
+ /*
+    This file is part of MemCheck, a heavyweight Valgrind tool for
+    detecting memory errors.
+ 
+    Copyright (C) 2000-2011 Julian Seward 
+       jseward@acm.org
+ 
+    This program is free software; you can redistribute it and/or
+    modify it under the terms of the GNU General Public License as
+    published by the Free Software Foundation; either version 2 of the
+    License, or (at your option) any later version.
+ 
+    This program is distributed in the hope that it will be useful, but
+    WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+    General Public License for more details.
+ 
+    You should have received a copy of the GNU General Public License
+    along with this program; if not, write to the Free Software
+    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
+    02111-1307, USA.
+ 
+    The GNU General Public License is contained in the file COPYING.
+ */
+ 
+ #ifndef __MC_INCLUDE_H
+ #define __MC_INCLUDE_H
+ 
+ #define MC_(str)    VGAPPEND(vgMemCheck_,str)
+ 
++#define HUMAN 0
++#define COMPUTER 1
++#define OUTPUT_FORMAT COMPUTER
+ 
+ /* This is a private header file for use only within the
+    memcheck/ directory. */
+ 
+ /*------------------------------------------------------------*/
+ /*--- Tracking the heap                                    ---*/
+ /*------------------------------------------------------------*/
+ 
+ /* We want at least a 16B redzone on client heap blocks for Memcheck */
+ #define MC_MALLOC_REDZONE_SZB    16
+ 
+ /* For malloc()/new/new[] vs. free()/delete/delete[] mismatch checking. */
+ typedef
+    enum {
+       MC_AllocMalloc = 0,
+       MC_AllocNew    = 1,
+       MC_AllocNewVec = 2,
+       MC_AllocCustom = 3
+    }
+    MC_AllocKind;
+    
+ /* This describes a heap block. Nb: first two fields must match core's
+  * VgHashNode. */
+ typedef
+    struct _MC_Chunk {
+       struct _MC_Chunk* next;
+       Addr         data;            // Address of the actual block.
+       SizeT        szB : (sizeof(SizeT)*8)-2; // Size requested; 30 or 62 bits.
+       MC_AllocKind allockind : 2;   // Which operation did the allocation.
+       ExeContext*  where;           // Where it was allocated.
+    }
+    MC_Chunk;
+ 
+ /* Memory pool.  Nb: first two fields must match core's VgHashNode. */
+ typedef
+    struct _MC_Mempool {
+       struct _MC_Mempool* next;
+       Addr          pool;           // pool identifier
+       SizeT         rzB;            // pool red-zone size
+       Bool          is_zeroed;      // allocations from this pool are zeroed
+diff --git a/valgrind/memcheck/mc_malloc_wrappers.c b/valgrind/memcheck/mc_malloc_wrappers.c
+index 7399c86..778d82c 100644
+--- a/valgrind/memcheck/mc_malloc_wrappers.c
++++ b/valgrind/memcheck/mc_malloc_wrappers.c
+@@ -21,80 +21,83 @@
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+    General Public License for more details.
+ 
+    You should have received a copy of the GNU General Public License
+    along with this program; if not, write to the Free Software
+    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
+    02111-1307, USA.
+ 
+    The GNU General Public License is contained in the file COPYING.
+ */
+ 
+ #include "pub_tool_basics.h"
+ #include "pub_tool_execontext.h"
+ #include "pub_tool_poolalloc.h"
+ #include "pub_tool_hashtable.h"
+ #include "pub_tool_libcbase.h"
+ #include "pub_tool_libcassert.h"
+ #include "pub_tool_libcprint.h"
+ #include "pub_tool_mallocfree.h"
+ #include "pub_tool_options.h"
+ #include "pub_tool_replacemalloc.h"
+ #include "pub_tool_threadstate.h"
+ #include "pub_tool_tooliface.h"     // Needed for mc_include.h
+ #include "pub_tool_stacktrace.h"    // For VG_(get_and_pp_StackTrace)
+ 
+ #include "mc_include.h"
+ 
+ /*------------------------------------------------------------*/
+ /*--- Defns                                                ---*/
+ /*------------------------------------------------------------*/
+ 
+ /* Stats ... */
+ static SizeT cmalloc_n_mallocs  = 0;
+ static SizeT cmalloc_n_frees    = 0;
+ static ULong cmalloc_bs_mallocd = 0;
+ 
+ /* For debug printing to do with mempools: what stack trace
+    depth to show. */
+ #define MEMPOOL_DEBUG_STACKTRACE_DEPTH 16
+ 
++// approximation to not print all loads
++void *g_memory_start = (void *)0xffffffff;
++void *g_memory_end = NULL;
+ 
+ /*------------------------------------------------------------*/
+ /*--- Tracking malloc'd and free'd blocks                  ---*/
+ /*------------------------------------------------------------*/
+ 
+ /* Record malloc'd blocks. */
+ VgHashTable MC_(malloc_list) = NULL;
+ 
+ /* Memory pools: a hash table of MC_Mempools.  Search key is
+    MC_Mempool::pool. */
+ VgHashTable MC_(mempool_list) = NULL;
+ 
+ /* Pool allocator for MC_Chunk. */   
+ PoolAlloc *MC_(chunk_poolalloc) = NULL;
+ static
+ MC_Chunk* create_MC_Chunk ( ExeContext* ec, Addr p, SizeT szB,
+                             MC_AllocKind kind);
+ static inline
+ void delete_MC_Chunk (MC_Chunk* mc);
+ 
+ /* Records blocks after freeing. */
+ /* Blocks freed by the client are queued in one of two lists of
+    freed blocks not yet physically freed:
+    "big blocks" freed list.
+    "small blocks" freed list
+    The blocks with a size >= MC_(clo_freelist_big_blocks)
+    are linked in the big blocks freed list.
+    This allows a client to allocate and free big blocks
+    (e.g. bigger than VG_(clo_freelist_vol)) without losing
+    immediately all protection against dangling pointers.
+    position [0] is for big blocks, [1] is for small blocks. */
+ static MC_Chunk* freed_list_start[2]  = {NULL, NULL};
+ static MC_Chunk* freed_list_end[2]    = {NULL, NULL};
+ 
+ /* Put a shadow chunk on the freed blocks queue, possibly freeing up
+    some of the oldest blocks in the queue at the same time. */
+ static void add_to_freed_queue ( MC_Chunk* mc )
+ {
+    const Bool show = False;
+    const int l = (mc->szB >= MC_(clo_freelist_big_blocks) ? 0 : 1);
+@@ -251,174 +254,195 @@ void* MC_(new_block) ( ThreadId tid,
+                        Addr p, SizeT szB, SizeT alignB,
+                        Bool is_zeroed, MC_AllocKind kind, VgHashTable table)
+ {
+    ExeContext* ec;
+ 
+    // Allocate and zero if necessary
+    if (p) {
+       tl_assert(MC_AllocCustom == kind);
+    } else {
+       tl_assert(MC_AllocCustom != kind);
+       p = (Addr)VG_(cli_malloc)( alignB, szB );
+       if (!p) {
+          return NULL;
+       }
+       if (is_zeroed) {
+          VG_(memset)((void*)p, 0, szB);
+       } else 
+       if (MC_(clo_malloc_fill) != -1) {
+          tl_assert(MC_(clo_malloc_fill) >= 0x00 && MC_(clo_malloc_fill) <= 0xFF);
+          VG_(memset)((void*)p, MC_(clo_malloc_fill), szB);
+       }
+    }
+ 
+    // Only update stats if allocation succeeded.
+    cmalloc_n_mallocs ++;
+    cmalloc_bs_mallocd += (ULong)szB;
+ 
+    ec = VG_(record_ExeContext)(tid, 0/*first_ip_delta*/);
+    tl_assert(ec);
+ 
+    VG_(HT_add_node)( table, create_MC_Chunk(ec, p, szB, kind) );
+ 
+    if (is_zeroed)
+       MC_(make_mem_defined)( p, szB );
+    else {
+       UInt ecu = VG_(get_ECU_from_ExeContext)(ec);
+       tl_assert(VG_(is_plausible_ECU)(ecu));
+       MC_(make_mem_undefined_w_otag)( p, szB, ecu | MC_OKIND_HEAP );
+    }
+ 
++   //VG_(printf)("-> new block %p\n", p);
++
++    if (g_memory_start > (void *)p)
++        g_memory_start = (void *)p;
++    if (g_memory_end < (unsigned int)p + (unsigned int)szB)
++        g_memory_end = p + szB;
++
++#if OUTPUT_FORMAT == HUMAN
++    VG_(printf)("new_block(%u, align=%u) -> 0%x (start - end = 0%x to 0%x)\n", (unsigned int)szB,
++            (unsigned int)alignB, (void *)p, g_memory_start, g_memory_end);
++#else
++    VG_(printf)(">>> N %lu %lu\n", (unsigned int)p, (unsigned int)szB);
++#endif
+    return (void*)p;
+ }
+ 
+ void* MC_(malloc) ( ThreadId tid, SizeT n )
+ {
++    //VG_(printf)("MC_(malloc) size %u\n", n);
+    if (complain_about_silly_args(n, "malloc")) {
+       return NULL;
+    } else {
+       return MC_(new_block) ( tid, 0, n, VG_(clo_alignment), 
+          /*is_zeroed*/False, MC_AllocMalloc, MC_(malloc_list));
+    }
+ }
+ 
+ void* MC_(__builtin_new) ( ThreadId tid, SizeT n )
+ {
+    if (complain_about_silly_args(n, "__builtin_new")) {
+       return NULL;
+    } else {
+       return MC_(new_block) ( tid, 0, n, VG_(clo_alignment), 
+          /*is_zeroed*/False, MC_AllocNew, MC_(malloc_list));
+    }
+ }
+ 
+ void* MC_(__builtin_vec_new) ( ThreadId tid, SizeT n )
+ {
+    if (complain_about_silly_args(n, "__builtin_vec_new")) {
+       return NULL;
+    } else {
+       return MC_(new_block) ( tid, 0, n, VG_(clo_alignment), 
+          /*is_zeroed*/False, MC_AllocNewVec, MC_(malloc_list));
+    }
+ }
+ 
+ void* MC_(memalign) ( ThreadId tid, SizeT alignB, SizeT n )
+ {
+    if (complain_about_silly_args(n, "memalign")) {
+       return NULL;
+    } else {
+       return MC_(new_block) ( tid, 0, n, alignB, 
+          /*is_zeroed*/False, MC_AllocMalloc, MC_(malloc_list));
+    }
+ }
+ 
+ void* MC_(calloc) ( ThreadId tid, SizeT nmemb, SizeT size1 )
+ {
+    if (complain_about_silly_args2(nmemb, size1)) {
+       return NULL;
+    } else {
+       return MC_(new_block) ( tid, 0, nmemb*size1, VG_(clo_alignment),
+          /*is_zeroed*/True, MC_AllocMalloc, MC_(malloc_list));
+    }
+ }
+ 
+ static
+ void die_and_free_mem ( ThreadId tid, MC_Chunk* mc, SizeT rzB )
+ {
+    /* Note: we do not free fill the custom allocs produced
+       by MEMPOOL or by MALLOC/FREELIKE_BLOCK requests. */
+    if (MC_(clo_free_fill) != -1 && MC_AllocCustom != mc->allockind ) {
+       tl_assert(MC_(clo_free_fill) >= 0x00 && MC_(clo_free_fill) <= 0xFF);
+       VG_(memset)((void*)mc->data, MC_(clo_free_fill), mc->szB);
+    }
+ 
+    /* Note: make redzones noaccess again -- just in case user made them
+       accessible with a client request... */
+    MC_(make_mem_noaccess)( mc->data-rzB, mc->szB + 2*rzB );
+ 
+    /* Record where freed */
+    mc->where = VG_(record_ExeContext) ( tid, 0/*first_ip_delta*/ );
+    /* Put it out of harm's way for a while */
+    add_to_freed_queue ( mc );
+    /* If the free list volume is bigger than MC_(clo_freelist_vol),
+       we wait till the next block allocation to release blocks.
+       This increase the chance to discover dangling pointer usage,
+       even for big blocks being freed by the client. */
+ }
+ 
+ void MC_(handle_free) ( ThreadId tid, Addr p, UInt rzB, MC_AllocKind kind )
+ {
+    MC_Chunk* mc;
+ 
+    cmalloc_n_frees++;
+ 
++#if OUTPUT_FORMAT == HUMAN
++    VG_(printf)("hnewandle_free(%p)\n", (void *)p);
++#else
++    VG_(printf)(">>> F %lu %lu\n", (unsigned int)p, 0);
++#endif
++
+    mc = VG_(HT_remove) ( MC_(malloc_list), (UWord)p );
+    if (mc == NULL) {
+       MC_(record_free_error) ( tid, p );
+    } else {
+       /* check if it is a matching free() / delete / delete [] */
+       if (kind != mc->allockind) {
+          tl_assert(p == mc->data);
+          MC_(record_freemismatch_error) ( tid, mc );
+       }
+       die_and_free_mem ( tid, mc, rzB );
+    }
++   //VG_(printf)("-> handle free %p\n", p);
+ }
+ 
+ void MC_(free) ( ThreadId tid, void* p )
+ {
+    MC_(handle_free)( 
+       tid, (Addr)p, MC_MALLOC_REDZONE_SZB, MC_AllocMalloc );
+ }
+ 
+ void MC_(__builtin_delete) ( ThreadId tid, void* p )
+ {
+    MC_(handle_free)(
+       tid, (Addr)p, MC_MALLOC_REDZONE_SZB, MC_AllocNew);
+ }
+ 
+ void MC_(__builtin_vec_delete) ( ThreadId tid, void* p )
+ {
+    MC_(handle_free)(
+       tid, (Addr)p, MC_MALLOC_REDZONE_SZB, MC_AllocNewVec);
+ }
+ 
+ void* MC_(realloc) ( ThreadId tid, void* p_old, SizeT new_szB )
+ {
+    MC_Chunk* mc;
+    void*     p_new;
+    SizeT     old_szB;
+ 
+    if (complain_about_silly_args(new_szB, "realloc")) 
+       return NULL;
+ 
+    cmalloc_n_frees ++;
+    cmalloc_n_mallocs ++;
+    cmalloc_bs_mallocd += (ULong)new_szB;
+ 
+    /* Remove the old block */
+    mc = VG_(HT_remove) ( MC_(malloc_list), (UWord)p_old );
+    if (mc == NULL) {
+       MC_(record_free_error) ( tid, (Addr)p_old );
+       /* We return to the program regardless. */
+       return NULL;
+    }
+diff --git a/valgrind/memcheck/mc_translate.c b/valgrind/memcheck/mc_translate.c
+index cf35c71..2dcf9b8 100644
+--- a/valgrind/memcheck/mc_translate.c
++++ b/valgrind/memcheck/mc_translate.c
+@@ -4108,80 +4108,82 @@ IRExpr* zwidenToHostWord ( MCEnv* mce, IRAtom* vatom )
+          case Ity_I32:
+             return assignNew('V', mce, tyH, unop(Iop_32Uto64, vatom));
+          case Ity_I16:
+             return assignNew('V', mce, tyH, unop(Iop_32Uto64, 
+                    assignNew('V', mce, Ity_I32, unop(Iop_16Uto32, vatom))));
+          case Ity_I8:
+             return assignNew('V', mce, tyH, unop(Iop_32Uto64, 
+                    assignNew('V', mce, Ity_I32, unop(Iop_8Uto32, vatom))));
+          default:
+             goto unhandled;
+       }
+    } else {
+       goto unhandled;
+    }
+   unhandled:
+    VG_(printf)("\nty = "); ppIRType(ty); VG_(printf)("\n");
+    VG_(tool_panic)("zwidenToHostWord");
+ }
+ 
+ 
+ /* Generate a shadow store.  addr is always the original address atom.
+    You can pass in either originals or V-bits for the data atom, but
+    obviously not both.  guard :: Ity_I1 controls whether the store
+    really happens; NULL means it unconditionally does.  Note that
+    guard itself is not checked for definedness; the caller of this
+    function must do that if necessary. */
+ 
+ static 
+ void do_shadow_Store ( MCEnv* mce, 
+                        IREndness end,
+                        IRAtom* addr, UInt bias,
+                        IRAtom* data, IRAtom* vdata,
+                        IRAtom* guard )
+ {
+    IROp     mkAdd;
+    IRType   ty, tyAddr;
+    void*    helper = NULL;
+    Char*    hname = NULL;
+    IRConst* c;
+ 
++   //VG_(printf)("do_shadow_Store: addr = %p\n", (void *)addr);
++
+    tyAddr = mce->hWordTy;
+    mkAdd  = tyAddr==Ity_I32 ? Iop_Add32 : Iop_Add64;
+    tl_assert( tyAddr == Ity_I32 || tyAddr == Ity_I64 );
+    tl_assert( end == Iend_LE || end == Iend_BE );
+ 
+    if (data) {
+       tl_assert(!vdata);
+       tl_assert(isOriginalAtom(mce, data));
+       tl_assert(bias == 0);
+       vdata = expr2vbits( mce, data );
+    } else {
+       tl_assert(vdata);
+    }
+ 
+    tl_assert(isOriginalAtom(mce,addr));
+    tl_assert(isShadowAtom(mce,vdata));
+ 
+    if (guard) {
+       tl_assert(isOriginalAtom(mce, guard));
+       tl_assert(typeOfIRExpr(mce->sb->tyenv, guard) == Ity_I1);
+    }
+ 
+    ty = typeOfIRExpr(mce->sb->tyenv, vdata);
+ 
+    // If we're not doing undefined value checking, pretend that this value
+    // is "all valid".  That lets Vex's optimiser remove some of the V bit
+    // shadow computation ops that precede it.
+    if (MC_(clo_mc_level) == 1) {
+       switch (ty) {
+          case Ity_V256: // V256 weirdness -- used four times
+                         c = IRConst_V256(V_BITS32_DEFINED); break;
+          case Ity_V128: // V128 weirdness -- used twice
+                         c = IRConst_V128(V_BITS16_DEFINED); break;
+          case Ity_I64:  c = IRConst_U64 (V_BITS64_DEFINED); break;
+          case Ity_I32:  c = IRConst_U32 (V_BITS32_DEFINED); break;
+          case Ity_I16:  c = IRConst_U16 (V_BITS16_DEFINED); break;
+          case Ity_I8:   c = IRConst_U8  (V_BITS8_DEFINED);  break;
+          default:       VG_(tool_panic)("memcheck:do_shadow_Store(LE)");
+       }
+       vdata = IRExpr_Const( c );
+@@ -5248,98 +5250,347 @@ static Bool checkForBogusLiterals ( /*FLAT*/ IRStmt* st )
+          if (d->mAddr && isBogusAtom(d->mAddr))
+             return True;
+          return False;
+       case Ist_Put:
+          return isBogusAtom(st->Ist.Put.data);
+       case Ist_PutI:
+          return isBogusAtom(st->Ist.PutI.details->ix) 
+                 || isBogusAtom(st->Ist.PutI.details->data);
+       case Ist_Store:
+          return isBogusAtom(st->Ist.Store.addr) 
+                 || isBogusAtom(st->Ist.Store.data);
+       case Ist_Exit:
+          return isBogusAtom(st->Ist.Exit.guard);
+       case Ist_AbiHint:
+          return isBogusAtom(st->Ist.AbiHint.base)
+                 || isBogusAtom(st->Ist.AbiHint.nia);
+       case Ist_NoOp:
+       case Ist_IMark:
+       case Ist_MBE:
+          return False;
+       case Ist_CAS:
+          cas = st->Ist.CAS.details;
+          return isBogusAtom(cas->addr)
+                 || (cas->expdHi ? isBogusAtom(cas->expdHi) : False)
+                 || isBogusAtom(cas->expdLo)
+                 || (cas->dataHi ? isBogusAtom(cas->dataHi) : False)
+                 || isBogusAtom(cas->dataLo);
+       case Ist_LLSC:
+          return isBogusAtom(st->Ist.LLSC.addr)
+                 || (st->Ist.LLSC.storedata
+                        ? isBogusAtom(st->Ist.LLSC.storedata)
+                        : False);
+       default: 
+       unhandled:
+          ppIRStmt(st);
+          VG_(tool_panic)("hasBogusLiterals");
+    }
+ }
+ 
+ 
++
++
++
++
++
++
++
++
++
++
++
++
++/* mikaelj *******************************************************************************************/
++
++#define MAX_DSIZE    512
++
++typedef
++   IRExpr 
++   IRAtom;
++
++typedef 
++   enum { Event_Ir, Event_Dr, Event_Dw, Event_Dm }
++   EventKind;
++
++typedef
++   struct {
++      EventKind  ekind;
++      IRAtom*    addr;
++      Int        size;
++   }
++   Event;
++
++/* Up to this many unnotified events are allowed.  Must be at least two,
++   so that reads and writes to the same address can be merged into a modify.
++   Beyond that, larger numbers just potentially induce more spilling due to
++   extending live ranges of address temporaries. */
++#define N_EVENTS 4
++
++/* Maintain an ordered list of memory events which are outstanding, in
++   the sense that no IR has yet been generated to do the relevant
++   helper calls.  The SB is scanned top to bottom and memory events
++   are added to the end of the list, merging with the most recent
++   notified event where possible (Dw immediately following Dr and
++   having the same size and EA can be merged).
++
++   This merging is done so that for architectures which have
++   load-op-store instructions (x86, amd64), the instr is treated as if
++   it makes just one memory reference (a modify), rather than two (a
++   read followed by a write at the same address).
++
++   At various points the list will need to be flushed, that is, IR
++   generated from it.  That must happen before any possible exit from
++   the block (the end, or an IRStmt_Exit).  Flushing also takes place
++   when there is no space to add a new event.
++
++   If we require the simulation statistics to be up to date with
++   respect to possible memory exceptions, then the list would have to
++   be flushed before each memory reference.  That's a pain so we don't
++   bother.
++
++   Flushing the list consists of walking it start to end and emitting
++   instrumentation IR for each event, in the order in which they
++   appear. */
++
++static Event events[N_EVENTS];
++static Int   events_used = 0;
++
++// approximation to not print all loads
++extern void *g_memory_start;
++extern void *g_memory_end;
++
++static VG_REGPARM(2) void trace_instr(Addr addr, SizeT size)
++{
++   //VG_(printf)("I  %08lx,%lu\n", addr, size);
++}
++
++static VG_REGPARM(2) void trace_load(Addr addr, SizeT size)
++{
++    if (addr >= (unsigned int)g_memory_start && addr+size < (unsigned int)g_memory_end)
++#if OUTPUT_FORMAT == HUMAN
++       VG_(printf)(" L %08lx,%lu\n", addr, size);
++#else
++       VG_(printf)(">>> L %lu %lu\n", (unsigned int)addr, size);
++#endif
++}
++
++static VG_REGPARM(2) void trace_store(Addr addr, SizeT size)
++{
++    if (addr >= (unsigned int)g_memory_start && addr+size < (unsigned int)g_memory_end)
++#if OUTPUT_FORMAT == HUMAN
++       VG_(printf)(" S %08lx,%lu\n", addr, size);
++#else
++       VG_(printf)(">>> S %lu %lu\n", (unsigned int)addr, size);
++#endif
++}
++
++static VG_REGPARM(2) void trace_modify(Addr addr, SizeT size)
++{
++    if (addr >= (unsigned int)g_memory_start && addr+size < (unsigned int)g_memory_end)
++#if OUTPUT_FORMAT == HUMAN
++       VG_(printf)(" M %08lx,%lu\n", addr, size);
++#else
++       VG_(printf)(">>> M %lu %lu\n", (unsigned int)addr, size);
++#endif
++}
++
++
++static void flushEvents(IRSB* sb)
++{
++   Int        i;
++   Char*      helperName;
++   void*      helperAddr;
++   IRExpr**   argv;
++   IRDirty*   di;
++   Event*     ev;
++
++   for (i = 0; i < events_used; i++) {
++
++      ev = &events[i];
++      
++      // Decide on helper fn to call and args to pass it.
++      switch (ev->ekind) {
++         case Event_Ir: helperName = "trace_instr";
++                        helperAddr =  trace_instr;  break;
++
++         case Event_Dr: helperName = "trace_load";
++                        helperAddr =  trace_load;   break;
++
++         case Event_Dw: helperName = "trace_store";
++                        helperAddr =  trace_store;  break;
++
++         case Event_Dm: helperName = "trace_modify";
++                        helperAddr =  trace_modify; break;
++         default:
++            tl_assert(0);
++      }
++
++      // Add the helper.
++      argv = mkIRExprVec_2( ev->addr, mkIRExpr_HWord( ev->size ) );
++      di   = unsafeIRDirty_0_N( /*regparms*/2, 
++                                helperName, VG_(fnptr_to_fnentry)( helperAddr ),
++                                argv );
++      addStmtToIRSB( sb, IRStmt_Dirty(di) );
++   }
++
++   events_used = 0;
++}
++
++// WARNING:  If you aren't interested in instruction reads, you can omit the
++// code that adds calls to trace_instr() in flushEvents().  However, you
++// must still call this function, addEvent_Ir() -- it is necessary to add
++// the Ir events to the events list so that merging of paired load/store
++// events into modify events works correctly.
++static void addEvent_Ir ( IRSB* sb, IRAtom* iaddr, UInt isize )
++{
++   Event* evt;
++   tl_assert( (VG_MIN_INSTR_SZB <= isize && isize <= VG_MAX_INSTR_SZB)
++            || VG_CLREQ_SZB == isize );
++   if (events_used == N_EVENTS)
++      flushEvents(sb);
++   tl_assert(events_used >= 0 && events_used < N_EVENTS);
++   evt = &events[events_used];
++   evt->ekind = Event_Ir;
++   evt->addr  = iaddr;
++   evt->size  = isize;
++   events_used++;
++}
++
++static
++void addEvent_Dr ( IRSB* sb, IRAtom* daddr, Int dsize )
++{
++   Event* evt;
++   tl_assert(isIRAtom(daddr));
++   tl_assert(dsize >= 1 && dsize <= MAX_DSIZE);
++   if (events_used == N_EVENTS)
++      flushEvents(sb);
++   tl_assert(events_used >= 0 && events_used < N_EVENTS);
++   evt = &events[events_used];
++   evt->ekind = Event_Dr;
++   evt->addr  = daddr;
++   evt->size  = dsize;
++   events_used++;
++}
++
++static
++void addEvent_Dw ( IRSB* sb, IRAtom* daddr, Int dsize )
++{
++   Event* lastEvt;
++   Event* evt;
++   tl_assert(isIRAtom(daddr));
++   tl_assert(dsize >= 1 && dsize <= MAX_DSIZE);
++
++   // Is it possible to merge this write with the preceding read?
++   lastEvt = &events[events_used-1];
++   if (events_used > 0
++    && lastEvt->ekind == Event_Dr
++    && lastEvt->size  == dsize
++    && eqIRAtom(lastEvt->addr, daddr))
++   {
++      lastEvt->ekind = Event_Dm;
++      return;
++   }
++
++   // No.  Add as normal.
++   if (events_used == N_EVENTS)
++      flushEvents(sb);
++   tl_assert(events_used >= 0 && events_used < N_EVENTS);
++   evt = &events[events_used];
++   evt->ekind = Event_Dw;
++   evt->size  = dsize;
++   evt->addr  = daddr;
++   events_used++;
++}
++
++
++/* mikaelj *******************************************************************************************/
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
+ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
+                         IRSB* sb_in, 
+                         VexGuestLayout* layout, 
+                         VexGuestExtents* vge,
+                         IRType gWordTy, IRType hWordTy )
+ {
+    Bool    verboze = 0||False;
+    Bool    bogus;
+    Int     i, j, first_stmt;
+    IRStmt* st;
+    MCEnv   mce;
+    IRSB*   sb_out;
++   IRTypeEnv* tyenv = sb_in->tyenv;
+ 
+    if (gWordTy != hWordTy) {
+       /* We don't currently support this case. */
+       VG_(tool_panic)("host/guest word size mismatch");
+    }
+ 
++
+    /* Check we're not completely nuts */
+    tl_assert(sizeof(UWord)  == sizeof(void*));
+    tl_assert(sizeof(Word)   == sizeof(void*));
+    tl_assert(sizeof(Addr)   == sizeof(void*));
+    tl_assert(sizeof(ULong)  == 8);
+    tl_assert(sizeof(Long)   == 8);
+    tl_assert(sizeof(Addr64) == 8);
+    tl_assert(sizeof(UInt)   == 4);
+    tl_assert(sizeof(Int)    == 4);
+ 
+    tl_assert(MC_(clo_mc_level) >= 1 && MC_(clo_mc_level) <= 3);
+ 
+    /* Set up SB */
+    sb_out = deepCopyIRSBExceptStmts(sb_in);
+ 
+    /* Set up the running environment.  Both .sb and .tmpMap are
+       modified as we go along.  Note that tmps are added to both
+       .sb->tyenv and .tmpMap together, so the valid index-set for
+       those two arrays should always be identical. */
+    VG_(memset)(&mce, 0, sizeof(mce));
+    mce.sb             = sb_out;
+    mce.trace          = verboze;
+    mce.layout         = layout;
+    mce.hWordTy        = hWordTy;
+    mce.bogusLiterals  = False;
+ 
+    /* Do expensive interpretation for Iop_Add32 and Iop_Add64 on
+       Darwin.  10.7 is mostly built with LLVM, which uses these for
+       bitfield inserts, and we get a lot of false errors if the cheap
+       interpretation is used, alas.  Could solve this much better if
+       we knew which of such adds came from x86/amd64 LEA instructions,
+       since these are the only ones really needing the expensive
+       interpretation, but that would require some way to tag them in
+       the _toIR.c front ends, which is a lot of faffing around.  So
+       for now just use the slow and blunt-instrument solution. */
+    mce.useLLVMworkarounds = False;
+ #  if defined(VGO_darwin)
+    mce.useLLVMworkarounds = True;
+ #  endif
+ 
+@@ -5431,193 +5682,229 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
+             IRTemp tmp_b = findShadowTmpB(&mce, tmp_o);
+             tl_assert(typeOfIRTemp(sb_out->tyenv, tmp_b) == Ity_I32);
+             assign( 'B', &mce, tmp_b, mkU32(0)/* UNKNOWN ORIGIN */);
+          }
+          if (0) {
+             VG_(printf)("create shadow tmp(s) for preamble tmp [%d] ty ", j);
+             ppIRType( ty_v );
+             VG_(printf)("\n");
+          }
+       }
+    }
+ 
+    /* Iterate over the remaining stmts to generate instrumentation. */
+ 
+    tl_assert(sb_in->stmts_used > 0);
+    tl_assert(i >= 0);
+    tl_assert(i < sb_in->stmts_used);
+    tl_assert(sb_in->stmts[i]->tag == Ist_IMark);
+ 
+    for (/* use current i*/; i < sb_in->stmts_used; i++) {
+ 
+       st = sb_in->stmts[i];
+       first_stmt = sb_out->stmts_used;
+ 
+       if (verboze) {
+          VG_(printf)("\n");
+          ppIRStmt(st);
+          VG_(printf)("\n");
+       }
+ 
+       if (MC_(clo_mc_level) == 3) {
+          /* See comments on case Ist_CAS below. */
+          if (st->tag != Ist_CAS) 
+             schemeS( &mce, st );
+       }
+ 
+       /* Generate instrumentation code for each stmt ... */
+ 
+       switch (st->tag) {
+ 
+-         case Ist_WrTmp:
++         case Ist_IMark: {
++           addEvent_Ir( sb_out, mkIRExpr_HWord( (HWord)st->Ist.IMark.addr ),
++                        st->Ist.IMark.len );
++         } break;
++         case Ist_WrTmp: {
++               IRExpr* data = st->Ist.WrTmp.data;
++               if (data->tag == Iex_Load) {
++                  addEvent_Dr( sb_out, data->Iex.Load.addr,
++                               sizeofIRType(data->Iex.Load.ty) );
++               }
++            
++            //ppIRExpr(&data->Iex.Load);
+             assign( 'V', &mce, findShadowTmpV(&mce, st->Ist.WrTmp.tmp), 
+                                expr2vbits( &mce, st->Ist.WrTmp.data) );
+-            break;
++         } break;
+ 
+          case Ist_Put:
+             do_shadow_PUT( &mce, 
+                            st->Ist.Put.offset,
+                            st->Ist.Put.data,
+                            NULL /* shadow atom */, NULL /* guard */ );
+             break;
+ 
+          case Ist_PutI:
+             do_shadow_PUTI( &mce, st->Ist.PutI.details);
+             break;
+ 
+          case Ist_Store:
++            {
++               IRExpr* data  = st->Ist.Store.data;
++               addEvent_Dw( sb_out, st->Ist.Store.addr,
++                            sizeofIRType(typeOfIRExpr(tyenv, data)) );
++            }
+             do_shadow_Store( &mce, st->Ist.Store.end,
+                                    st->Ist.Store.addr, 0/* addr bias */,
+                                    st->Ist.Store.data,
+                                    NULL /* shadow data */,
+                                    NULL/*guard*/ );
+             break;
+ 
+          case Ist_Exit:
++            flushEvents(sb_out);
+             complainIfUndefined( &mce, st->Ist.Exit.guard, NULL );
+             break;
+ 
+-         case Ist_IMark:
+-            break;
+-
+          case Ist_NoOp:
+          case Ist_MBE:
+             break;
+ 
+-         case Ist_Dirty:
++         case Ist_Dirty: {
++
++            {
++               Int      dsize;
++               IRDirty* d = st->Ist.Dirty.details;
++               if (d->mFx != Ifx_None) {
++                  // This dirty helper accesses memory.  Collect the details.
++                  tl_assert(d->mAddr != NULL);
++                  tl_assert(d->mSize != 0);
++                  dsize = d->mSize;
++                  if (d->mFx == Ifx_Read || d->mFx == Ifx_Modify)
++                     addEvent_Dr( sb_out, d->mAddr, dsize );
++                  if (d->mFx == Ifx_Write || d->mFx == Ifx_Modify)
++                     addEvent_Dw( sb_out, d->mAddr, dsize );
++               } else {
++                  tl_assert(d->mAddr == NULL);
++                  tl_assert(d->mSize == 0);
++               }
++            }
++
+             do_shadow_Dirty( &mce, st->Ist.Dirty.details );
+-            break;
++         } break;
+ 
+          case Ist_AbiHint:
+             do_AbiHint( &mce, st->Ist.AbiHint.base,
+                               st->Ist.AbiHint.len,
+                               st->Ist.AbiHint.nia );
+             break;
+ 
+          case Ist_CAS:
+             do_shadow_CAS( &mce, st->Ist.CAS.details );
+             /* Note, do_shadow_CAS copies the CAS itself to the output
+                block, because it needs to add instrumentation both
+                before and after it.  Hence skip the copy below.  Also
+                skip the origin-tracking stuff (call to schemeS) above,
+                since that's all tangled up with it too; do_shadow_CAS
+                does it all. */
+             break;
+ 
+          case Ist_LLSC:
+             do_shadow_LLSC( &mce,
+                             st->Ist.LLSC.end,
+                             st->Ist.LLSC.result,
+                             st->Ist.LLSC.addr,
+                             st->Ist.LLSC.storedata );
+             break;
+ 
+          default:
+             VG_(printf)("\n");
+             ppIRStmt(st);
+             VG_(printf)("\n");
+             VG_(tool_panic)("memcheck: unhandled IRStmt");
+ 
+       } /* switch (st->tag) */
+ 
+       if (0 && verboze) {
+          for (j = first_stmt; j < sb_out->stmts_used; j++) {
+             VG_(printf)("   ");
+             ppIRStmt(sb_out->stmts[j]);
+             VG_(printf)("\n");
+          }
+          VG_(printf)("\n");
+       }
+ 
+       /* ... and finally copy the stmt itself to the output.  Except,
+          skip the copy of IRCASs; see comments on case Ist_CAS
+          above. */
+       if (st->tag != Ist_CAS)
+          stmt('C', &mce, st);
+    }
+ 
+    /* Now we need to complain if the jump target is undefined. */
+    first_stmt = sb_out->stmts_used;
+ 
+    if (verboze) {
+       VG_(printf)("sb_in->next = ");
+       ppIRExpr(sb_in->next);
+       VG_(printf)("\n\n");
+    }
+ 
+    complainIfUndefined( &mce, sb_in->next, NULL );
+ 
+    if (0 && verboze) {
+       for (j = first_stmt; j < sb_out->stmts_used; j++) {
+          VG_(printf)("   ");
+          ppIRStmt(sb_out->stmts[j]);
+          VG_(printf)("\n");
+       }
+       VG_(printf)("\n");
+    }
+ 
+    /* If this fails, there's been some serious snafu with tmp management,
+       that should be investigated. */
+    tl_assert( VG_(sizeXA)( mce.tmpMap ) == mce.sb->tyenv->types_used );
+    VG_(deleteXA)( mce.tmpMap );
+ 
+    tl_assert(mce.sb == sb_out);
++
++   flushEvents(sb_out);
++
+    return sb_out;
+ }
+ 
+ /*------------------------------------------------------------*/
+ /*--- Post-tree-build final tidying                        ---*/
+ /*------------------------------------------------------------*/
+ 
+ /* This exploits the observation that Memcheck often produces
+    repeated conditional calls of the form
+ 
+    Dirty G MC_(helperc_value_check0/1/4/8_fail)(UInt otag)
+ 
+    with the same guard expression G guarding the same helper call.
+    The second and subsequent calls are redundant.  This usually
+    results from instrumentation of guest code containing multiple
+    memory references at different constant offsets from the same base
+    register.  After optimisation of the instrumentation, you get a
+    test for the definedness of the base register for each memory
+    reference, which is kinda pointless.  MC_(final_tidy) therefore
+    looks for such repeated calls and removes all but the first. */
+ 
+ /* A struct for recording which (helper, guard) pairs we have already
+    seen. */
+ typedef
+    struct { void* entry; IRExpr* guard; }
+    Pair;
+ 
+ /* Return True if e1 and e2 definitely denote the same value (used to
+    compare guards).  Return False if unknown; False is the safe
+    answer.  Since guest registers and guest memory do not have the
+    SSA property we must return False if any Gets or Loads appear in
+    the expression. */
+ 
+ static Bool sameIRValue ( IRExpr* e1, IRExpr* e2 )
+ {
+    if (e1->tag != e2->tag)
+       return False;
+    switch (e1->tag) {
+       case Iex_Const:
+          return eqIRConst( e1->Iex.Const.con, e2->Iex.Const.con );
+-- 
+1.8.1.2
+
+
+From 56f48cd8e7d34867c9d1fbc3863a177587288b2e Mon Sep 17 00:00:00 2001
+From: Mikael Jansson <mail@mikael.jansson.be>
+Date: Mon, 14 Jan 2013 05:37:11 +0100
+Subject: [PATCH 2/6] Stray forgotten files and a README.
+
+---
+ valgrind/lackey/Makefile | 1139 ++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 1139 insertions(+)
+ create mode 100644 valgrind/lackey/Makefile
+
+diff --git a/valgrind/lackey/Makefile b/valgrind/lackey/Makefile
+new file mode 100644
+index 0000000..f00f080
+--- /dev/null
++++ b/valgrind/lackey/Makefile
+@@ -0,0 +1,1139 @@
++# Makefile.in generated by automake 1.11.1 from Makefile.am.
++# lackey/Makefile.  Generated from Makefile.in by configure.
++
++# Copyright (C) 1994, 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002,
++# 2003, 2004, 2005, 2006, 2007, 2008, 2009  Free Software Foundation,
++# Inc.
++# This Makefile.in is free software; the Free Software Foundation
++# gives unlimited permission to copy and/or distribute it,
++# with or without modifications, as long as this notice is preserved.
++
++# This program is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY, to the extent permitted by law; without
++# even the implied warranty of MERCHANTABILITY or FITNESS FOR A
++# PARTICULAR PURPOSE.
++
++
++
++# This file should be included (directly or indirectly) by every
++# Makefile.am that builds programs.  And also the top-level Makefile.am.
++
++#----------------------------------------------------------------------------
++# Global stuff
++#----------------------------------------------------------------------------
++
++
++pkgdatadir = $(datadir)/valgrind
++pkgincludedir = $(includedir)/valgrind
++pkglibdir = $(libdir)/valgrind
++pkglibexecdir = $(libexecdir)/valgrind
++am__cd = CDPATH="$${ZSH_VERSION+.}$(PATH_SEPARATOR)" && cd
++install_sh_DATA = $(install_sh) -c -m 644
++install_sh_PROGRAM = $(install_sh) -c
++install_sh_SCRIPT = $(install_sh) -c
++INSTALL_HEADER = $(INSTALL_DATA)
++transform = $(program_transform_name)
++NORMAL_INSTALL = :
++PRE_INSTALL = :
++POST_INSTALL = :
++NORMAL_UNINSTALL = :
++PRE_UNINSTALL = :
++POST_UNINSTALL = :
++build_triplet = i686-pc-linux-gnu
++host_triplet = i686-pc-linux-gnu
++DIST_COMMON = $(srcdir)/Makefile.am $(srcdir)/Makefile.in \
++	$(top_srcdir)/Makefile.all.am $(top_srcdir)/Makefile.tool.am
++
++# On Android we must ask for non-executable stack, not sure why.
++##am__append_1 = -Wl,-z,noexecstack
++noinst_PROGRAMS = lackey-x86-linux$(EXEEXT) \
++	$(am__EXEEXT_1) \
++	vgpreload_lackey-x86-linux.so$(EXEEXT) \
++	$(am__EXEEXT_2)
++#am__append_2 = lackey--linux
++lackey__linux_DEPENDENCIES =
++#am__append_3 = vgpreload_lackey--linux.so
++subdir = lackey
++ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
++am__aclocal_m4_deps = $(top_srcdir)/configure.in
++am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
++	$(ACLOCAL_M4)
++mkinstalldirs = $(install_sh) -d
++CONFIG_HEADER = $(top_builddir)/config.h
++CONFIG_CLEAN_FILES =
++CONFIG_CLEAN_VPATH_FILES =
++#am__EXEEXT_1 = lackey--linux$(EXEEXT)
++#am__EXEEXT_2 = vgpreload_lackey--linux.so$(EXEEXT)
++PROGRAMS = $(noinst_PROGRAMS)
++am__objects_1 =  \
++	lackey_x86_linux-lk_main.$(OBJEXT)
++am_lackey_x86_linux_OBJECTS = $(am__objects_1)
++lackey_x86_linux_OBJECTS =  \
++	$(am_lackey_x86_linux_OBJECTS)
++am__lackey__linux_SOURCES_DIST = lk_main.c
++am__objects_2 =  \
++	lackey__linux-lk_main.$(OBJEXT)
++#am_lackey__linux_OBJECTS =  \
++#	$(am__objects_2)
++lackey__linux_OBJECTS =  \
++	$(am_lackey__linux_OBJECTS)
++am__objects_3 =
++am_vgpreload_lackey_x86_linux_so_OBJECTS =  \
++	$(am__objects_3)
++vgpreload_lackey_x86_linux_so_OBJECTS = $(am_vgpreload_lackey_x86_linux_so_OBJECTS)
++vgpreload_lackey_x86_linux_so_LDADD = $(LDADD)
++vgpreload_lackey_x86_linux_so_LINK = $(CCLD) \
++	$(vgpreload_lackey_x86_linux_so_CFLAGS) \
++	$(CFLAGS) \
++	$(vgpreload_lackey_x86_linux_so_LDFLAGS) \
++	$(LDFLAGS) -o $@
++#am_vgpreload_lackey__linux_so_OBJECTS =  \
++#	$(am__objects_3)
++vgpreload_lackey__linux_so_OBJECTS = $(am_vgpreload_lackey__linux_so_OBJECTS)
++vgpreload_lackey__linux_so_LDADD = $(LDADD)
++vgpreload_lackey__linux_so_LINK = $(CCLD) \
++	$(vgpreload_lackey__linux_so_CFLAGS) \
++	$(CFLAGS) \
++	$(vgpreload_lackey__linux_so_LDFLAGS) \
++	$(LDFLAGS) -o $@
++DEFAULT_INCLUDES = -I. -I$(top_builddir)
++depcomp = $(SHELL) $(top_srcdir)/depcomp
++am__depfiles_maybe = depfiles
++am__mv = mv -f
++COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
++	$(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
++CCLD = $(CC)
++LINK = $(CCLD) $(AM_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) $(LDFLAGS) -o $@
++SOURCES = $(lackey_x86_linux_SOURCES) \
++	$(lackey__linux_SOURCES) \
++	$(vgpreload_lackey_x86_linux_so_SOURCES) \
++	$(vgpreload_lackey__linux_so_SOURCES)
++DIST_SOURCES = $(lackey_x86_linux_SOURCES) \
++	$(am__lackey__linux_SOURCES_DIST) \
++	$(vgpreload_lackey_x86_linux_so_SOURCES) \
++	$(vgpreload_lackey__linux_so_SOURCES)
++RECURSIVE_TARGETS = all-recursive check-recursive dvi-recursive \
++	html-recursive info-recursive install-data-recursive \
++	install-dvi-recursive install-exec-recursive \
++	install-html-recursive install-info-recursive \
++	install-pdf-recursive install-ps-recursive install-recursive \
++	installcheck-recursive installdirs-recursive pdf-recursive \
++	ps-recursive uninstall-recursive
++RECURSIVE_CLEAN_TARGETS = mostlyclean-recursive clean-recursive	\
++  distclean-recursive maintainer-clean-recursive
++AM_RECURSIVE_TARGETS = $(RECURSIVE_TARGETS:-recursive=) \
++	$(RECURSIVE_CLEAN_TARGETS:-recursive=) tags TAGS ctags CTAGS \
++	distdir
++ETAGS = etags
++CTAGS = ctags
++DIST_SUBDIRS = $(SUBDIRS)
++DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
++am__relativize = \
++  dir0=`pwd`; \
++  sed_first='s,^\([^/]*\)/.*$$,\1,'; \
++  sed_rest='s,^[^/]*/*,,'; \
++  sed_last='s,^.*/\([^/]*\)$$,\1,'; \
++  sed_butlast='s,/*[^/]*$$,,'; \
++  while test -n "$$dir1"; do \
++    first=`echo "$$dir1" | sed -e "$$sed_first"`; \
++    if test "$$first" != "."; then \
++      if test "$$first" = ".."; then \
++        dir2=`echo "$$dir0" | sed -e "$$sed_last"`/"$$dir2"; \
++        dir0=`echo "$$dir0" | sed -e "$$sed_butlast"`; \
++      else \
++        first2=`echo "$$dir2" | sed -e "$$sed_first"`; \
++        if test "$$first2" = "$$first"; then \
++          dir2=`echo "$$dir2" | sed -e "$$sed_rest"`; \
++        else \
++          dir2="../$$dir2"; \
++        fi; \
++        dir0="$$dir0"/"$$first"; \
++      fi; \
++    fi; \
++    dir1=`echo "$$dir1" | sed -e "$$sed_rest"`; \
++  done; \
++  reldir="$$dir2"
++ACLOCAL = ${SHELL} /code/rmalloc/valgrind/missing --run aclocal-1.11
++AMTAR = ${SHELL} /code/rmalloc/valgrind/missing --run tar
++AR = /usr/bin/ar
++AUTOCONF = ${SHELL} /code/rmalloc/valgrind/missing --run autoconf
++AUTOHEADER = ${SHELL} /code/rmalloc/valgrind/missing --run autoheader
++AUTOMAKE = ${SHELL} /code/rmalloc/valgrind/missing --run automake-1.11
++AWK = mawk
++BOOST_CFLAGS = 
++BOOST_LIBS = 
++CC = gcc
++CCAS = gcc
++CCASDEPMODE = depmode=gcc3
++CCASFLAGS = -Wno-long-long 
++CCDEPMODE = depmode=gcc3
++CFLAGS = -Wno-long-long  -Wno-pointer-sign -fno-stack-protector
++CFLAGS_MPI = -g -O -fno-omit-frame-pointer -Wall -fpic
++CPP = gcc -E
++CPPFLAGS = 
++CXX = g++
++CXXDEPMODE = depmode=gcc3
++CXXFLAGS = -Wno-long-long  -Wno-pointer-sign -fno-stack-protector
++CYGPATH_W = echo
++DEFAULT_SUPP = exp-sgcheck.supp xfree-3.supp xfree-4.supp glibc-2.X-drd.supp glibc-2.34567-NPTL-helgrind.supp glibc-2.X.supp 
++DEFS = -DHAVE_CONFIG_H
++DEPDIR = .deps
++DIFF = diff -u
++ECHO_C = 
++ECHO_N = -n
++ECHO_T = 
++EGREP = /bin/grep -E
++EXEEXT = 
++FLAG_FNO_STACK_PROTECTOR = -fno-stack-protector
++FLAG_M32 = -m32
++FLAG_M64 = -m64
++FLAG_MMMX = -mmmx
++FLAG_MSSE = -msse
++FLAG_NO_BUILD_ID = -Wl,--build-id=none
++FLAG_UNLIMITED_INLINE_UNIT_GROWTH = --param inline-unit-growth=900
++FLAG_W_EXTRA = -Wextra
++FLAG_W_NO_EMPTY_BODY = -Wno-empty-body
++FLAG_W_NO_FORMAT_ZERO_LENGTH = -Wno-format-zero-length
++FLAG_W_NO_NONNULL = -Wno-nonnull
++FLAG_W_NO_OVERFLOW = -Wno-overflow
++FLAG_W_NO_UNINITIALIZED = -Wno-uninitialized
++GDB = /usr/bin/gdb
++GLIBC_VERSION = 2.13
++GREP = /bin/grep
++INSTALL = /usr/bin/install -c
++INSTALL_DATA = ${INSTALL} -m 644
++INSTALL_PROGRAM = ${INSTALL}
++INSTALL_SCRIPT = ${INSTALL}
++INSTALL_STRIP_PROGRAM = $(install_sh) -c -s
++LDFLAGS = 
++LDFLAGS_MPI = -fpic -shared
++LIBOBJS = 
++LIBS = 
++LN_S = ln -s
++LTLIBOBJS = 
++MAINT = #
++MAKEINFO = ${SHELL} /code/rmalloc/valgrind/missing --run makeinfo
++MKDIR_P = /bin/mkdir -p
++MPI_CC = mpicc
++OBJEXT = o
++PACKAGE = valgrind
++PACKAGE_BUGREPORT = valgrind-users@lists.sourceforge.net
++PACKAGE_NAME = Valgrind
++PACKAGE_STRING = Valgrind 3.8.0.SVN
++PACKAGE_TARNAME = valgrind
++PACKAGE_URL = 
++PACKAGE_VERSION = 3.8.0.SVN
++PATH_SEPARATOR = :
++PERL = /usr/bin/perl
++PREFERRED_STACK_BOUNDARY = -mpreferred-stack-boundary=2
++RANLIB = ranlib
++SED = /bin/sed
++SET_MAKE = 
++SHELL = /bin/bash
++STRIP = 
++VALT_LOAD_ADDRESS_PRI = 0x38000000
++VALT_LOAD_ADDRESS_SEC = 0xUNSET
++VERSION = 3.8.0.SVN
++VGCONF_ARCH_PRI = x86
++VGCONF_ARCH_SEC = 
++VGCONF_OS = linux
++VGCONF_PLATFORM_PRI_CAPS = X86_LINUX
++VGCONF_PLATFORM_SEC_CAPS = 
++VGCONF_PLATVARIANT = vanilla
++abs_builddir = /code/rmalloc/valgrind/lackey
++abs_srcdir = /code/rmalloc/valgrind/lackey
++abs_top_builddir = /code/rmalloc/valgrind
++abs_top_srcdir = /code/rmalloc/valgrind
++ac_ct_CC = gcc
++ac_ct_CXX = g++
++am__include = include
++am__leading_dot = .
++am__quote = 
++am__tar = ${AMTAR} chof - "$$tardir"
++am__untar = ${AMTAR} xf -
++bindir = ${exec_prefix}/bin
++build = i686-pc-linux-gnu
++build_alias = 
++build_cpu = i686
++build_os = linux-gnu
++build_vendor = pc
++builddir = .
++datadir = ${datarootdir}
++datarootdir = ${prefix}/share
++docdir = ${datarootdir}/doc/${PACKAGE_TARNAME}
++dvidir = ${docdir}
++exec_prefix = ${prefix}
++host = i686-pc-linux-gnu
++host_alias = 
++host_cpu = i686
++host_os = linux-gnu
++host_vendor = pc
++htmldir = ${docdir}
++includedir = ${prefix}/include
++infodir = ${datarootdir}/info
++install_sh = ${SHELL} /code/rmalloc/valgrind/install-sh
++libdir = ${exec_prefix}/lib
++libexecdir = ${exec_prefix}/libexec
++localedir = ${datarootdir}/locale
++localstatedir = ${prefix}/var
++mandir = ${datarootdir}/man
++mkdir_p = /bin/mkdir -p
++oldincludedir = /usr/include
++pdfdir = ${docdir}
++prefix = /usr/local
++program_transform_name = s,x,x,
++psdir = ${docdir}
++sbindir = ${exec_prefix}/sbin
++sharedstatedir = ${prefix}/com
++srcdir = .
++sysconfdir = ${prefix}/etc
++target_alias = 
++top_build_prefix = ../
++top_builddir = ..
++top_srcdir = ..
++SUBDIRS = . tests
++inplacedir = $(top_builddir)/.in_place
++
++#----------------------------------------------------------------------------
++# Flags
++#----------------------------------------------------------------------------
++
++# Baseline flags for all compilations.  Aim here is to maximise
++# performance and get whatever useful warnings we can out of gcc.
++# -fno-builtin is important for defeating LLVM's idiom recognition
++# that somehow causes VG_(memset) to get into infinite recursion.
++AM_CFLAGS_BASE = \
++	-O2 -g \
++	-Wall \
++	-Wmissing-prototypes \
++	-Wshadow \
++	-Wpointer-arith \
++	-Wstrict-prototypes \
++	-Wmissing-declarations \
++	-Wno-format-zero-length \
++	-fno-strict-aliasing \
++	-fno-builtin
++
++AM_CFLAGS_PIC = -fpic -O -g -fno-omit-frame-pointer -fno-strict-aliasing \
++		-fno-builtin
++
++
++# These flags are used for building the preload shared objects.
++# The aim is to give reasonable performance but also to have good
++# stack traces, since users often see stack traces extending 
++# into (and through) the preloads.
++#AM_CFLAGS_PIC = -dynamic -O -g -fno-omit-frame-pointer -fno-strict-aliasing \
++#		-mno-dynamic-no-pic -fpic -fPIC \
++#		-fno-builtin
++
++
++# Flags for specific targets.
++#
++# Nb: the AM_CPPFLAGS_* values are suitable for building tools and auxprogs.
++# For building the core, coregrind/Makefile.am files add some extra things.
++AM_CPPFLAGS_X86_LINUX = \
++	-I$(top_srcdir) \
++	-I$(top_srcdir)/include \
++	-I$(top_srcdir)/VEX/pub \
++	-DVGA_x86=1 \
++	-DVGO_linux=1 \
++	-DVGP_x86_linux=1 \
++	-DVGPV_x86_linux_vanilla=1
++
++#AM_CPPFLAGS_ = \
++#	-I$(top_srcdir) \
++#	-I$(top_srcdir)/include \
++#	-I$(top_srcdir)/VEX/pub \
++#	-DVGA_=1 \
++#	-DVGO_linux=1 \
++#	-DVGP__linux=1 \
++#	-DVGPV__linux_vanilla=1
++
++AM_FLAG_M3264_X86_LINUX = -m32
++AM_CFLAGS_X86_LINUX = -m32  -mpreferred-stack-boundary=2 \
++				$(AM_CFLAGS_BASE) -fomit-frame-pointer
++
++AM_CCASFLAGS_X86_LINUX = -m32 -g
++AM_FLAG_M3264_AMD64_LINUX = -m64
++AM_CFLAGS_AMD64_LINUX = -m64 -mpreferred-stack-boundary=2 \
++				$(AM_CFLAGS_BASE) -fomit-frame-pointer
++
++AM_CCASFLAGS_AMD64_LINUX = -m64 -g
++AM_FLAG_M3264_PPC32_LINUX = -m32
++AM_CFLAGS_PPC32_LINUX = -m32 $(AM_CFLAGS_BASE)
++AM_CCASFLAGS_PPC32_LINUX = -m32 -g
++AM_FLAG_M3264_PPC64_LINUX = -m64
++AM_CFLAGS_PPC64_LINUX = -m64 $(AM_CFLAGS_BASE)
++AM_CCASFLAGS_PPC64_LINUX = -m64 -g
++AM_FLAG_M3264_ARM_LINUX = -m32
++AM_CFLAGS_ARM_LINUX = -m32 -mpreferred-stack-boundary=2 \
++			 	$(AM_CFLAGS_BASE) -marm -mcpu=cortex-a8
++
++AM_CCASFLAGS_ARM_LINUX = -m32 \
++				-marm -mcpu=cortex-a8 -g
++
++AM_FLAG_M3264_X86_DARWIN = -arch i386
++AM_CFLAGS_X86_DARWIN = $(WERROR) -arch i386 $(AM_CFLAGS_BASE) \
++				-mmacosx-version-min=10.5 \
++				-fno-stack-protector -fno-pic -fno-PIC
++
++AM_CCASFLAGS_X86_DARWIN = -arch i386 -g
++AM_FLAG_M3264_AMD64_DARWIN = -arch x86_64
++AM_CFLAGS_AMD64_DARWIN = $(WERROR) -arch x86_64 $(AM_CFLAGS_BASE) \
++			    -mmacosx-version-min=10.5 -fno-stack-protector
++
++AM_CCASFLAGS_AMD64_DARWIN = -arch x86_64 -g
++AM_FLAG_M3264_S390X_LINUX = -m64
++AM_CFLAGS_S390X_LINUX = -m64 $(AM_CFLAGS_BASE) -fomit-frame-pointer
++AM_CCASFLAGS_S390X_LINUX = -m64 -g -mzarch -march=z900
++AM_FLAG_M3264_MIPS32_LINUX = -m32
++AM_CFLAGS_MIPS32_LINUX = -m32 $(AM_CFLAGS_BASE) -mips32
++AM_CCASFLAGS_MIPS32_LINUX = -m32 -mips32 -g
++
++# Flags for the primary target.  These must be used to build the
++# regtests and performance tests.  In fact, these must be used to
++# build anything which is built only once on a dual-arch build.
++#
++AM_FLAG_M3264_PRI = $(AM_FLAG_M3264_X86_LINUX)
++AM_CPPFLAGS_PRI = $(AM_CPPFLAGS_X86_LINUX)
++AM_CFLAGS_PRI = $(AM_CFLAGS_X86_LINUX)
++AM_CCASFLAGS_PRI = $(AM_CCASFLAGS_X86_LINUX)
++AM_FLAG_M3264_SEC = 
++#AM_FLAG_M3264_SEC = $(AM_FLAG_M3264_)
++
++# Baseline link flags for making vgpreload shared objects.
++#
++PRELOAD_LDFLAGS_COMMON_LINUX = -nodefaultlibs -shared -Wl,-z,interpose,-z,initfirst
++PRELOAD_LDFLAGS_COMMON_DARWIN = -dynamic -dynamiclib -all_load
++PRELOAD_LDFLAGS_X86_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) -m32
++PRELOAD_LDFLAGS_AMD64_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) -m64
++PRELOAD_LDFLAGS_PPC32_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) -m32
++PRELOAD_LDFLAGS_PPC64_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) -m64
++PRELOAD_LDFLAGS_ARM_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) -m32
++PRELOAD_LDFLAGS_X86_DARWIN = $(PRELOAD_LDFLAGS_COMMON_DARWIN) -arch i386
++PRELOAD_LDFLAGS_AMD64_DARWIN = $(PRELOAD_LDFLAGS_COMMON_DARWIN) -arch x86_64
++PRELOAD_LDFLAGS_S390X_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) -m64
++PRELOAD_LDFLAGS_MIPS32_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) -m32
++
++#----------------------------------------------------------------------------
++# <tool>-<platform> stuff
++#----------------------------------------------------------------------------
++TOOL_DEPENDENCIES_X86_LINUX = \
++	$(top_builddir)/coregrind/libcoregrind-x86-linux.a \
++	$(top_builddir)/VEX/libvex-x86-linux.a
++
++#TOOL_DEPENDENCIES_ = \
++#	$(top_builddir)/coregrind/libcoregrind--linux.a \
++#	$(top_builddir)/VEX/libvex--linux.a
++
++TOOL_LDADD_COMMON = -lgcc
++TOOL_LDADD_X86_LINUX = \
++	$(TOOL_DEPENDENCIES_X86_LINUX) $(TOOL_LDADD_COMMON)
++
++#TOOL_LDADD_ = \
++#	$(TOOL_DEPENDENCIES_) $(TOOL_LDADD_COMMON)
++
++
++# -Wl,--build-id=none is needed when linking tools on Linux. Without this
++# flag newer ld versions (2.20 and later) create a .note.gnu.build-id at the
++# default text segment address, which of course means the resulting executable
++# is unusable. So we have to tell ld not to generate that, with --build-id=none.
++TOOL_LDFLAGS_COMMON_LINUX = \
++	-static -nodefaultlibs -nostartfiles -u _start -Wl,--build-id=none
++
++TOOL_LDFLAGS_COMMON_DARWIN = \
++	-nodefaultlibs -nostartfiles -Wl,-u,__start -Wl,-e,__start
++
++TOOL_LDFLAGS_X86_LINUX = \
++	$(TOOL_LDFLAGS_COMMON_LINUX) -m32
++
++TOOL_LDFLAGS_AMD64_LINUX = \
++	$(TOOL_LDFLAGS_COMMON_LINUX) -m64
++
++TOOL_LDFLAGS_PPC32_LINUX = \
++	$(TOOL_LDFLAGS_COMMON_LINUX) -m32
++
++TOOL_LDFLAGS_PPC64_LINUX = \
++	$(TOOL_LDFLAGS_COMMON_LINUX) -m64
++
++TOOL_LDFLAGS_ARM_LINUX = $(TOOL_LDFLAGS_COMMON_LINUX) -m32 \
++	$(am__append_1)
++TOOL_LDFLAGS_S390X_LINUX = \
++	$(TOOL_LDFLAGS_COMMON_LINUX) -m64
++
++TOOL_LDFLAGS_X86_DARWIN = \
++	$(TOOL_LDFLAGS_COMMON_DARWIN) -arch i386
++
++TOOL_LDFLAGS_AMD64_DARWIN = \
++	$(TOOL_LDFLAGS_COMMON_DARWIN) -arch x86_64
++
++
++# MIPS Linux default start symbol is __start, not _start like on x86 or amd
++TOOL_LDFLAGS_MIPS32_LINUX = \
++	-static -nodefaultlibs -nostartfiles -u __start -Wl,--build-id=none \
++	-m32
++
++
++# NB for 64-bit darwin.  We may want to set -Wl,-pagezero_size to
++# something smaller than the default of 4G, so as to facilitate
++# loading clients who are also linked thusly (currently m_ume.c
++# will fail to load them).  Although such setting is probably
++# better done in link_tool_exe.c.
++#
++#	-Wl,-pagezero_size,0x100000000
++
++#----------------------------------------------------------------------------
++# vgpreload_<tool>-<platform>.a stuff
++#----------------------------------------------------------------------------
++LIBREPLACEMALLOC_X86_LINUX = \
++	$(top_builddir)/coregrind/libreplacemalloc_toolpreload-x86-linux.a
++
++LIBREPLACEMALLOC_AMD64_LINUX = \
++	$(top_builddir)/coregrind/libreplacemalloc_toolpreload-amd64-linux.a
++
++LIBREPLACEMALLOC_PPC32_LINUX = \
++	$(top_builddir)/coregrind/libreplacemalloc_toolpreload-ppc32-linux.a
++
++LIBREPLACEMALLOC_PPC64_LINUX = \
++	$(top_builddir)/coregrind/libreplacemalloc_toolpreload-ppc64-linux.a
++
++LIBREPLACEMALLOC_ARM_LINUX = \
++	$(top_builddir)/coregrind/libreplacemalloc_toolpreload-arm-linux.a
++
++LIBREPLACEMALLOC_X86_DARWIN = \
++	$(top_builddir)/coregrind/libreplacemalloc_toolpreload-x86-darwin.a
++
++LIBREPLACEMALLOC_AMD64_DARWIN = \
++	$(top_builddir)/coregrind/libreplacemalloc_toolpreload-amd64-darwin.a
++
++LIBREPLACEMALLOC_S390X_LINUX = \
++	$(top_builddir)/coregrind/libreplacemalloc_toolpreload-s390x-linux.a
++
++LIBREPLACEMALLOC_MIPS32_LINUX = \
++	$(top_builddir)/coregrind/libreplacemalloc_toolpreload-mips32-linux.a
++
++LIBREPLACEMALLOC_LDFLAGS_X86_LINUX = \
++	-Wl,--whole-archive \
++	$(LIBREPLACEMALLOC_X86_LINUX) \
++	-Wl,--no-whole-archive
++
++LIBREPLACEMALLOC_LDFLAGS_AMD64_LINUX = \
++	-Wl,--whole-archive \
++	$(LIBREPLACEMALLOC_AMD64_LINUX) \
++	-Wl,--no-whole-archive
++
++LIBREPLACEMALLOC_LDFLAGS_PPC32_LINUX = \
++	-Wl,--whole-archive \
++	$(LIBREPLACEMALLOC_PPC32_LINUX) \
++	-Wl,--no-whole-archive
++
++LIBREPLACEMALLOC_LDFLAGS_PPC64_LINUX = \
++	-Wl,--whole-archive \
++	$(LIBREPLACEMALLOC_PPC64_LINUX) \
++	-Wl,--no-whole-archive
++
++LIBREPLACEMALLOC_LDFLAGS_ARM_LINUX = \
++	-Wl,--whole-archive \
++	$(LIBREPLACEMALLOC_ARM_LINUX) \
++	-Wl,--no-whole-archive
++
++LIBREPLACEMALLOC_LDFLAGS_X86_DARWIN = \
++	$(LIBREPLACEMALLOC_X86_DARWIN)
++
++LIBREPLACEMALLOC_LDFLAGS_AMD64_DARWIN = \
++	$(LIBREPLACEMALLOC_AMD64_DARWIN)
++
++LIBREPLACEMALLOC_LDFLAGS_S390X_LINUX = \
++	-Wl,--whole-archive \
++	$(LIBREPLACEMALLOC_S390X_LINUX) \
++	-Wl,--no-whole-archive
++
++LIBREPLACEMALLOC_LDFLAGS_MIPS32_LINUX = \
++	-Wl,--whole-archive \
++	$(LIBREPLACEMALLOC_MIPS32_LINUX) \
++	-Wl,--no-whole-archive
++
++EXTRA_DIST = docs/lk-manual.xml
++LACKEY_SOURCES_COMMON = lk_main.c
++lackey_x86_linux_SOURCES = \
++	$(LACKEY_SOURCES_COMMON)
++
++lackey_x86_linux_CPPFLAGS = \
++	$(AM_CPPFLAGS_X86_LINUX)
++
++lackey_x86_linux_CFLAGS = \
++	$(AM_CFLAGS_X86_LINUX)
++
++lackey_x86_linux_DEPENDENCIES = \
++	$(TOOL_DEPENDENCIES_X86_LINUX)
++
++lackey_x86_linux_LDADD = \
++	$(TOOL_LDADD_X86_LINUX)
++
++lackey_x86_linux_LDFLAGS = \
++	$(TOOL_LDFLAGS_X86_LINUX)
++
++lackey_x86_linux_LINK = \
++	$(top_builddir)/coregrind/link_tool_exe_linux \
++	0x38000000 \
++	$(LINK) \
++	$(lackey_x86_linux_CFLAGS) \
++	$(lackey_x86_linux_LDFLAGS)
++
++#lackey__linux_SOURCES = \
++#	$(LACKEY_SOURCES_COMMON)
++
++#lackey__linux_CPPFLAGS = \
++#	$(AM_CPPFLAGS_)
++
++#lackey__linux_CFLAGS = \
++#	$(AM_CFLAGS_)
++
++#lackey__linux_DEPENDENCIES = \
++#	$(TOOL_DEPENDENCIES_)
++
++#lackey__linux_LDADD = \
++#	$(TOOL_LDADD_)
++
++#lackey__linux_LDFLAGS = \
++#	$(TOOL_LDFLAGS_)
++
++#lackey__linux_LINK = \
++#	$(top_builddir)/coregrind/link_tool_exe_linux \
++#	0xUNSET \
++#	$(LINK) \
++#	$(lackey__linux_CFLAGS) \
++#	$(lackey__linux_LDFLAGS)
++
++#noinst_DSYMS = $(noinst_PROGRAMS)
++VGPRELOAD_LACKEY_SOURCES_COMMON = 
++vgpreload_lackey_x86_linux_so_SOURCES = \
++	$(VGPRELOAD_LACKEY_SOURCES_COMMON)
++
++vgpreload_lackey_x86_linux_so_CPPFLAGS = \
++	$(AM_CPPFLAGS_X86_LINUX)
++
++vgpreload_lackey_x86_linux_so_CFLAGS = \
++	$(AM_CFLAGS_X86_LINUX) $(AM_CFLAGS_PIC) -O2
++
++vgpreload_lackey_x86_linux_so_DEPENDENCIES = \
++	$(LIBREPLACEMALLOC_X86_LINUX)
++
++vgpreload_lackey_x86_linux_so_LDFLAGS = \
++	$(PRELOAD_LDFLAGS_X86_LINUX) \
++	$(LIBREPLACEMALLOC_LDFLAGS_X86_LINUX)
++
++#vgpreload_lackey__linux_so_SOURCES = \
++#	$(VGPRELOAD_LACKEY_SOURCES_COMMON)
++
++#vgpreload_lackey__linux_so_CPPFLAGS = \
++#	$(AM_CPPFLAGS_)
++
++#vgpreload_lackey__linux_so_CFLAGS = \
++#	$(AM_CFLAGS_) $(AM_CFLAGS_PIC) -O2
++
++#vgpreload_lackey__linux_so_DEPENDENCIES = \
++#	$(LIBREPLACEMALLOC_)
++
++#vgpreload_lackey__linux_so_LDFLAGS = \
++#	$(PRELOAD_LDFLAGS_) \
++#	$(LIBREPLACEMALLOC_LDFLAGS_)
++
++all: all-recursive
++
++.SUFFIXES:
++.SUFFIXES: .c .o .obj
++$(srcdir)/Makefile.in: # $(srcdir)/Makefile.am $(top_srcdir)/Makefile.tool.am $(top_srcdir)/Makefile.all.am $(am__configure_deps)
++	@for dep in $?; do \
++	  case '$(am__configure_deps)' in \
++	    *$$dep*) \
++	      ( cd $(top_builddir) && $(MAKE) $(AM_MAKEFLAGS) am--refresh ) \
++	        && { if test -f $@; then exit 0; else break; fi; }; \
++	      exit 1;; \
++	  esac; \
++	done; \
++	echo ' cd $(top_srcdir) && $(AUTOMAKE) --foreign lackey/Makefile'; \
++	$(am__cd) $(top_srcdir) && \
++	  $(AUTOMAKE) --foreign lackey/Makefile
++.PRECIOUS: Makefile
++Makefile: $(srcdir)/Makefile.in $(top_builddir)/config.status
++	@case '$?' in \
++	  *config.status*) \
++	    cd $(top_builddir) && $(MAKE) $(AM_MAKEFLAGS) am--refresh;; \
++	  *) \
++	    echo ' cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@ $(am__depfiles_maybe)'; \
++	    cd $(top_builddir) && $(SHELL) ./config.status $(subdir)/$@ $(am__depfiles_maybe);; \
++	esac;
++
++$(top_builddir)/config.status: $(top_srcdir)/configure $(CONFIG_STATUS_DEPENDENCIES)
++	cd $(top_builddir) && $(MAKE) $(AM_MAKEFLAGS) am--refresh
++
++$(top_srcdir)/configure: # $(am__configure_deps)
++	cd $(top_builddir) && $(MAKE) $(AM_MAKEFLAGS) am--refresh
++$(ACLOCAL_M4): # $(am__aclocal_m4_deps)
++	cd $(top_builddir) && $(MAKE) $(AM_MAKEFLAGS) am--refresh
++$(am__aclocal_m4_deps):
++
++clean-noinstPROGRAMS:
++	-test -z "$(noinst_PROGRAMS)" || rm -f $(noinst_PROGRAMS)
++lackey-x86-linux$(EXEEXT): $(lackey_x86_linux_OBJECTS) $(lackey_x86_linux_DEPENDENCIES) 
++	@rm -f lackey-x86-linux$(EXEEXT)
++	$(lackey_x86_linux_LINK) $(lackey_x86_linux_OBJECTS) $(lackey_x86_linux_LDADD) $(LIBS)
++lackey--linux$(EXEEXT): $(lackey__linux_OBJECTS) $(lackey__linux_DEPENDENCIES) 
++	@rm -f lackey--linux$(EXEEXT)
++	$(lackey__linux_LINK) $(lackey__linux_OBJECTS) $(lackey__linux_LDADD) $(LIBS)
++vgpreload_lackey-x86-linux.so$(EXEEXT): $(vgpreload_lackey_x86_linux_so_OBJECTS) $(vgpreload_lackey_x86_linux_so_DEPENDENCIES) 
++	@rm -f vgpreload_lackey-x86-linux.so$(EXEEXT)
++	$(vgpreload_lackey_x86_linux_so_LINK) $(vgpreload_lackey_x86_linux_so_OBJECTS) $(vgpreload_lackey_x86_linux_so_LDADD) $(LIBS)
++vgpreload_lackey--linux.so$(EXEEXT): $(vgpreload_lackey__linux_so_OBJECTS) $(vgpreload_lackey__linux_so_DEPENDENCIES) 
++	@rm -f vgpreload_lackey--linux.so$(EXEEXT)
++	$(vgpreload_lackey__linux_so_LINK) $(vgpreload_lackey__linux_so_OBJECTS) $(vgpreload_lackey__linux_so_LDADD) $(LIBS)
++
++mostlyclean-compile:
++	-rm -f *.$(OBJEXT)
++
++distclean-compile:
++	-rm -f *.tab.c
++
++include ./$(DEPDIR)/lackey_x86_linux-lk_main.Po
++include ./$(DEPDIR)/lackey__linux-lk_main.Po
++
++.c.o:
++	$(COMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ $<
++	$(am__mv) $(DEPDIR)/$*.Tpo $(DEPDIR)/$*.Po
++#	source='$<' object='$@' libtool=no \
++#	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) \
++#	$(COMPILE) -c $<
++
++.c.obj:
++	$(COMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ `$(CYGPATH_W) '$<'`
++	$(am__mv) $(DEPDIR)/$*.Tpo $(DEPDIR)/$*.Po
++#	source='$<' object='$@' libtool=no \
++#	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) \
++#	$(COMPILE) -c `$(CYGPATH_W) '$<'`
++
++lackey_x86_linux-lk_main.o: lk_main.c
++	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(lackey_x86_linux_CPPFLAGS) $(CPPFLAGS) $(lackey_x86_linux_CFLAGS) $(CFLAGS) -MT lackey_x86_linux-lk_main.o -MD -MP -MF $(DEPDIR)/lackey_x86_linux-lk_main.Tpo -c -o lackey_x86_linux-lk_main.o `test -f 'lk_main.c' || echo '$(srcdir)/'`lk_main.c
++	$(am__mv) $(DEPDIR)/lackey_x86_linux-lk_main.Tpo $(DEPDIR)/lackey_x86_linux-lk_main.Po
++#	source='lk_main.c' object='lackey_x86_linux-lk_main.o' libtool=no \
++#	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) \
++#	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(lackey_x86_linux_CPPFLAGS) $(CPPFLAGS) $(lackey_x86_linux_CFLAGS) $(CFLAGS) -c -o lackey_x86_linux-lk_main.o `test -f 'lk_main.c' || echo '$(srcdir)/'`lk_main.c
++
++lackey_x86_linux-lk_main.obj: lk_main.c
++	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(lackey_x86_linux_CPPFLAGS) $(CPPFLAGS) $(lackey_x86_linux_CFLAGS) $(CFLAGS) -MT lackey_x86_linux-lk_main.obj -MD -MP -MF $(DEPDIR)/lackey_x86_linux-lk_main.Tpo -c -o lackey_x86_linux-lk_main.obj `if test -f 'lk_main.c'; then $(CYGPATH_W) 'lk_main.c'; else $(CYGPATH_W) '$(srcdir)/lk_main.c'; fi`
++	$(am__mv) $(DEPDIR)/lackey_x86_linux-lk_main.Tpo $(DEPDIR)/lackey_x86_linux-lk_main.Po
++#	source='lk_main.c' object='lackey_x86_linux-lk_main.obj' libtool=no \
++#	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) \
++#	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(lackey_x86_linux_CPPFLAGS) $(CPPFLAGS) $(lackey_x86_linux_CFLAGS) $(CFLAGS) -c -o lackey_x86_linux-lk_main.obj `if test -f 'lk_main.c'; then $(CYGPATH_W) 'lk_main.c'; else $(CYGPATH_W) '$(srcdir)/lk_main.c'; fi`
++
++lackey__linux-lk_main.o: lk_main.c
++	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(lackey__linux_CPPFLAGS) $(CPPFLAGS) $(lackey__linux_CFLAGS) $(CFLAGS) -MT lackey__linux-lk_main.o -MD -MP -MF $(DEPDIR)/lackey__linux-lk_main.Tpo -c -o lackey__linux-lk_main.o `test -f 'lk_main.c' || echo '$(srcdir)/'`lk_main.c
++	$(am__mv) $(DEPDIR)/lackey__linux-lk_main.Tpo $(DEPDIR)/lackey__linux-lk_main.Po
++#	source='lk_main.c' object='lackey__linux-lk_main.o' libtool=no \
++#	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) \
++#	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(lackey__linux_CPPFLAGS) $(CPPFLAGS) $(lackey__linux_CFLAGS) $(CFLAGS) -c -o lackey__linux-lk_main.o `test -f 'lk_main.c' || echo '$(srcdir)/'`lk_main.c
++
++lackey__linux-lk_main.obj: lk_main.c
++	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(lackey__linux_CPPFLAGS) $(CPPFLAGS) $(lackey__linux_CFLAGS) $(CFLAGS) -MT lackey__linux-lk_main.obj -MD -MP -MF $(DEPDIR)/lackey__linux-lk_main.Tpo -c -o lackey__linux-lk_main.obj `if test -f 'lk_main.c'; then $(CYGPATH_W) 'lk_main.c'; else $(CYGPATH_W) '$(srcdir)/lk_main.c'; fi`
++	$(am__mv) $(DEPDIR)/lackey__linux-lk_main.Tpo $(DEPDIR)/lackey__linux-lk_main.Po
++#	source='lk_main.c' object='lackey__linux-lk_main.obj' libtool=no \
++#	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) \
++#	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(lackey__linux_CPPFLAGS) $(CPPFLAGS) $(lackey__linux_CFLAGS) $(CFLAGS) -c -o lackey__linux-lk_main.obj `if test -f 'lk_main.c'; then $(CYGPATH_W) 'lk_main.c'; else $(CYGPATH_W) '$(srcdir)/lk_main.c'; fi`
++
++# This directory's subdirectories are mostly independent; you can cd
++# into them and run `make' without going through this Makefile.
++# To change the values of `make' variables: instead of editing Makefiles,
++# (1) if the variable is set in `config.status', edit `config.status'
++#     (which will cause the Makefiles to be regenerated when you run `make');
++# (2) otherwise, pass the desired values on the `make' command line.
++$(RECURSIVE_TARGETS):
++	@fail= failcom='exit 1'; \
++	for f in x $$MAKEFLAGS; do \
++	  case $$f in \
++	    *=* | --[!k]*);; \
++	    *k*) failcom='fail=yes';; \
++	  esac; \
++	done; \
++	dot_seen=no; \
++	target=`echo $@ | sed s/-recursive//`; \
++	list='$(SUBDIRS)'; for subdir in $$list; do \
++	  echo "Making $$target in $$subdir"; \
++	  if test "$$subdir" = "."; then \
++	    dot_seen=yes; \
++	    local_target="$$target-am"; \
++	  else \
++	    local_target="$$target"; \
++	  fi; \
++	  ($(am__cd) $$subdir && $(MAKE) $(AM_MAKEFLAGS) $$local_target) \
++	  || eval $$failcom; \
++	done; \
++	if test "$$dot_seen" = "no"; then \
++	  $(MAKE) $(AM_MAKEFLAGS) "$$target-am" || exit 1; \
++	fi; test -z "$$fail"
++
++$(RECURSIVE_CLEAN_TARGETS):
++	@fail= failcom='exit 1'; \
++	for f in x $$MAKEFLAGS; do \
++	  case $$f in \
++	    *=* | --[!k]*);; \
++	    *k*) failcom='fail=yes';; \
++	  esac; \
++	done; \
++	dot_seen=no; \
++	case "$@" in \
++	  distclean-* | maintainer-clean-*) list='$(DIST_SUBDIRS)' ;; \
++	  *) list='$(SUBDIRS)' ;; \
++	esac; \
++	rev=''; for subdir in $$list; do \
++	  if test "$$subdir" = "."; then :; else \
++	    rev="$$subdir $$rev"; \
++	  fi; \
++	done; \
++	rev="$$rev ."; \
++	target=`echo $@ | sed s/-recursive//`; \
++	for subdir in $$rev; do \
++	  echo "Making $$target in $$subdir"; \
++	  if test "$$subdir" = "."; then \
++	    local_target="$$target-am"; \
++	  else \
++	    local_target="$$target"; \
++	  fi; \
++	  ($(am__cd) $$subdir && $(MAKE) $(AM_MAKEFLAGS) $$local_target) \
++	  || eval $$failcom; \
++	done && test -z "$$fail"
++tags-recursive:
++	list='$(SUBDIRS)'; for subdir in $$list; do \
++	  test "$$subdir" = . || ($(am__cd) $$subdir && $(MAKE) $(AM_MAKEFLAGS) tags); \
++	done
++ctags-recursive:
++	list='$(SUBDIRS)'; for subdir in $$list; do \
++	  test "$$subdir" = . || ($(am__cd) $$subdir && $(MAKE) $(AM_MAKEFLAGS) ctags); \
++	done
++
++ID: $(HEADERS) $(SOURCES) $(LISP) $(TAGS_FILES)
++	list='$(SOURCES) $(HEADERS) $(LISP) $(TAGS_FILES)'; \
++	unique=`for i in $$list; do \
++	    if test -f "$$i"; then echo $$i; else echo $(srcdir)/$$i; fi; \
++	  done | \
++	  $(AWK) '{ files[$$0] = 1; nonempty = 1; } \
++	      END { if (nonempty) { for (i in files) print i; }; }'`; \
++	mkid -fID $$unique
++tags: TAGS
++
++TAGS: tags-recursive $(HEADERS) $(SOURCES)  $(TAGS_DEPENDENCIES) \
++		$(TAGS_FILES) $(LISP)
++	set x; \
++	here=`pwd`; \
++	if ($(ETAGS) --etags-include --version) >/dev/null 2>&1; then \
++	  include_option=--etags-include; \
++	  empty_fix=.; \
++	else \
++	  include_option=--include; \
++	  empty_fix=; \
++	fi; \
++	list='$(SUBDIRS)'; for subdir in $$list; do \
++	  if test "$$subdir" = .; then :; else \
++	    test ! -f $$subdir/TAGS || \
++	      set "$$@" "$$include_option=$$here/$$subdir/TAGS"; \
++	  fi; \
++	done; \
++	list='$(SOURCES) $(HEADERS)  $(LISP) $(TAGS_FILES)'; \
++	unique=`for i in $$list; do \
++	    if test -f "$$i"; then echo $$i; else echo $(srcdir)/$$i; fi; \
++	  done | \
++	  $(AWK) '{ files[$$0] = 1; nonempty = 1; } \
++	      END { if (nonempty) { for (i in files) print i; }; }'`; \
++	shift; \
++	if test -z "$(ETAGS_ARGS)$$*$$unique"; then :; else \
++	  test -n "$$unique" || unique=$$empty_fix; \
++	  if test $$# -gt 0; then \
++	    $(ETAGS) $(ETAGSFLAGS) $(AM_ETAGSFLAGS) $(ETAGS_ARGS) \
++	      "$$@" $$unique; \
++	  else \
++	    $(ETAGS) $(ETAGSFLAGS) $(AM_ETAGSFLAGS) $(ETAGS_ARGS) \
++	      $$unique; \
++	  fi; \
++	fi
++ctags: CTAGS
++CTAGS: ctags-recursive $(HEADERS) $(SOURCES)  $(TAGS_DEPENDENCIES) \
++		$(TAGS_FILES) $(LISP)
++	list='$(SOURCES) $(HEADERS)  $(LISP) $(TAGS_FILES)'; \
++	unique=`for i in $$list; do \
++	    if test -f "$$i"; then echo $$i; else echo $(srcdir)/$$i; fi; \
++	  done | \
++	  $(AWK) '{ files[$$0] = 1; nonempty = 1; } \
++	      END { if (nonempty) { for (i in files) print i; }; }'`; \
++	test -z "$(CTAGS_ARGS)$$unique" \
++	  || $(CTAGS) $(CTAGSFLAGS) $(AM_CTAGSFLAGS) $(CTAGS_ARGS) \
++	     $$unique
++
++GTAGS:
++	here=`$(am__cd) $(top_builddir) && pwd` \
++	  && $(am__cd) $(top_srcdir) \
++	  && gtags -i $(GTAGS_ARGS) "$$here"
++
++distclean-tags:
++	-rm -f TAGS ID GTAGS GRTAGS GSYMS GPATH tags
++
++distdir: $(DISTFILES)
++	@srcdirstrip=`echo "$(srcdir)" | sed 's/[].[^$$\\*]/\\\\&/g'`; \
++	topsrcdirstrip=`echo "$(top_srcdir)" | sed 's/[].[^$$\\*]/\\\\&/g'`; \
++	list='$(DISTFILES)'; \
++	  dist_files=`for file in $$list; do echo $$file; done | \
++	  sed -e "s|^$$srcdirstrip/||;t" \
++	      -e "s|^$$topsrcdirstrip/|$(top_builddir)/|;t"`; \
++	case $$dist_files in \
++	  */*) $(MKDIR_P) `echo "$$dist_files" | \
++			   sed '/\//!d;s|^|$(distdir)/|;s,/[^/]*$$,,' | \
++			   sort -u` ;; \
++	esac; \
++	for file in $$dist_files; do \
++	  if test -f $$file || test -d $$file; then d=.; else d=$(srcdir); fi; \
++	  if test -d $$d/$$file; then \
++	    dir=`echo "/$$file" | sed -e 's,/[^/]*$$,,'`; \
++	    if test -d "$(distdir)/$$file"; then \
++	      find "$(distdir)/$$file" -type d ! -perm -700 -exec chmod u+rwx {} \;; \
++	    fi; \
++	    if test -d $(srcdir)/$$file && test $$d != $(srcdir); then \
++	      cp -fpR $(srcdir)/$$file "$(distdir)$$dir" || exit 1; \
++	      find "$(distdir)/$$file" -type d ! -perm -700 -exec chmod u+rwx {} \;; \
++	    fi; \
++	    cp -fpR $$d/$$file "$(distdir)$$dir" || exit 1; \
++	  else \
++	    test -f "$(distdir)/$$file" \
++	    || cp -p $$d/$$file "$(distdir)/$$file" \
++	    || exit 1; \
++	  fi; \
++	done
++	@list='$(DIST_SUBDIRS)'; for subdir in $$list; do \
++	  if test "$$subdir" = .; then :; else \
++	    test -d "$(distdir)/$$subdir" \
++	    || $(MKDIR_P) "$(distdir)/$$subdir" \
++	    || exit 1; \
++	  fi; \
++	done
++	@list='$(DIST_SUBDIRS)'; for subdir in $$list; do \
++	  if test "$$subdir" = .; then :; else \
++	    dir1=$$subdir; dir2="$(distdir)/$$subdir"; \
++	    $(am__relativize); \
++	    new_distdir=$$reldir; \
++	    dir1=$$subdir; dir2="$(top_distdir)"; \
++	    $(am__relativize); \
++	    new_top_distdir=$$reldir; \
++	    echo " (cd $$subdir && $(MAKE) $(AM_MAKEFLAGS) top_distdir="$$new_top_distdir" distdir="$$new_distdir" \\"; \
++	    echo "     am__remove_distdir=: am__skip_length_check=: am__skip_mode_fix=: distdir)"; \
++	    ($(am__cd) $$subdir && \
++	      $(MAKE) $(AM_MAKEFLAGS) \
++	        top_distdir="$$new_top_distdir" \
++	        distdir="$$new_distdir" \
++		am__remove_distdir=: \
++		am__skip_length_check=: \
++		am__skip_mode_fix=: \
++	        distdir) \
++	      || exit 1; \
++	  fi; \
++	done
++check-am: all-am
++check: check-recursive
++all-am: Makefile $(PROGRAMS) all-local
++installdirs: installdirs-recursive
++installdirs-am:
++install: install-recursive
++install-exec: install-exec-recursive
++install-data: install-data-recursive
++uninstall: uninstall-recursive
++
++install-am: all-am
++	@$(MAKE) $(AM_MAKEFLAGS) install-exec-am install-data-am
++
++installcheck: installcheck-recursive
++install-strip:
++	$(MAKE) $(AM_MAKEFLAGS) INSTALL_PROGRAM="$(INSTALL_STRIP_PROGRAM)" \
++	  install_sh_PROGRAM="$(INSTALL_STRIP_PROGRAM)" INSTALL_STRIP_FLAG=-s \
++	  `test -z '$(STRIP)' || \
++	    echo "INSTALL_PROGRAM_ENV=STRIPPROG='$(STRIP)'"` install
++mostlyclean-generic:
++
++clean-generic:
++
++distclean-generic:
++	-test -z "$(CONFIG_CLEAN_FILES)" || rm -f $(CONFIG_CLEAN_FILES)
++	-test . = "$(srcdir)" || test -z "$(CONFIG_CLEAN_VPATH_FILES)" || rm -f $(CONFIG_CLEAN_VPATH_FILES)
++
++maintainer-clean-generic:
++	@echo "This command is intended for maintainers to use"
++	@echo "it deletes files that may require special tools to rebuild."
++clean: clean-recursive
++
++clean-am: clean-generic clean-local clean-noinstPROGRAMS \
++	mostlyclean-am
++
++distclean: distclean-recursive
++	-rm -rf ./$(DEPDIR)
++	-rm -f Makefile
++distclean-am: clean-am distclean-compile distclean-generic \
++	distclean-tags
++
++dvi: dvi-recursive
++
++dvi-am:
++
++html: html-recursive
++
++html-am:
++
++info: info-recursive
++
++info-am:
++
++install-data-am:
++
++install-dvi: install-dvi-recursive
++
++install-dvi-am:
++
++install-exec-am: install-exec-local
++
++install-html: install-html-recursive
++
++install-html-am:
++
++install-info: install-info-recursive
++
++install-info-am:
++
++install-man:
++
++install-pdf: install-pdf-recursive
++
++install-pdf-am:
++
++install-ps: install-ps-recursive
++
++install-ps-am:
++
++installcheck-am:
++
++maintainer-clean: maintainer-clean-recursive
++	-rm -rf ./$(DEPDIR)
++	-rm -f Makefile
++maintainer-clean-am: distclean-am maintainer-clean-generic
++
++mostlyclean: mostlyclean-recursive
++
++mostlyclean-am: mostlyclean-compile mostlyclean-generic
++
++pdf: pdf-recursive
++
++pdf-am:
++
++ps: ps-recursive
++
++ps-am:
++
++uninstall-am:
++
++.MAKE: $(RECURSIVE_CLEAN_TARGETS) $(RECURSIVE_TARGETS) ctags-recursive \
++	install-am install-strip tags-recursive
++
++.PHONY: $(RECURSIVE_CLEAN_TARGETS) $(RECURSIVE_TARGETS) CTAGS GTAGS \
++	all all-am all-local check check-am clean clean-generic \
++	clean-local clean-noinstPROGRAMS ctags ctags-recursive \
++	distclean distclean-compile distclean-generic distclean-tags \
++	distdir dvi dvi-am html html-am info info-am install \
++	install-am install-data install-data-am install-dvi \
++	install-dvi-am install-exec install-exec-am install-exec-local \
++	install-html install-html-am install-info install-info-am \
++	install-man install-pdf install-pdf-am install-ps \
++	install-ps-am install-strip installcheck installcheck-am \
++	installdirs installdirs-am maintainer-clean \
++	maintainer-clean-generic mostlyclean mostlyclean-compile \
++	mostlyclean-generic pdf pdf-am ps ps-am tags tags-recursive \
++	uninstall uninstall-am
++
++
++# This used to be required when Vex had a handwritten Makefile.  It
++# shouldn't be needed any more, though.
++
++#----------------------------------------------------------------------------
++# noinst_PROGRAMS and noinst_DSYMS targets
++#----------------------------------------------------------------------------
++
++# On Darwin, for a program 'p', the DWARF debug info is stored in the
++# directory 'p.dSYM'.  This must be generated after the executable is
++# created, with 'dsymutil p'.  We could redefine LINK with a script that
++# executes 'dsymutil' after linking, but that's a pain.  Instead we use this
++# hook so that every time "make check" is run, we subsequently invoke
++# 'dsymutil' on all the executables that lack a .dSYM directory, or that are
++# newer than their corresponding .dSYM directory.
++build-noinst_DSYMS: $(noinst_DSYMS)
++	for f in $(noinst_DSYMS); do \
++	  if [ ! -e $$f.dSYM  -o  $$f -nt $$f.dSYM ] ; then \
++	      echo "dsymutil $$f"; \
++	      dsymutil $$f; \
++	  fi; \
++	done
++
++# This is used by coregrind/Makefile.am and Makefile.tool.am for doing
++# "in-place" installs.  It copies $(noinst_PROGRAMS) into $inplacedir.
++# It needs to be depended on by an 'all-local' rule.
++inplace-noinst_PROGRAMS: $(noinst_PROGRAMS)
++	mkdir -p $(inplacedir); \
++	for f in $(noinst_PROGRAMS) ; do \
++	  rm -f $(inplacedir)/$$f; \
++	  ln -f -s ../$(subdir)/$$f $(inplacedir); \
++	done
++
++# Similar to inplace-noinst_PROGRAMS
++inplace-noinst_DSYMS: build-noinst_DSYMS
++	mkdir -p $(inplacedir); \
++	for f in $(noinst_DSYMS); do \
++	  rm -f $(inplacedir)/$$f.dSYM; \
++	  ln -f -s ../$(subdir)/$$f.dSYM $(inplacedir); \
++	done
++
++# This is used by coregrind/Makefile.am and by <tool>/Makefile.am for doing
++# "make install".  It copies $(noinst_PROGRAMS) into $prefix/lib/valgrind/.
++# It needs to be depended on by an 'install-exec-local' rule.
++install-noinst_PROGRAMS: $(noinst_PROGRAMS)
++	$(mkinstalldirs) $(DESTDIR)$(pkglibdir); \
++	for f in $(noinst_PROGRAMS); do \
++	  $(INSTALL_PROGRAM) $$f $(DESTDIR)$(pkglibdir); \
++	done
++
++# Similar to install-noinst_PROGRAMS.
++# Nb: we don't use $(INSTALL_PROGRAM) here because it doesn't work with
++# directories.  XXX: not sure whether the resulting permissions will be
++# correct when using 'cp -R'...
++install-noinst_DSYMS: build-noinst_DSYMS
++	$(mkinstalldirs) $(DESTDIR)$(pkglibdir); \
++	for f in $(noinst_DSYMS); do \
++	  cp -R $$f.dSYM $(DESTDIR)$(pkglibdir); \
++	done
++
++# This needs to be depended on by a 'clean-local' rule.
++clean-noinst_DSYMS:
++	for f in $(noinst_DSYMS); do \
++	  rm -rf $$f.dSYM; \
++	done
++
++#----------------------------------------------------------------------------
++# General stuff
++#----------------------------------------------------------------------------
++
++all-local: inplace-noinst_PROGRAMS inplace-noinst_DSYMS
++
++clean-local: clean-noinst_DSYMS
++
++install-exec-local: install-noinst_PROGRAMS install-noinst_DSYMS
++
++# mc_replace_strmem.c runs on the simulated CPU, and it often appears
++# in stack traces shown to the user.  It is built with
++# -fno-omit-frame-pointer so as to guarantee robust backtraces on x86,
++# on which CFI based unwinding is not the "normal" case and so is
++# sometimes fragile.
++mc_replace_strmem.o: CFLAGS += -fno-omit-frame-pointer
++
++# Tell versions [3.59,3.63) of GNU make to not export all variables.
++# Otherwise a system limit (for SysV at least) may be exceeded.
++.NOEXPORT:
+-- 
+1.8.1.2
+
+
+From 3cf48baeb1d990b867b9ce546d362cac6a2b8088 Mon Sep 17 00:00:00 2001
+From: Mikael Jansson <mail@mikael.jansson.be>
+Date: Tue, 3 Sep 2013 10:59:34 +0200
+Subject: [PATCH 3/6] Patch configure script to support glibc 2.17
+
+---
+ valgrind/configure.in | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/valgrind/configure.in b/valgrind/configure.in
+index c7878c7..816ba61 100644
+--- a/valgrind/configure.in
++++ b/valgrind/configure.in
+@@ -862,80 +862,86 @@ case "${GLIBC_VERSION}" in
+ 	AC_MSG_RESULT(2.11 family)
+ 	AC_DEFINE([GLIBC_2_11], 1, [Define to 1 if you're using glibc 2.11.x])
+ 	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+         ;;
+      2.12)
+ 	AC_MSG_RESULT(2.12 family)
+ 	AC_DEFINE([GLIBC_2_12], 1, [Define to 1 if you're using glibc 2.12.x])
+ 	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+ 	;;
+      2.13)
+ 	AC_MSG_RESULT(2.13 family)
+ 	AC_DEFINE([GLIBC_2_13], 1, [Define to 1 if you're using glibc 2.13.x])
+ 	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+ 	;;
+      2.14)
+ 	AC_MSG_RESULT(2.14 family)
+ 	AC_DEFINE([GLIBC_2_14], 1, [Define to 1 if you're using glibc 2.14.x])
+ 	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+ 	;;
+      2.15)
+ 	AC_MSG_RESULT(2.15 family)
+ 	AC_DEFINE([GLIBC_2_15], 1, [Define to 1 if you're using glibc 2.15.x])
+ 	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+ 	;;
+      2.16)
+ 	AC_MSG_RESULT(2.16 family)
+ 	AC_DEFINE([GLIBC_2_16], 1, [Define to 1 if you're using glibc 2.16.x])
+ 	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
++     2.17)
++	AC_MSG_RESULT(2.17 family)
++	AC_DEFINE([GLIBC_2_17], 1, [Define to 1 if you're using glibc 2.17.x])
++	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
++	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
++	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+ 	;;
+      darwin)
+ 	AC_MSG_RESULT(Darwin)
+ 	AC_DEFINE([DARWIN_LIBC], 1, [Define to 1 if you're using Darwin])
+ 	# DEFAULT_SUPP set by kernel version check above.
+ 	;;
+      bionic)
+ 	AC_MSG_RESULT(Bionic)
+ 	AC_DEFINE([BIONIC_LIBC], 1, [Define to 1 if you're using Bionic])
+ 	DEFAULT_SUPP="bionic.supp ${DEFAULT_SUPP}"
+ 	;;
+ 
+      *)
+ 	AC_MSG_RESULT([unsupported version ${GLIBC_VERSION}])
+ 	AC_MSG_ERROR([Valgrind requires glibc version 2.2 - 2.16])
+ 	AC_MSG_ERROR([or Darwin libc])
+ 	;;
+ esac
+ 
+ AC_SUBST(GLIBC_VERSION)
+ 
+ 
+ # Add default suppressions for the X client libraries.  Make no
+ # attempt to detect whether such libraries are installed on the
+ # build machine (or even if any X facilities are present); just
+ # add the suppressions antidisirregardless.
+ DEFAULT_SUPP="xfree-4.supp ${DEFAULT_SUPP}"
+ DEFAULT_SUPP="xfree-3.supp ${DEFAULT_SUPP}"
+ 
+ # Add glibc and X11 suppressions for exp-sgcheck
+ DEFAULT_SUPP="exp-sgcheck.supp ${DEFAULT_SUPP}"
+ 
+ 
+ #----------------------------------------------------------------------------
+ # Platform variants?
+ #----------------------------------------------------------------------------
+ 
+ # Normally the PLAT = (ARCH, OS) characterisation of the platform is enough.
+ # But there are times where we need a bit more control.  The motivating
+ # and currently only case is Android: this is almost identical to arm-linux,
+-- 
+1.8.1.2
+
+
+From 9327421d9adca8fc4f92f3ec43f9828c219405d8 Mon Sep 17 00:00:00 2001
+From: Mikael Jansson <mail@mikael.jansson.be>
+Date: Tue, 3 Sep 2013 13:20:17 +0200
+Subject: [PATCH 4/6] Slap Valgrind into Ubuntu submission.
+
+Something has changed with Ubuntu's default compiler's output with regards to segments. This fixes it. Blargh.
+---
+ valgrind/coregrind/m_debuginfo/readelf.c | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/valgrind/coregrind/m_debuginfo/readelf.c b/valgrind/coregrind/m_debuginfo/readelf.c
+index ef1df5a..3d671f6 100644
+--- a/valgrind/coregrind/m_debuginfo/readelf.c
++++ b/valgrind/coregrind/m_debuginfo/readelf.c
+@@ -1344,89 +1344,96 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
+    ElfXX_Shdr* shdr_img        = NULL;
+    UWord       shdr_nent       = 0;
+    UWord       shdr_ent_szB    = 0;
+    UChar*      shdr_strtab_img = NULL;
+ 
+    /* SVMAs covered by rx and rw segments and corresponding biases.
+       Normally each object would provide just one rx and one rw area,
+       but various ELF mangling tools create objects with multiple
+       such entries, hence the generality. */
+    typedef
+       struct {
+          Addr     svma_base;
+          Addr     svma_limit;
+          PtrdiffT bias;
+          Bool     exec;
+       }
+       RangeAndBias;
+ 
+    XArray* /* of RangeAndBias */ svma_ranges = NULL;
+ 
+    /* Build ID */
+    Char* buildid = NULL;
+ 
+    vg_assert(di);
+    vg_assert(di->fsm.have_rx_map == True);
+    vg_assert(di->fsm.have_rw_map == True);
+    vg_assert(di->have_dinfo == False);
+    vg_assert(di->fsm.filename);
+    vg_assert(!di->symtab);
+    vg_assert(!di->loctab);
+    vg_assert(!di->cfsi);
+    vg_assert(!di->cfsi_exprs);
+    vg_assert(!di->strchunks);
+    vg_assert(!di->soname);
+ 
+    {
+       Bool has_nonempty_rx = False;
+       Bool has_nonempty_rw = False;
+       for (i = 0; i < VG_(sizeXA)(di->fsm.maps); i++) {
+          struct _DebugInfoMapping* map = VG_(indexXA)(di->fsm.maps, i);
++         /*
+          if (map->rx) {
+             if (map->size > 0)
+                has_nonempty_rx = True;
+          } else if (map->rw) {
+             if (map->size > 0)
+                has_nonempty_rw = True;
+          } else
++         */
++         // PATCHED: http://valgrind.10908.n7.nabble.com/valgrind-r12810-Avoid-asserting-when-a-segment-is-mapped-both-rw-and-rx-td9216.html
++         if (!map->rx && !map->rw)
+             continue;
+-
++         if (map->rx && map->size > 0) 
++            has_nonempty_rx = True; 
++         if (map->rw && map->size > 0) 
++            has_nonempty_rw = True; 
+          /* If this doesn't hold true, it means that m_syswrap/m_aspacemgr
+             managed to do a mapping where the start isn't page aligned.
+             Which sounds pretty bogus to me. */
+          vg_assert(VG_IS_PAGE_ALIGNED(map->avma));
+       }
+       vg_assert(has_nonempty_rx);
+       vg_assert(has_nonempty_rw);
+    }
+ 
+    /* ----------------------------------------------------------
+       At this point, there is very little information in the
+       DebugInfo.  We only know that something that looks like an ELF
+       file has been mapped rx-ishly and rw-ishly as recorded in the
+       di->fsm.maps array items.  First we examine the file's ELF
+       Program Header, and, by comparing that against the di->fsm.maps
+       info, try to figure out the AVMAs for the sections we care
+       about, that should have been mapped: text, data, sdata, bss,
+       got, plt, and toc.
+       ---------------------------------------------------------- */
+ 
+    res = False;
+ 
+    oimage = (Addr)NULL;
+    if (VG_(clo_verbosity) > 1 || VG_(clo_trace_redir))
+       VG_(message)(Vg_DebugMsg, "Reading syms from %s\n",
+                                 di->fsm.filename );
+ 
+    /* mmap the object image aboard, so that we can read symbols and
+       line number info out of it.  It will be munmapped immediately
+       thereafter; it is only aboard transiently. */
+ 
+    fd = VG_(open)(di->fsm.filename, VKI_O_RDONLY, 0);
+    if (sr_isError(fd)) {
+       ML_(symerr)(di, True, "Can't open .so/.exe to read symbols?!");
+       return False;
+    }
+ 
+    { Long n_oimageLL = VG_(fsize)(sr_Res(fd));
+      if (n_oimageLL <= 0) {
+         ML_(symerr)(di, True, "Can't stat .so/.exe (to determine its size)?!");
+-- 
+1.8.1.2
+
+
+From b84ee175db33548a87b015a25dce1f9e5722d790 Mon Sep 17 00:00:00 2001
+From: Mikael Jansson <mail@mikael.jansson.be>
+Date: Tue, 19 Nov 2013 21:10:49 +0100
+Subject: [PATCH 5/6] Fixed configure.in for glibc 2.17
+
+---
+ valgrind/configure.in | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/valgrind/configure.in b/valgrind/configure.in
+index 816ba61..dad6aab 100644
+--- a/valgrind/configure.in
++++ b/valgrind/configure.in
+@@ -862,80 +862,81 @@ case "${GLIBC_VERSION}" in
+ 	AC_MSG_RESULT(2.11 family)
+ 	AC_DEFINE([GLIBC_2_11], 1, [Define to 1 if you're using glibc 2.11.x])
+ 	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+         ;;
+      2.12)
+ 	AC_MSG_RESULT(2.12 family)
+ 	AC_DEFINE([GLIBC_2_12], 1, [Define to 1 if you're using glibc 2.12.x])
+ 	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+ 	;;
+      2.13)
+ 	AC_MSG_RESULT(2.13 family)
+ 	AC_DEFINE([GLIBC_2_13], 1, [Define to 1 if you're using glibc 2.13.x])
+ 	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+ 	;;
+      2.14)
+ 	AC_MSG_RESULT(2.14 family)
+ 	AC_DEFINE([GLIBC_2_14], 1, [Define to 1 if you're using glibc 2.14.x])
+ 	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+ 	;;
+      2.15)
+ 	AC_MSG_RESULT(2.15 family)
+ 	AC_DEFINE([GLIBC_2_15], 1, [Define to 1 if you're using glibc 2.15.x])
+ 	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+ 	;;
+      2.16)
+ 	AC_MSG_RESULT(2.16 family)
+ 	AC_DEFINE([GLIBC_2_16], 1, [Define to 1 if you're using glibc 2.16.x])
+ 	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
++    ;;
+      2.17)
+ 	AC_MSG_RESULT(2.17 family)
+ 	AC_DEFINE([GLIBC_2_17], 1, [Define to 1 if you're using glibc 2.17.x])
+ 	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+ 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+ 	;;
+      darwin)
+ 	AC_MSG_RESULT(Darwin)
+ 	AC_DEFINE([DARWIN_LIBC], 1, [Define to 1 if you're using Darwin])
+ 	# DEFAULT_SUPP set by kernel version check above.
+ 	;;
+      bionic)
+ 	AC_MSG_RESULT(Bionic)
+ 	AC_DEFINE([BIONIC_LIBC], 1, [Define to 1 if you're using Bionic])
+ 	DEFAULT_SUPP="bionic.supp ${DEFAULT_SUPP}"
+ 	;;
+ 
+      *)
+ 	AC_MSG_RESULT([unsupported version ${GLIBC_VERSION}])
+ 	AC_MSG_ERROR([Valgrind requires glibc version 2.2 - 2.16])
+ 	AC_MSG_ERROR([or Darwin libc])
+ 	;;
+ esac
+ 
+ AC_SUBST(GLIBC_VERSION)
+ 
+ 
+ # Add default suppressions for the X client libraries.  Make no
+ # attempt to detect whether such libraries are installed on the
+ # build machine (or even if any X facilities are present); just
+ # add the suppressions antidisirregardless.
+ DEFAULT_SUPP="xfree-4.supp ${DEFAULT_SUPP}"
+ DEFAULT_SUPP="xfree-3.supp ${DEFAULT_SUPP}"
+ 
+ # Add glibc and X11 suppressions for exp-sgcheck
+ DEFAULT_SUPP="exp-sgcheck.supp ${DEFAULT_SUPP}"
+ 
+ 
+ #----------------------------------------------------------------------------
+-- 
+1.8.1.2
+
+
+From 76df30943827300f3535e67fc5ba17f707d12d0c Mon Sep 17 00:00:00 2001
+From: Mikael Jansson <mail@mikael.jansson.be>
+Date: Sun, 9 Feb 2014 15:16:03 +0100
+Subject: [PATCH 6/6] memcheck: no need for this commented out line.
+
+---
+ valgrind/memcheck/mc_translate.c | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/valgrind/memcheck/mc_translate.c b/valgrind/memcheck/mc_translate.c
+index 2dcf9b8..7448106 100644
+--- a/valgrind/memcheck/mc_translate.c
++++ b/valgrind/memcheck/mc_translate.c
+@@ -4108,82 +4108,80 @@ IRExpr* zwidenToHostWord ( MCEnv* mce, IRAtom* vatom )
+          case Ity_I32:
+             return assignNew('V', mce, tyH, unop(Iop_32Uto64, vatom));
+          case Ity_I16:
+             return assignNew('V', mce, tyH, unop(Iop_32Uto64, 
+                    assignNew('V', mce, Ity_I32, unop(Iop_16Uto32, vatom))));
+          case Ity_I8:
+             return assignNew('V', mce, tyH, unop(Iop_32Uto64, 
+                    assignNew('V', mce, Ity_I32, unop(Iop_8Uto32, vatom))));
+          default:
+             goto unhandled;
+       }
+    } else {
+       goto unhandled;
+    }
+   unhandled:
+    VG_(printf)("\nty = "); ppIRType(ty); VG_(printf)("\n");
+    VG_(tool_panic)("zwidenToHostWord");
+ }
+ 
+ 
+ /* Generate a shadow store.  addr is always the original address atom.
+    You can pass in either originals or V-bits for the data atom, but
+    obviously not both.  guard :: Ity_I1 controls whether the store
+    really happens; NULL means it unconditionally does.  Note that
+    guard itself is not checked for definedness; the caller of this
+    function must do that if necessary. */
+ 
+ static 
+ void do_shadow_Store ( MCEnv* mce, 
+                        IREndness end,
+                        IRAtom* addr, UInt bias,
+                        IRAtom* data, IRAtom* vdata,
+                        IRAtom* guard )
+ {
+    IROp     mkAdd;
+    IRType   ty, tyAddr;
+    void*    helper = NULL;
+    Char*    hname = NULL;
+    IRConst* c;
+ 
+-   //VG_(printf)("do_shadow_Store: addr = %p\n", (void *)addr);
+-
+    tyAddr = mce->hWordTy;
+    mkAdd  = tyAddr==Ity_I32 ? Iop_Add32 : Iop_Add64;
+    tl_assert( tyAddr == Ity_I32 || tyAddr == Ity_I64 );
+    tl_assert( end == Iend_LE || end == Iend_BE );
+ 
+    if (data) {
+       tl_assert(!vdata);
+       tl_assert(isOriginalAtom(mce, data));
+       tl_assert(bias == 0);
+       vdata = expr2vbits( mce, data );
+    } else {
+       tl_assert(vdata);
+    }
+ 
+    tl_assert(isOriginalAtom(mce,addr));
+    tl_assert(isShadowAtom(mce,vdata));
+ 
+    if (guard) {
+       tl_assert(isOriginalAtom(mce, guard));
+       tl_assert(typeOfIRExpr(mce->sb->tyenv, guard) == Ity_I1);
+    }
+ 
+    ty = typeOfIRExpr(mce->sb->tyenv, vdata);
+ 
+    // If we're not doing undefined value checking, pretend that this value
+    // is "all valid".  That lets Vex's optimiser remove some of the V bit
+    // shadow computation ops that precede it.
+    if (MC_(clo_mc_level) == 1) {
+       switch (ty) {
+          case Ity_V256: // V256 weirdness -- used four times
+                         c = IRConst_V256(V_BITS32_DEFINED); break;
+          case Ity_V128: // V128 weirdness -- used twice
+                         c = IRConst_V128(V_BITS16_DEFINED); break;
+          case Ity_I64:  c = IRConst_U64 (V_BITS64_DEFINED); break;
+          case Ity_I32:  c = IRConst_U32 (V_BITS32_DEFINED); break;
+          case Ity_I16:  c = IRConst_U16 (V_BITS16_DEFINED); break;
+          case Ity_I8:   c = IRConst_U8  (V_BITS8_DEFINED);  break;
+          default:       VG_(tool_panic)("memcheck:do_shadow_Store(LE)");
+       }
+       vdata = IRExpr_Const( c );
+-- 
+1.8.1.2
+
