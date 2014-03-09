@@ -65,6 +65,30 @@ the, somewhat different, French way of doing things.
 
 \section{Background}
 
+Computer systems can be generalized to be composed of two things: data, and code operating on said data.  In order to
+perform useful calculations, real-world applications accept user data which often varies in size.  To accomodate the
+differences, memory is requested dynamically, at runtime, using a memory allocator. 
+
+- malloc, free.
+    - in turn asks underlying OS, mmap and/or sbrk.
+        - difference depending on operating system
+    - always does memory mapping in the end.
+- long-running applications
+- threading
+
+- different methods for solving
+- jemalloc
+- dlmalloc
+- garbage collectors
+
+- fragmentation: problem?
+
+- rmmalloc
+- main goal
+- choices
+- why not, in the end (large per-block structures -- too big overhead)
+
+
 \clearpage
 \end{document}
 
