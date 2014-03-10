@@ -1,3 +1,4 @@
+% vim:tw=120
 \documentclass[a4paper,twoside,openany]{report}
 \pagestyle{headings}
 
@@ -73,20 +74,37 @@ differences, memory is requested dynamically, at runtime, using a memory allocat
     - in turn asks underlying OS, mmap and/or sbrk.
         - difference depending on operating system
     - always does memory mapping in the end.
+
+\section{Challenges}
+
 - long-running applications
 - threading
+- terminology, 
 
-- different methods for solving
+- different methods for solving: speed, frag, thread perf
 - jemalloc
 - dlmalloc
 - garbage collectors
 
 - fragmentation: problem?
 
+\section{Hypothesis}
+
 - rmmalloc
 - main goal
 - choices
 - why not, in the end (large per-block structures -- too big overhead)
+
+\chapter{Analysis}
+\section{Background}
+
+\chapter{Implementation}
+
+\chapter{Results}
+
+\chapter{Conclusion}
+
+\chapter{Appendix}
 
 
 \clearpage
