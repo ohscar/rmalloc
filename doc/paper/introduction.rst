@@ -59,17 +59,30 @@ information about freed blocks in a list, there would be little wasting of memor
 efficiency requirement, pages would only be requested when there were no blocks of the correct size and therefore the
 entire free list must be searched for a suiting block before giving up and requesting a page.
 
-Buddy Allocator
-~~~~~~~~~~~~~~~~
-There are different methods for solving these problems. The most common allocator type is the buddy allocator.
-
 Garbage Collectors
 ~~~~~~~~~~~~~~~~~~~
+- garbage collectors
 
+Buddy Allocator
+~~~~~~~~~~~~~~~~
+There are different methods for solving these problems. The most common allocator type is the buddy allocator, and many
+allocators are built on its principles: start with a single block and see if the requested chunk fits in half of the
+block. If it does, split the block into two and repeat, until there no smaller block size would fit the request.
+
+<illustration of 2^k list>
+
+Over time, there will be more and more items of size 2^n, that are stored on a free list for that block size. Each pair
+of split-up blocks is said to be two buddies. When two buddy blocks are free, they can be joined. A block of the next
+larger size (n+1) can be created from these two blocks. This is repeated until the largest block, i.e. 2^k. In the worst
+case, this causes 2^(n) - 1 bytes of overhead per block, also known as internal fragmentation.
+
+Commonly Used Allocators
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 - different methods for solving: speed, frag, thread perf
 - jemalloc
 - dlmalloc
-- garbage collectors
+- tcmalloc
+- ...
 
 Efficiency, revisited: Fragmentation - a problem?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
