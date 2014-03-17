@@ -28,37 +28,6 @@ all e.g. 8-byte chunks into one or more pages, it will be easier to return the p
 Lookup can also be more efficient, since the allocator can use offsets to find a suitable free block, instead of
 iterating through a list of free blocks.
 
-Challenges
-~~~~~~~~~~~~~~~
-Long-running applications pose certain challenges:
-
-* speed
-
-  - single execution
-  - concurrency
-
-* efficiency
-
-  - internal fragmentation
-  - external fragmentation
-
-Allocators are often written to solve a specific goal, while still performing well in the average case. Some allocator
-are designed with the explicit goal of being best on average.  Furthermore, speed often hinders efficiency and vice
-versa.
-
-
-Speed
----------
-Request a page and return in to the user. It would be very fast, but not very efficient since a large part of the page
-would be unused for any allocation requests smaller than the page size.
-
-Efficiency
----------------
-By splitting up allocations in smaller pieces exactly the size of the requested block (plus metadata) and storing
-information about freed blocks in a list, there would be little wasting of memory. On the other hand, because of the
-efficiency requirement, pages would only be requested when there were no blocks of the correct size and therefore the
-entire free list must be searched for a suiting block before giving up and requesting a page.
-
 Garbage Collectors
 ~~~~~~~~~~~~~~~~~~~
 - garbage collectors
@@ -74,7 +43,20 @@ block. If it does, split the block into two and repeat, until there no smaller b
 Over time, there will be more and more items of size 2^n, that are stored on a free list for that block size. Each pair
 of split-up blocks is said to be two buddies. When two buddy blocks are free, they can be joined. A block of the next
 larger size (n+1) can be created from these two blocks. This is repeated until the largest block, i.e. 2^k. In the worst
-case, this causes 2^(n) - 1 bytes of overhead per block, also known as internal fragmentation.
+case, this causes 2^(n) - 1 bytes of overhead per block, also known as *internal fragmentation.* Still, this commonly
+used algorithm has shown to be good enough and is often incorporated as one strategy of an allocator.
+
+As touched upon before, all blocks must have metadata associated with them. For convenience, this is often stored in
+memory just before the block itself. The minimum amount of information is the length of the block, in order for *free()*
+to know where the block ends. The metadata could also be stored elsewhere, e.g. a lookup table *S(addr)* that gives the
+size of the block starting with *addr*. This gives a penalty on free, however, which is not desirable, and therefore,
+direct information about the block is usually stored with the block. The metadata associated with the block is normally
+not accessible by user code (unless queried using specific debugging code), and is called *external fragmentation*. It
+is the fragmentation between the user blocks (hence *external*), i.e. any overhead caused by information required by the
+allocator, but not the user code.
+
+Conceptually, the buddy allocator is a very simple allocator to use and implement, but not the most efficient because of
+the internal fragmentation.
 
 Commonly Used Allocators
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -83,6 +65,37 @@ Commonly Used Allocators
 - dlmalloc
 - tcmalloc
 - ...
+
+Challenges
+~~~~~~~~~~~~~~~
+Long-running applications pose certain challenges:
+
+* speed
+
+  - TODO: single execution
+  - TODO: concurrency
+
+* efficiency
+
+  - internal fragmentation
+  - external fragmentation
+
+Allocators are often written to solve a specific goal, while still performing well in the average case. Some allocator
+are designed with the explicit goal of being best on average.  Furthermore, speed often hinders efficiency and vice
+versa.
+
+Speed
+---------
+Request a page and return in to the user. It would be very fast, but not very efficient since a large part of the page
+would be unused for any allocation requests smaller than the page size.
+
+Efficiency
+---------------
+By splitting up allocations in smaller pieces exactly the size of the requested block (plus metadata) and storing
+information about freed blocks in a list, there would be little wasting of memory. On the other hand, because of the
+efficiency requirement, pages would only be requested when there were no blocks of the correct size and therefore the
+entire free list must be searched for a suiting block before giving up and requesting a page.
+
 
 Efficiency, revisited: Fragmentation - a problem?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
