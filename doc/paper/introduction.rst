@@ -30,7 +30,28 @@ iterating through a list of free blocks.
 
 Garbage Collectors
 ~~~~~~~~~~~~~~~~~~~
-- garbage collectors
+A garbage collector is an allocator that automatically provides memory for data as-needed. There is no need to
+explicitly ask for memory from the allocator, nor to free it when done. Instead, the garbage collector periodically
+checks for which objects are still in use by the application (*alive*). An object is is anything that uses heap memory: a number,
+a string, a collection, a class instance, and so on. There are several techniques for finding alive objects and
+categorizing objects depending on their lifetime in order to more efficiently find alive objects at next pass. At any
+point, a garbage collector can move around the object if necessary, therefore any object access is done indirectly via a
+translation. User code does not keep a pointer to the block of memory that the object is located in, but instead this is
+done with support in the programming language runtime.
+
+A garbage collector, because of the indirect access to memory, can also move objects around in a way that increases
+performance in different ways. One way is to move objects closer together that are often accessed together, another way
+is to move all objects closer to each other to get rid of fragmentation, which would decrease the maximum allocatable object
+size.  A normal allocator couldn't do a memory defragmentation since memory is accessed directly.
+
+TODO: expand on types of mark/sweep, roots, etc.
+
+Pool Allocators
+~~~~~~~~~~~~~~~~
+Certain applications use a large amount of objects of the same size that are allocated and freed continuously. This
+information can be used to create specialized pool allocators for different object sizes.
+
+TODO: expand on pool allocators and how pools/storage clasess are used in allocators
 
 Buddy Allocator
 ~~~~~~~~~~~~~~~~
@@ -38,7 +59,7 @@ There are different methods for solving these problems. The most common allocato
 allocators are built on its principles: start with a single block and see if the requested chunk fits in half of the
 block. If it does, split the block into two and repeat, until there no smaller block size would fit the request.
 
-<illustration of 2^k list>
+TODO: <illustration of 2^k list>
 
 Over time, there will be more and more items of size 2^n, that are stored on a free list for that block size. Each pair
 of split-up blocks is said to be two buddies. When two buddy blocks are free, they can be joined. A block of the next
@@ -56,14 +77,14 @@ is the fragmentation between the user blocks (hence *external*), i.e. any overhe
 allocator, but not the user code.
 
 Conceptually, the buddy allocator is a very simple allocator to use and implement, but not the most efficient because of
-the internal fragmentation.
+internal fragmentation.
 
 Commonly Used Allocators
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-- different methods for solving: speed, frag, thread perf
-- jemalloc
-- dlmalloc
-- tcmalloc
+- TODO: different methods for solving: speed, frag, thread perf
+- TODO: jemalloc
+- TODO: dlmalloc
+- TODO: tcmalloc
 - ...
 
 Challenges
@@ -96,6 +117,7 @@ information about freed blocks in a list, there would be little wasting of memor
 efficiency requirement, pages would only be requested when there were no blocks of the correct size and therefore the
 entire free list must be searched for a suiting block before giving up and requesting a page.
 
+TODO: How to solve? Pools, storage classes..
 
 Efficiency, revisited: Fragmentation - a problem?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
