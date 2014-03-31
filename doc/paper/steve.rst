@@ -9,6 +9,9 @@ adding a small wrapper.
 * Compare allocators
 * Produce animation of malloc ops
 
+- choices throughout the entire code
+- why not, in the end (large per-block structures -- too big overhead)
+
 - purpose
 - why valgrind
   + modifications to memtest

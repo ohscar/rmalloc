@@ -154,24 +154,3 @@ hypothesis, they hoped to solve the fragmentation problem in the specific situat
 browser.
 
 - TODO: Possibly for use in a virtual machine
-
-.. include:: jeff.rst
-
-.. include:: steve.rst
-
-Implementation
-===================
-
-Measuring
-~~~~~~~~~~~~
-Steve
-
-Jeff: Implementation
-~~~~~~~~~~~~~~~~~~~~~~~~~
-- choices throughout the entire code
-- why not, in the end (large per-block structures -- too big overhead)
-
-Steve: Implementation
-~~~~~~~~~~~~~~~~~~~~~~~~~
-- valgrind
-- ops-mapper
