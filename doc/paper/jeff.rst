@@ -16,14 +16,19 @@ Jeff
   + first iteration build a plain buddy allocator to get a feel for problems, proved devil is in the details
   + gtest in beginning to find regressions
   + naive malloc/compact cycle doesn't work w/ locked block at the end
-    - need proper free list and splitting
+    - need proper free list and splitting, describe free list
     - not considered in original design
   + double indirection creates memory overhead
-- describe layout of internal house-keeping structures
+- header list: design choices (describe layout of internal house-keeping structures)
+- compacting based on lisp-2(?) naive greedy allocator 
+  - sorting (possible future optimization)
+- benchmark (see Steve)
 - discarded ideas
   + notification on low memory for user compact (spent much time trying to work out algorithm before there was working
     code, premature optimization)
-- compacting: based on lisp-2(?) naive greedy allocator 
+- possible optimizations (future work)
+  - speed is good enough
+  - memory usage: make it more specific to save memory per-handle
 
 * existing work
 * fragmentation issue

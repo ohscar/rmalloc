@@ -15,9 +15,12 @@ adding a small wrapper.
 - purpose
 - why valgrind
   + modifications to memtest
-  + memtrace-to-ops-mapping
+  + memtrace-to-ops-mapping at http://rmalloc.blogspot.se/2012/08/large-scale-data-processing.html
 - locking heuristics
   - full vs simple locking
+  - access lock heuristics at http://rmalloc.blogspot.se/2013/09/memory-block-acces-locking-heuristics.html
+  - histogram for lifetime at http://rmalloc.blogspot.se/2013/09/making-sense-of-histograms.html and
+    http://rmalloc.blogspot.se/2012/08/determining-global-variables.html
 - what animation shows
 - what benchmark(s) show(s)
 - sample outputs
