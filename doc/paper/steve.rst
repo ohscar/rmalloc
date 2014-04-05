@@ -13,6 +13,10 @@ adding a small wrapper.
 - why not, in the end (large per-block structures -- too big overhead)
 
 - purpose
+- investigated
+  + valgrind
+  + bitblazer / temu
+  + clang / llvm
 - why valgrind
   + modifications to memtest
   + memtrace-to-ops-mapping at http://rmalloc.blogspot.se/2012/08/large-scale-data-processing.html
@@ -21,6 +25,7 @@ adding a small wrapper.
   - access lock heuristics at http://rmalloc.blogspot.se/2013/09/memory-block-acces-locking-heuristics.html
   - histogram for lifetime at http://rmalloc.blogspot.se/2013/09/making-sense-of-histograms.html and
     http://rmalloc.blogspot.se/2012/08/determining-global-variables.html
+- colormap (0xdeadbeef, 0xbeefbabe, 0xdeadbabe)
 - what animation shows
 - what benchmark(s) show(s)
 - sample outputs
