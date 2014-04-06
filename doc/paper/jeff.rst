@@ -4,6 +4,11 @@ Jeff
 ====
 ... is a compacting allocator.
 
+Overview
+~~~~~~~~~
+TODO:
+- different signature
+
 In order to achieve compacting, memory must be accessed indirectly. This is the signature::
 
     handle_t *rmmalloc(size_t nbytes);
@@ -37,12 +42,61 @@ with physical memory layout. Indeed, I made the incorrect decision which made th
 implement. The buddy allocator prototype was discarded and work started with the actual allocator that was to be the end
 result, with the lessons about taking care in the design phase learned.
 
+TODO:
+- quick malloc, quick free, slow compact
+
 My original idea was to have a quick malloc, a quick free and a quick compact. Compact could then be run at times when
 the client application was waiting for user input or otherwise not doing computations, such that the malloc would be
-very cheap.
+very cheap. I had originally envisioned this as a malloc that would basically grow the top pointer of the
+malloc-associated heap: store information about the requested chunk size, increase the top pointer and return the chunk.
+The free operation would mark the block as not in use anymore. Eventually, the top pointer would reach the end of the
+eap, at which point the compact operation would go through the heap and reclaim previously freed memory and reset the
+top pointer to end of allocated memory leaving the freed memory as a large chunk of memory ranging to the end.
 
-- different signature
-- quick malloc, quick free, slow compact
+However, chunks can be locked. Remember that locking a chunk gives the client code the actual pointer to memory, and
+unlocking the chunks invalidates the pointer. Therefore, the worst-case scenario is that a block at the very top of the
+heap is locked when the compact occurs: even though all unlocked free blocks would be coerced into a single free block,
+a locked block at or close to the top would make subsequent malloc calls to fails. Therefore, a free list needs to be
+maintained even though it might be the case for real-world applications that the worst case occurs seldom. (REF-STEVE,
+FUTURE-WORK).
+
+TODO:
+- malloc() description
+
+When an allocation request comes in, the size of the request is checked against the top pointer and the end of the heap.
+A request that fits is associated with a new handle and returned. If there is no space left at the top, the free list is
+searched for a block that fits.
+
+TODO:
+- free() and free list description
+
+Freeing a block marks it as unused and adds it to the free list, for malloc to find later as needed.
+The free list is an index array of 2^3..k-sized blocks with a linked list at each slot. All free blocks are guaranteed
+to be at least 2^n in size. Because of the automatic merging with blocks in free, they can also be larger.
+
+TODO
+- explain Lisp-2
+
+Compacting is a greedy Lisp-2-style compacting, where blocks are moved closer to bottom of the heap (if possible),
+otherwise the first block (or blocks) to fit in the unused space is moved there. The first case happens if there are no
+locked blocks between the unused space and next used (but not locked) block. Simply performing a memmove and updating
+pointers is enough. A quick operation that leaves no remainding holes. If however there are any locked blocks between
+the unused space and the next used block, obviously only blocks with a total length of less than or equal the size of
+the unused space can be moved there. The algorithm is greedy and takes the first block that fits. More than
+one adjacent block that fits within the unused space will be moved together. In the case that there are no blocks that
+fit the unused space (and there is a locked block directly after), scanning is restarted beginning with the block
+directly following the last free block found. The process is continued until there are no unused blocks left or top is
+reached.
+
+Implementation
+~~~~~~~~~~~~~~~~
+- detailed breakdown of
+  + init
+  + rmmalloc -> newblock -> find free header -> find free block -> ...
+  + rmfree -> add to free list
+  + rmcompact -> find blocks
+  + rmdestroy
+
 - based on buddy allocator
 - requires modifications of application
   + indirect memory access through handles
