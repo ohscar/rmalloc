@@ -1,16 +1,18 @@
 .. vim:tw=120
 
+====
 Jeff
 ====
 ... is a compacting allocator.
 
 Overview
-~~~~~~~~~
+========
 TODO:
 - different signature
 
 In order to achieve compacting, memory must be accessed indirectly. This is the signature::
 
+    void rminit(void *heap, size_t heap_size);
     handle_t *rmmalloc(size_t nbytes);
     void rmfree(handle_t *handle);
     void *lock(handle_t handle);
@@ -69,10 +71,11 @@ searched for a block that fits.
 
 TODO:
 - free() and free list description
+- why is block merging not possible?
 
 Freeing a block marks it as unused and adds it to the free list, for malloc to find later as needed.
 The free list is an index array of 2^3..k-sized blocks with a linked list at each slot. All free blocks are guaranteed
-to be at least 2^n in size. Because of the automatic merging with blocks in free, they can also be larger.
+to be at least 2^n, but smaller than 2^(n-^1), bytes in size. Unlike the buddy allocator, blocks are not merged on free. <FUTURE-WORK: block merging possible?>. 
 
 TODO
 - explain Lisp-2
@@ -89,9 +92,130 @@ directly following the last free block found. The process is continued until the
 reached.
 
 Implementation
-~~~~~~~~~~~~~~~~
+==============
+In the previous overview section I described the general functionality. This section will in more details describe how
+each of the key parts work, including memory layout and performance metrics.
+
+TODO: describe O(...) of all complex operations.
+
+rminit
+~~~~
+Recall the signature::
+
+    void rminit(void *heap, size_t heap_size);
+
+``heap`` and ``heap_size`` is the client-supplied heap. Jeff is self-contained within the heap and requires no
+additional storage except for stack space.
+
+Internal structures are initialized:
+
+* Boundaries (g_memory_bottom/g_memory_top)
+* Header blocks (g_header_root and g_unused_header_root)
+* Free block slots (g_free_block_slots)
+
+I'll go through each one of them below, and their uses will be clarified as I touch upon them later in the other parts
+of the allocator.
+
+Boundaries (g_memory_bottom/g_memory_top)
+-----------------------------------------
+Bottom of memory is the bottom of the heap and top is the highest used memory address. Compacting resets the top to the
+highest used memory address.
+
+Header blocks (g_header_root and g_unused_header_root)
+--------------------------------------------------------------
+The opaque type ``handle_t`` is a pointer to a ``header_t`` structure::
+
+    typedef struct header_t {
+        void *memory;
+        uint32_t size;
+        uint8_t flags;
+
+        struct header_t *next;
+    #if JEFF_MAX_RAM_VS_SLOWER_MALLOC == 0
+        struct header_t *next_unused;
+    #endif
+    };
+
+This is the minimum amount of memory used by a block. Assuming a 32-bit system, ``memory`` is 4 bytes, ``size`` is 4
+bytes and ´`flags`` is 1 byte. The header itself is a linked list (``next``) that can be sorted in memory order in the
+compact step, since the handles themselves cannot be moved as they're used (in disguise) by the client code. Flags can have one of the following values:
+
+* Free (0)
+* Unlocked (1)
+* Locked (2)
+* Weakly locked (4) (currently unused)
+
+A weakly locked block can be treated as unlocked in the compacting phase so it can be reclaimed. Care needs to be taken
+by the client code since compacting invalidates the pointer to memory.
+
+The array of header items grows down from the top of the client-supplied heap. New handles searched for starting at
+``g_memory_top`` and down until ``g_memory_bottom``. If there is no free header when requested and there is no overlap
+between existing memory (including the newly requested size in case of a malloc), ``g_memory_bottom`` is decreased and a
+fresh handle is returned. 
+
+The optional member ``next_unused`` is a compile-time optimization for speeding up the O(n) find header operation to
+O(1) at the expense of an extra memory. ``g_unused_header_root`` is set to header newly marked unused and the next
+pointer is set to the old unused header root.  Setting ``memory`` to ``NULL`` indicates an unused header. 
+
+``g_header_root`` points to the latest used header. At compact time, it's sorted in memory order.
+
+<FUTURE-WORK have a callback for when moving a locked block?>
+<FUTURE-WORK possible optimization: next_unused reduce to to just store offset into the header array>
+<FUTURE-WORK possible optimization: use some bits of memory to store flags?>
+
+Free block slots (g_free_block_slots)
+-------------------------------------
+As touched upon previously, this contains the memory blocks that have been freed and not yet merged into unused space
+by a compact operation::
+
+    typedef struct free_memory_block_t {
+        header_t *header;
+        struct free_memory_block_t *next; // null if no next block.
+    } free_memory_block_t;
+
+When a block is freed, a ``free_memory_block_t`` is stored in the first bytes. Therefore, the minimum block size is
+(again, 32-bit system) 8 bytes. The header member stores the actual information about the block. By checking
+header->memory against the block, we know it's a valid free memory block. The next field points to the next block in the
+same size range (explained next).
+
+There are log2(heap_size) (rounded up) slots. Freeing a block of size 472 bytes means placing it at the start of the
+linked list at index 9 and hanging the previous list off the new block's next pointer, i.e. a stack.
+
+It's rebuilt at compact time.
+
+rmmalloc
+~~~~~~~~~
+Minimum allocatable size is ``sizeof(free_memory_block_t)`` for keeping information about the block for the free list.
+I'll go through the process of allocation step by step.
+
+There are two cases: either there is space left after top of the memory for a header and the requested memory, in which
+case the easy path is taken where a header is allocated, ``g_memory_top`` is bumped and the header is associated with
+the newly created memory and returned to the client. Allocating a header means searching the header array for an unused
+block, or if the optimization described above, following ``g_unused_header_root``. If none is found, ``g_header_bottom``
+grows downward if there is space, but there is always two headers left for compacting (more on that in the section on
+compacting).
+
+In the other case, there is no space left after ``g_memory_top`` and the free block must be searched for an appropriate
+block. This is the most complex part of alloc/free.
+
+find free block
+----------------
+TODO: describe O(...) of all complex operations.
+
+
+rmfree
+~~~~~~
+
+rmcompact
+~~~~~~~~~
+
+rmdestroy
+~~~~~~~~~
+
+
+
 - detailed breakdown of
-  + init
+  + rminit
   + rmmalloc -> newblock -> find free header -> find free block -> ...
   + rmfree -> add to free list
   + rmcompact -> find blocks
