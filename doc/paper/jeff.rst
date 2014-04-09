@@ -202,17 +202,57 @@ find free block
 ----------------
 TODO: describe O(...) of all complex operations.
 
+Calculate the index *k* into the free block slots list from *log2(size)+1*. As previously explained, the free block
+slot list has a stack (implemented as a singly linked list) hanging off each slot, such that finding a suiting block
+will be a fast operation. The exeption is for requests of blocks in the highest slot have to be searched in full, since
+the first block found is not guaranteed to fit the size request, as the slot *k* stores free blocks *2^(k-1) <= n < 2^k*
+and there is no larger *k+1* slot to search in.
+
+In the normal case the free block list is looked up at  *k* for a suiting block. If the stack is empty, *k* is increased
+and the free block list again is checked until a block is found.  Finally, if there was no block found, the actual index
+*log2(size)* is searched for a block that will fit. Remember that the blocks in a specific slot can be *2^k <= n < 2^k*
+and therefore there could be free blocks in slot *k* that are large enough for the request. When a block is found, it's
+shrunk into two smaller blocks if large enough, one of the requested size and the remainder. Minimum size for a block to
+be shrunk is having one extra header available and that the found block is *sizeof(free_memory_block_t)* bytes larger
+than the requested size. Otherwise, the block is used as-is causing a small amount of internal fragmentation. The
+remainder of the shrunk block is then inserted into the tree at the proper location.
+
+Returns NULL if no block was found.
+
+shrink block
+------------
+Adjusts size of current block, allocates a new header for the remainder and associates it with a ``free_memory_block_t``
+and stores it in the shrunk block.
 
 rmfree
 ~~~~~~
+Mark the block as unused. <FUTURE-WORK automatic merge with adjacent prev/next block?>
 
 rmcompact
 ~~~~~~~~~
+The compacting operation consists of setup, compacting and finish.
+
+Start with sorting all memory headers by pointer address, such that ``g_root_header`` points to the lowest address in
+memory and by following the ``next`` pointer until NULL all blocks can be iterated. All blocks have a header associated
+with them, regardless of flags.  This step only has to be done once each call to ``rmcompact()``.
+
+Actual compacting is done in passes so it can be optionally time limited, with a granularity of the time it takes to
+perform a single pass.
+
+steps:
+1. get free header range or stop
+2. 
+
 
 rmdestroy
 ~~~~~~~~~
 
 
+Profiling
+==========
+rmmalloc
+--------
+log2() large bottleneck.
 
 - detailed breakdown of
   + rminit
