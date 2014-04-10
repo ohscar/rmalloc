@@ -239,20 +239,114 @@ with them, regardless of flags.  This step only has to be done once each call to
 Actual compacting is done in passes so it can be optionally time limited, with a granularity of the time it takes to
 perform a single pass.
 
-steps:
-1. get free header range or stop
-2. 
+XXX: pretty pictures
 
+One pass of moving blocks around
+------------------------------------
+XXX: pretty pictures
+
+* Get closest range of free headers (or stop if no headers found)
+
+   +  If block directly after free header is locked, set a max size on unlocked blocks.
+
+* Get closest range of unlocked headers (respecting max size if set)
+
+   + No blocks found and limitation set on max size: if free blocks were passed searching for unlocked blocks, try
+     again from the block directly after the free headers, else stop.
+   + Set adjacent flag if last free's next is first unlocked
+
+* Calculate offset from free area to unlocked area
+* Squish free headers into one header and associate memory with the header
+* Move unlocked blocks too free area
+
+  - Memmove data
+  - Adjust used header pointers
+
+* Adjacent: relink blocks so unlocked headers is placed before what's left of free area, and free area pointing to header
+  directly following previous position of last unlocked header's next header. (XXX: pretty picture!)
+* Non-adjacent::
+
+    XXX: pretty picture!
+
+    // [F1 | F2 | F3 | F4 | X1/C | X2/B | U1 | U2 | A]
+    // =>
+    // [U1 | U2 | F5 | X1/C | X2/B | (possible too big block U3) | F6 | A]
+    //
+    // * Create F6
+    // *
+    // * Possible too big block U3?
+    // * - Link B to U3
+    // * - Link U3 to F6
+    // * Else:
+    // * - Link B to F6
+    //
+    // * Link F6 to A
+    //
+    // A * Create F5
+    //   * Link LU to F5
+    //   * Link F5 to C
+    // B * Extend LU
+    //   * Link LU to C
+
+* Continue to next round, repeating until time limit reached or done (if no time limit set)
+
+Finishing
+-----------
+<FUTURE-WORK: do this inline>
+
+At the end of the compacting, after the time-limited iterations, finishing calculations are done: calculate the highest
+used address and mark all (free) headers above that as unused, adjust ``g_header_bottom`` and finally rebuild the free
+block slots by iterating through ``g_header_root`` and placing free blocks in their designated slots.
 
 rmdestroy
 ~~~~~~~~~
+Doesn't do anything - client code owns the heap.
 
+Testing
+===========
+Unit testing
+~~~~~~~~~~~~~
+All applications should be bug-free, but for an allocator it is extra important that there are no bugs. Luckily, an
+allocator has a small interface for which tests can be easily written. In particular, randomized testing is easy, which
+although not guaranteed to catch all bugs gives a good coverage.
+
+I decided to use Google's GTest <REF: GTest> since it was easy to setup, use and the results are easy to read. It's
+similar in style to the original SUnit <REF: SUNit> that is popular to use.  During the development of the allocator I
+wrote tests and code in parallell, similar to test-driven development in order to verify that each change did not
+introduce a regression. Of the approximately 2500 lines of code in the allocator and tests, about half are tests. In
+addition to randomized unit testing there are consistency checks and asserts that can be turned on with at compile-time,
+to make sure that e.g. (especially) the compact operation is non-destructive.
+
+In the unit tests, the basic style of testing was to initialize the allocator with a randomly selected heap size and
+then run several tens of thousands of allocations/frees and make sure no other data was touched.  This is done by
+filling the allocated data with a constant byte value determined by the address of the returned handle.  Quite a few
+bugs were found this way, many of them not happening until thousands of allocations.  That shows randomized testing in
+large volume is a useful technique for finding problems in complex data structures, such as an allocator.
+
+XXX: describe test strategy more in detail?
+
+Real-world testing
+~~~~~~~~~~~~~~~~~~~~
+Since the allocator does have the interface of standard allocators client code needs to be rewritten. In order to do
+testing and benchmarking of real-world applications, applications need to be rewritten. The two major problems with this
+is that it requires access to source code, and rewriting much of the source code. Instead, I've developed heuristics for
+calculating locking/unlocking based on runtime data of unmodified applicaions. The tool for doing so grew from a
+small script into a larger collection of tools related to data collection, analysis and benchmarking. This is described
+in greater detail in the chapter on <REF: Steve>.
 
 Profiling
 ==========
-rmmalloc
---------
-log2() large bottleneck.
+The GNU tool ``gprof`` was used to find code hotspots, where the two biggest finds were:
+
+* *log2()*
+* *header_find_free()*
+
+In the spirit of first getting things to work, then optimize, the original *log2* implementation was a naive bitsift
+loop. Fortunately, there's a GCC extension *__builtin_clz()* (Count Leading Zeroes) that is efficiently translated into
+efficient machine code that can be used to write a fast *log2(n)*: ``sizeof(n)*8 - 1 - clz(n)``. The hotspots in the
+rest of the code were evenly distributed and no single point was more CPU-intense than another, except for
+*header_find_free()*. As described above, there's a compile-time optimization that cuts down time from *O(n)* to *O(1)*,
+which helped cut down execution time yet some more.
 
 - detailed breakdown of
   + rminit
@@ -273,7 +367,7 @@ log2() large bottleneck.
   + naive malloc/compact cycle doesn't work w/ locked block at the end
     - need proper free list and splitting, describe free list
     - not considered in original design
-  + double indirection creates memory overhead
+  + double indirection creates memory overhead <STEVE>
 - header list: design choices (describe layout of internal house-keeping structures)
 - original idea of simple malloc, simple free not possible due to locked-blocks-at-end.
 - compacting based on lisp-2(?) naive greedy allocator 
@@ -281,7 +375,7 @@ log2() large bottleneck.
 - benchmark (see Steve)
 - discarded ideas
   + notification on low memory for user compact (spent much time trying to work out algorithm before there was working
-    code, premature optimization)
+    code, premature optimization) <FUTURE-WORK>
 - possible optimizations (future work)
   - speed is good enough
   - memory usage: make it more specific to save memory per-handle
