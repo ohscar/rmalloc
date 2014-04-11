@@ -1,0 +1,17 @@
+digraph after {
+    // [U1 | U2 | F5 | X1/C | X2/B | (possible too big block U3) | F6 | A]
+
+    node [shape=record];
+
+    us1 [label="<u1> U1|<u2> U2"];
+    fs1 [label="<f5> F5"];
+    xs [label="<x1> X1 (C)|<x2> X2 (B)"];
+    us2 [label="<u3> (too large) U3"];
+    fs2 [label="<f6> F6"];
+    as [label="<a> ..."];
+
+    us1 -> fs1 -> xs -> us2 -> fs2 -> as;
+
+    {rank=same; us1 fs1 xs us2 fs2 as}
+}
+

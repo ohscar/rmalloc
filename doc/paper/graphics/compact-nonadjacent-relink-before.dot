@@ -1,0 +1,15 @@
+digraph before {
+    // [F1 | F2 | F3 | F4 | X1/C | X2/B | U1 | U2 | A]
+    // X1 is locked, X2 is locked
+
+    node [shape=record];
+
+    fs [label="<f1> F1|<f2> F2|<f3> F3"];
+    xs [label="<x1> X1 (C)|<x2> X2 (B)"];
+    us [label="<u1> U1|<u2> U2|<u3> (too large) U3"];
+    as [label="<a> ..."];
+
+    fs -> xs -> us -> as;
+
+    {rank=same; fs xs us as}
+}
