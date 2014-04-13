@@ -6,7 +6,7 @@ digraph before {
     us1 [label="<u1> U1|<u2> U2"];
     fs1 [label="<f1> F1|<f2> F2"];
     us2 [label="<u3> U3|<u4> U4"];
-    as [label="<a> ..."];
+    as [label="<a> Rest"];
 
     us1 -> fs1 -> us2 -> as;
 

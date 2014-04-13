@@ -1,0 +1,14 @@
+digraph before {
+    node [shape=record];
+
+    rankdir=TB;
+    
+    free [label="...|<s4> 4 (16)|<s5> 5 (32)|<s6> 6 (64)|<s7> 7 (128)|...|<s12> 12 (4096)"];
+    s4s [label="{<s40> 15|<s41> 9|<s42> 13|...}"];
+    s5s [label="{<s50> 25|<s51> 29|<s52> 17|...}"];
+
+    free:s4:s -> s4s:s40:n;
+    free:s5:s -> s5s:s50:n;
+    
+    {rank=same; s4s s5s}
+}

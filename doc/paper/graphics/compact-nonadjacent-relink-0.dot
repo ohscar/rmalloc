@@ -1,0 +1,35 @@
+digraph before {
+    // [F1 | F2 | F3 | F4 | X1/C | X2/B | U1 | U2 | A]
+    // =>
+    // [U1 | U2 | F5 | X1/C | X2/B | (possible too big block U3) | F6 | A]
+    //
+    // * Create F6
+    // *
+    // * Possible too big block U3?
+    // * - Link B to U3
+    // * - Link U3 to F6
+    // * Else:
+    // * - Link B to F6
+    //
+    // * Link F6 to A
+    //
+    // A * Create F5
+    //   * Link LU to F5
+    //   * Link F5 to C
+    // B * Extend LU
+    //   * Link LU to C
+
+
+
+
+    node [shape=record];
+
+    fs [label="<f1> F1|<f2> F2|<f3> F3"];
+    xs [label="<x1> L1|<x2> L2"];
+    us [label="<u1> U1|<u2> U2|<u3> (maybe too large) U3"];
+    as [label="<a> Rest"];
+
+    fs -> xs -> us -> as;
+
+    {rank=same; fs xs us as}
+}

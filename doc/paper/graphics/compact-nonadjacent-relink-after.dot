@@ -5,10 +5,10 @@ digraph after {
 
     us1 [label="<u1> U1|<u2> U2"];
     fs1 [label="<f5> F5"];
-    xs [label="<x1> X1 (C)|<x2> X2 (B)"];
+    xs [label="<x1> L1|<x2> L2"];
     us2 [label="<u3> (too large) U3"];
     fs2 [label="<f6> F6"];
-    as [label="<a> ..."];
+    as [label="<a> Rest"];
 
     us1 -> fs1 -> xs -> us2 -> fs2 -> as;
 

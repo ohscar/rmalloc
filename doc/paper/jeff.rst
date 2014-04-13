@@ -99,7 +99,7 @@ each of the key parts work, including memory layout and performance metrics.
 TODO: describe O(...) of all complex operations.
 
 rminit
-~~~~
+~~~~~~
 Recall the signature::
 
     void rminit(void *heap, size_t heap_size);
@@ -263,8 +263,49 @@ XXX: pretty pictures
   - Adjust used header pointers
 
 * Adjacent: relink blocks so unlocked headers is placed before what's left of free area, and free area pointing to header
-  directly following previous position of last unlocked header's next header. (XXX: pretty picture!)
-* Non-adjacent::
+  directly following previous position of last unlocked header's next header.
+
+.. figure:: graphics/compact-adjacent-relink-0.png
+
+   Initial configuration with blocks Unlocked 1-4, Free 1-4, Rest
+
+.. figure:: graphics/compact-adjacent-relink-1.png
+
+   Move all used blocks back (i.e. to the left), relink free blocks.
+
+.. figure:: graphics/compact-adjacent-relink-2.png
+
+   Squish free block.
+
+* Non-adjacent: similar to adjacent, except blocks can't just be simply memmov'ed because of the locked blocks. Instead,
+  only the blocks that fit in the free space can be moved.
+
+.. figure:: graphics/compact-nonadjacent-relink-0.png
+
+   Initial configuration with blocks Free 1-3, Locked 1-2, Unlocked 1-3, Rest
+
+.. figure:: graphics/compact-nonadjacent-relink-1.png
+
+    Create free block 6 in the area where the used blocks are now.
+
+.. figure:: graphics/compact-nonadjacent-relink-2a.png
+
+   a): block U3 is too large to fit in the free area.
+
+.. figure:: graphics/compact-nonadjacent-relink-2b.png
+
+   b): block U3 fits in the free area.
+
+.. figure:: graphics/compact-nonadjacent-relink-3a.png
+
+   a) After, with a new block Free 5 with left-overs from Free 1-3 and F6 from the space between U1-U3 and Rest
+
+.. figure:: graphics/compact-nonadjacent-relink-3b.png
+
+   b) Unlocked 3 fits, but not enough size to create a full block F5 -- instead extend size of Unlocked 3 with
+   0 < n < sizeof(free_memory_block_t) bytes.
+
+.. raw:: comment
 
     XXX: pretty picture!
 
@@ -292,8 +333,6 @@ XXX: pretty pictures
 
 Finishing
 -----------
-<FUTURE-WORK: do this inline>
-
 At the end of the compacting, after the time-limited iterations, finishing calculations are done: calculate the highest
 used address and mark all (free) headers above that as unused, adjust ``g_header_bottom`` and finally rebuild the free
 block slots by iterating through ``g_header_root`` and placing free blocks in their designated slots.
@@ -365,17 +404,19 @@ which helped cut down execution time yet some more.
   + first iteration build a plain buddy allocator to get a feel for problems, proved devil is in the details
   + gtest in beginning to find regressions
   + naive malloc/compact cycle doesn't work w/ locked block at the end
+
     - need proper free list and splitting, describe free list
     - not considered in original design
+
   + double indirection creates memory overhead <STEVE>
 - header list: design choices (describe layout of internal house-keeping structures)
 - original idea of simple malloc, simple free not possible due to locked-blocks-at-end.
 - compacting based on lisp-2(?) naive greedy allocator 
-  - sorting (possible future optimization)
+- sorting (possible future optimization)
 - benchmark (see Steve)
 - discarded ideas
   + notification on low memory for user compact (spent much time trying to work out algorithm before there was working
-    code, premature optimization) <FUTURE-WORK>
+  code, premature optimization) <FUTURE-WORK>
 - possible optimizations (future work)
   - speed is good enough
   - memory usage: make it more specific to save memory per-handle
