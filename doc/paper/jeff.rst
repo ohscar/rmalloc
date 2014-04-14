@@ -33,9 +33,7 @@ TODO:- requires modifications of application
   + locked/unlocked objects (based on heuristics, Steve)
 
 To get started with my allocator, I started implementing a buddy allocator. Along with it, I developed tests using
-<LINK: Google Test Library> to make sure no regressions were introduced during development. 
-
-TOOD: a lot more about how the tests were designed, what type of bugs they picked up and how useful they were.
+<LINK: Google Test Library> to make sure no regressions were introduced during development.  More on that later.
 
 During the development, it quickly became apparent that the internal data structures of the allocator must match the
 buddy allocator memory layout closely.  Picking the wrong data structure for storing the block list made the merge-block
@@ -43,9 +41,6 @@ operation slow and error-prone, instead of being easy to implement if proper car
 with physical memory layout. Indeed, I made the incorrect decision which made the compacting operationg difficult to
 implement. The buddy allocator prototype was discarded and work started with the actual allocator that was to be the end
 result, with the lessons about taking care in the design phase learned.
-
-TODO:
-- quick malloc, quick free, slow compact
 
 My original idea was to have a quick malloc, a quick free and a quick compact. Compact could then be run at times when
 the client application was waiting for user input or otherwise not doing computations, such that the malloc would be
@@ -62,20 +57,18 @@ a locked block at or close to the top would make subsequent malloc calls to fail
 maintained even though it might be the case for real-world applications that the worst case occurs seldom. (REF-STEVE,
 FUTURE-WORK).
 
-TODO:
-- malloc() description
-
 When an allocation request comes in, the size of the request is checked against the top pointer and the end of the heap.
 A request that fits is associated with a new handle and returned. If there is no space left at the top, the free list is
 searched for a block that fits.
 
 TODO:
-- free() and free list description
 - why is block merging not possible?
 
 Freeing a block marks it as unused and adds it to the free list, for malloc to find later as needed.
 The free list is an index array of 2^3..k-sized blocks with a linked list at each slot. All free blocks are guaranteed
 to be at least 2^n, but smaller than 2^(n-^1), bytes in size. Unlike the buddy allocator, blocks are not merged on free. <FUTURE-WORK: block merging possible?>. 
+
+.. image:: graphics/jeff-free-blockslots.png
 
 TODO
 - explain Lisp-2
@@ -243,7 +236,27 @@ XXX: pretty pictures
 
 One pass of moving blocks around
 ------------------------------------
-XXX: pretty pictures
+.. raw:: comment
+
+    // [F1 | F2 | F3 | F4 | X1/C | X2/B | U1 | U2 | A]
+    // =>
+    // [U1 | U2 | F5 | X1/C | X2/B | (possible too big block U3) | F6 | A]
+    //
+    // * Create F6
+    // *
+    // * Possible too big block U3?
+    // * - Link B to U3
+    // * - Link U3 to F6
+    // * Else:
+    // * - Link B to F6
+    //
+    // * Link F6 to A
+    //
+    // A * Create F5
+    //   * Link LU to F5
+    //   * Link F5 to C
+    // B * Extend LU
+    //   * Link LU to C
 
 * Get closest range of free headers (or stop if no headers found)
 
@@ -298,36 +311,12 @@ XXX: pretty pictures
 
 .. figure:: graphics/compact-nonadjacent-relink-3a.png
 
-   a) After, with a new block Free 5 with left-overs from Free 1-3 and F6 from the space between U1-U3 and Rest
+   a): After, with a new block Free 5 with left-overs from Free 1-3 and F6 from the space between U1-U3 and Rest
 
 .. figure:: graphics/compact-nonadjacent-relink-3b.png
 
-   b) Unlocked 3 fits, but not enough size to create a full block F5 -- instead extend size of Unlocked 3 with
+   b): Unlocked 3 fits, but not enough size to create a full block F5 -- instead extend size of Unlocked 3 with
    0 < n < sizeof(free_memory_block_t) bytes.
-
-.. raw:: comment
-
-    XXX: pretty picture!
-
-    // [F1 | F2 | F3 | F4 | X1/C | X2/B | U1 | U2 | A]
-    // =>
-    // [U1 | U2 | F5 | X1/C | X2/B | (possible too big block U3) | F6 | A]
-    //
-    // * Create F6
-    // *
-    // * Possible too big block U3?
-    // * - Link B to U3
-    // * - Link U3 to F6
-    // * Else:
-    // * - Link B to F6
-    //
-    // * Link F6 to A
-    //
-    // A * Create F5
-    //   * Link LU to F5
-    //   * Link F5 to C
-    // B * Extend LU
-    //   * Link LU to C
 
 * Continue to next round, repeating until time limit reached or done (if no time limit set)
 
@@ -385,7 +374,10 @@ loop. Fortunately, there's a GCC extension *__builtin_clz()* (Count Leading Zero
 efficient machine code that can be used to write a fast *log2(n)*: ``sizeof(n)*8 - 1 - clz(n)``. The hotspots in the
 rest of the code were evenly distributed and no single point was more CPU-intense than another, except for
 *header_find_free()*. As described above, there's a compile-time optimization that cuts down time from *O(n)* to *O(1)*,
-which helped cut down execution time yet some more.
+which helped cut down execution time yet some more at the expense of higher memory usage per block.
+
+More details and benchmarks in the chapter on <REF: Steve>.
+
 
 - detailed breakdown of
   + rminit
