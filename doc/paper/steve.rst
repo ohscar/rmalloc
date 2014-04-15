@@ -40,6 +40,25 @@ possible to map memory access (L, S, M) to a specific pointer. This is done by c
 keys from *address* to *address+size* to that identifier. On free, conversely, all mappings in that address range are
 removed. At each access a list of (id, access type, address, size) is recorded. 
 
+translate-ops-to-histogram.py
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+translate-ops-to-locking-lifetime.py
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Allocator driver usage
+~~~~~~~~~~~~~~~~~~~~~~~
+The scripts below:
+
+../../src/steve/run_allocator_stats_payload.sh
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../../src/steve/run_allocator_stats.sh
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../../src/steve/run_memory_frag_animation.sh
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Allocator driver API
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 This gives the essentials of a program's memory usage -- allocation, access and free -- and can be processed by other
 tools.
 
@@ -61,52 +80,88 @@ of the allocator and linking to a library. The functions to implement are::
     extern uint32_t user_get_used_block_count();
     extern void user_get_used_blocks(ptr_t *blocks); // caller allocates!
 
-bool user_init(uint32_t heap_size, void *heap, void *colormap, char *name)
+All functions to be implemented by the driver has a ``user_`` prefix and the driver code is linked together with
+``plot.cpp`` to form the binary.  An alternative would be to create a library and register callbacks instead.
+
+bool user_init(uint32_t heap_size, void *heap, /*void *colormap, */char *name)
 -------------------------------------------------------------------------------
+XXX: remove colormap from API (plot.h, plot.cpp, drivers)
+
+Initialize the allocator with the given parameters.  Since the heap is passed onto the driver, any *mmap* functionality
+must beO disabled and only *sbrk*-style allocation is possible. The driver must fill ``name`` with a name that can be
+used as a part of a filename, e.g. an alphanumeric string like "dlmalloc".
+
+A driver would store *heap_size*,initialize its own sbrk-equivalent with *heap* and initialize the allocator itself if
+needed. As large amount as possible of the allocator's runtime data structures should be stored in this heap space.
 
 void user_destroy()
 -------------------------------------------------------------------------------
+Clean up internal structures. The heap given to ``user_init`` is owned by the framework and does not have to be freed.
 
-void user_reset(); // basically destroy + init
+// XXX: UNUSED - void user_reset(); // basically destroy + init
 -------------------------------------------------------------------------------
 
 bool user_handle_oom(int size, uint32_t *op_time)
 -------------------------------------------------------------------------------
 // number of bytes tried to be allocated, return true if <size> bytes could be compacted.
 
+Handle an out-of-memory situation. ``size`` is the number of bytes requested at the time of OOM.
+``op_time`` is an out variable storing the time of the actual OOM-handling code (such as a compact operation), not
+considering the code before or after. For convenience, Steve pre-defines macros for time measuring.  A typical
+implementation where OOM is actually handled looks like this::
+    
+    bool user_handle_oom(int size, uint32_t *op_time)
+    {
+        TIMER_DECL;
+
+        TIMER_START;
+        bool ok = full_compact();
+        TIMER_END;
+        if (op_time)
+            *op_time = TIMER_ELAPSED;
+
+        return ok;
+    }
+
+``op_time`` can also be ``NULL``, as shown in the example, in which case time must not be stored. Return value is *true*
+if the OOM was handled, *false* otherwise.
+
 void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddress)
 ------------------------------------------------------------------------------------
+Perform a memory allocation and return it or NULL on error. ``op_time`` is the same as above.
+``handle`` is an identifier for this allocation request as translated from the memtrace, unique for this block for the
+lifetime of the application being benchmarked. It can be used as an index to a map in case the driver wants to store
+information associated with this particular block. Finally, ``*memaddress`` can be used to store the memory address at
+the time of the allocation, in case the allocation function is using indirect accessing via a handle (e.g. Jeff). In
+that case, the handle is returned by *user_malloc()* and the memory address stored in ``*memaddress``. 
+If *memaddress* is NULL no data should be written to it, but if it is not NULL, either the address or NULL should be
+stored in ``*memaddress``.
 
 void user_free(void *, uint32_t handle, uint32_t *op_time)
 ------------------------------------------------------------------------------------
+Like ``user_malloc``.
 
 void *user_lock(void *)
 ------------------------------------------------------------------------------------
-// takes whatever's returned from user_malloc()
+This locks a block of memory, i.e. maps a handle to a pointer in memory, and marking it as in use. It can no longer be
+moved since the client code now has a reference to the memory referred to by this handle, until ``user_unlock()`` or
+``user_free()`` is called on the handle. Its input value is the return value of ``user_malloc()``. 
 
 void user_unlock(void *)
 ------------------------------------------------------------------------------------
-// takes whatever's returned from user_malloc() 
+This unlocks a block of memory, i.e. marking the block of memory as no longer being in use. Any memory operation is free
+to move this block around in memory.. Its input value is the return value of ``user_malloc()``. 
 
 void *user_highest_address(bool full_calculation)
 ------------------------------------------------------------------------------------
-// what is the highest address allocated? NULL if not accessible.
+What is the highest address allocated at this time? NULL if not available.
+If ``full_calculation`` is false a less exakt calculation is acceptable if it's quicker.
 
-bool user_has_heap_layout_changed()
-------------------------------------------------------------------------------------
-
-uint32_t user_get_used_block_count()
-------------------------------------------------------------------------------------
-void user_get_used_blocks(ptr_t *blocks) // caller allocates!
-------------------------------------------------------------------------------------
-
-I'll go through each one in turn.
-
-translate-ops-to-histogram.py
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-translate-ops-to-locking-lifetime.py
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+UNUSED
+-----------
+* // XXX: UNUSED - bool user_has_heap_layout_changed()
+* // XXX: UNUSED - uint32_t user_get_used_block_count()
+* // XXX: UNUSED - void user_get_used_blocks(ptr_t \*blocks) // caller allocates!
 
 
 ... is a benchmark tool for memory access profiling without modifying apps, lets users simulate different allocators by
