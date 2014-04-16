@@ -5,12 +5,17 @@ Steve
 ... is a benchmark tool for collecting runtime memory access and allocation patterns in arbitrary binary applications that use
 the system malloc, without access to source code or recompilation.
 
+Steve consists of mostly Python code and Cython for tight inner loops such as the memtrace to ops calculation, plus
+some Bash scripts for glueing it all together.
+
 Measuring Jeff requires a rewrite of the application needing to be tested, to use the new malloc interface. The simple
 solution to do so is to emulate a regular malloc, i.e. directly lock after malloc. But that would make the compact
 operation no-op since no blocks can be moved. On the other hand, adapting existing code to benefit from Jeff's interface
 is error-prone, it is not obvious which application would make good candidates, and finally, source code to the applications
 is required, which is not always possible.
 
+Retrieving memory access data
+------------------------------
 Simply getting malloc/free calls is trivially done by writing a malloc wrapper and make use of Linux' ``LD_PRELOAD`` to
 make the applications use our own allocator that can do logging. Unfortunately that is not enough. To get statistics on
 *memory access patterns* one needs to essentially simulate the system the application runs in.  Options considered were
@@ -24,11 +29,8 @@ operations and logging them to file, if they were in the boundaries of *lowest a
 allocated*. This will still give false positives when there are holes (lowest is only decreased and highest is only
 increased) but reduces the logging output somewhat. Memory access can then be analyzed offline.
 
-Steve consists of mostly Python code and Cython for tight inner loops such as the memtrace to ops calculation, plus
-some Bash scripts for glueing it all together.
-
 memtrace-run.sh and translate-memtrace-to-ops.py
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-----------------------------------------------------
 The basis of all further data analysis is a *memtrace*, a file with the output produced my the patched memcheck tool in
 the following format::
 
@@ -40,11 +42,75 @@ possible to map memory access (L, S, M) to a specific pointer. This is done by c
 keys from *address* to *address+size* to that identifier. On free, conversely, all mappings in that address range are
 removed. At each access a list of (id, access type, address, size) is recorded. 
 
+Simulating locking behaviour based on heuristics
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+As noted above, it is not a practical solution to rewrite applications. If there is a possible of creating an automated
+method for finding approximate locking behaivour of applications, it should be investigated. To begin with, let's define
+the terms used in the coming algorithm:
+
+* Op: Any memory operation: new, free, load, store, modify. Generally, load, store and modify is generalized to Access
+  (A).
+* Lifetime: The number of total operations, thus indirectly the time, between a New and a Free op for a specific block.
+* Block: A chunk of allocated memory.
+
+A block with a lifetime close to the total number of operations has a long lifetime and therefore created in the
+beginning of the application's lifetime.  The *macro* lifetime of a block is the relation between all ops within its
+lifetime through the total ops count of the application.  A block with a small macro lifetime therefore is an object
+that has a short life span, whereas a block with a large macro lifetime is an object with a large life span. Typically
+a large value for macro lifetime means it's a global object and can be modelled thereafter.
+
+Depnding on the relation between ops accessing the block in question and ops accessing other objects the access pattern
+of the object can be modeled.  For example, if an object has 100 ops within its lifetime and 10 of them are its own
+and 90 are others', the object would probably be locked at each access, whereas if it was the other way around, it is
+more likely that the object is locked throughout its entire lifetime.
+
 translate-ops-to-histogram.py
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+To visualize and experiment with different ways of calculating lifetime I have a small application that takes as input
+an ops file (created by ``translate-memtrace-to-ops.py``), in particular to look at macro lifetimes in different
+intervals. It turns out that for some (larger) applications, lifetimes are highly clustered for the short-lived objects:
+
+.. figure:: result.soffice-macro-histogram-0-1000.png
+
+   This shows the number of objects within a specific lifetime. Short-lived objects dominates.
+
+By removing the short-lived objects, we can get a better understanding of the distribution of the other objects.
+
+.. figure:: result.soffice-macro-histogram-10-100.png
+
+   Limited to blocks with a lifetime between 1% and 100%
+
+And conversely, if we want to see the distribution of the short-lived objects only:
+
+.. figure:: result.soffice-macro-histogram-0-20.png
+
+   Limited to blocks with a lifetime between 0% and 2%
 
 translate-ops-to-locking-lifetime.py
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+translate-memtrace-to-ops.py produces coarse locking that is quick to calculate, since it simply looks at the macro
+lifetime of an object and keeps it locked during its entire lifetime.  It's an either-or situation.
+
+This method more refined but takes more time to calculate. The script takes an ops file, i.e. a list of (block handle,
+operation type, address, size) tuples.
+
+When a block is initially created a threshold value, life, is set to zero and will either increase or decrease depending
+on the operations that come between the new operation and the free operation. A memory access op for the current block
+increases life by 1, and conversely, another block's operation (regardless of type) decreases life by 0.5. Life is not
+capped in the upper range but has a lower limit of 0. When life is higher than 0, the current operation's lock status is
+set, otherwise reset. 
+
+XXX: pretty picture.
+
+When all ops have been processed they are written out to a new file that in addition to the regular ops also contained
+detailed locking information. Since the number of objects is large and the calculation is independent of other objects,
+the process can be broken down into smaller tasks. This is done using the Python ``multiprocessing`` module, and by
+recording start and stop indices (based on the New or Free ops, respectively) into the input list, the list of start
+indices can be broken down into smaller parts to maximize usage of multi-core systems making processing the entire input
+file faster by the order of the number of available cores. 
+
+The fine grained calculation of this method is slower, but gives lock/unlock instructions throughout the lifetime of an
+object, instead of forcing the object to be locked its entire lifetime.
 
 Allocator driver usage
 ~~~~~~~~~~~~~~~~~~~~~~~
