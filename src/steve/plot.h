@@ -81,20 +81,20 @@ void print_after_free_stats(int address, int size);
 // repaint colormap by scanning or doing other things if the allocator's internal workings are known.
 void user_paint(void);
 
-extern bool user_init(uint32_t heap_size, void *heap, void *colormap, char *name);
+extern bool user_init(uint32_t heap_size, void *heap, char *name);
 extern void user_destroy();
-extern void user_reset(); // basically destroy + init
+//extern void user_reset(); // basically destroy + init
 extern bool user_handle_oom(int size, uint32_t *op_time); // number of bytes tried to be allocated, return true if <size> bytes could be compacted.
 extern void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddress);
 extern void user_free(void *, uint32_t handle, uint32_t *op_time);
 extern void *user_lock(void *); // takes whatever's returned from user_malloc()
 extern void user_unlock(void *); // takes whatever's returned from user_malloc() 
 extern void *user_highest_address(bool full_calculation); // what is the highest address allocated? NULL if not accessible.
-extern bool user_has_heap_layout_changed();
+//extern bool user_has_heap_layout_changed();
 
 // currently in-use memory blocks. useful after compact() has happened.
-extern uint32_t user_get_used_block_count();
-extern void user_get_used_blocks(ptr_t *blocks); // caller allocates!
+//extern uint32_t user_get_used_block_count();
+//extern void user_get_used_blocks(ptr_t *blocks); // caller allocates!
 
 /* driver code */
 

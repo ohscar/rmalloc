@@ -1346,7 +1346,8 @@ int main(int argc, char **argv) {
 
     heap_colormap_init();
     
-    user_init(g_heap_size, (void *)g_heap, (void *)g_colormap, driver);
+    //user_init(g_heap_size, (void *)g_heap, (void *)g_colormap, driver);
+    user_init(g_heap_size, (void *)g_heap, driver);
     if (g_resultsfile == NULL) {
         strcpy(statsfile, driver);
         strcat(statsfile, ".alloc-stats");

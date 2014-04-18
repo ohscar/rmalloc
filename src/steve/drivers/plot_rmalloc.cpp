@@ -172,7 +172,7 @@ bool user_handle_oom(int size, uint32_t *op_time) {
 void user_paint(void) {
 }
 
-bool user_init(uint32_t heap_size, void *heap, void *colormap, char *name) {
+bool user_init(uint32_t heap_size, void *heap, char *name) {
     strcpy(name, ALLOC_NAME);
 
     g_heap = heap;
@@ -180,7 +180,7 @@ bool user_init(uint32_t heap_size, void *heap, void *colormap, char *name) {
     g_heap_size = heap_size;
     g_heap_end = g_heap;
     g_heap_top = (uint8_t *)((ptr_t)g_heap_end + heap_size);
-    g_colormap = colormap;
+    //g_colormap = colormap;
 
     rminit(heap, heap_size);
 }
@@ -189,7 +189,7 @@ void user_reset(void) {
     char buffer[100];
     g_handles.clear();
     g_count.clear();
-    user_init(g_original_size, g_heap, /*colormap, unused*/NULL, buffer);
+    user_init(g_original_size, g_heap, buffer);
 }
 
 void *user_highest_address(bool full_calculation) {
