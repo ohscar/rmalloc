@@ -15,7 +15,7 @@ is error-prone, it is not obvious which application would make good candidates, 
 is required, which is not always possible.
 
 Retrieving memory access data
-------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Simply getting malloc/free calls is trivially done by writing a malloc wrapper and make use of Linux' ``LD_PRELOAD`` to
 make the applications use our own allocator that can do logging. Unfortunately that is not enough. To get statistics on
 *memory access patterns* one needs to essentially simulate the system the application runs in.  Options considered were
@@ -70,19 +70,22 @@ To visualize and experiment with different ways of calculating lifetime I have a
 an ops file (created by ``translate-memtrace-to-ops.py``), in particular to look at macro lifetimes in different
 intervals. It turns out that for some (larger) applications, lifetimes are highly clustered for the short-lived objects:
 
-.. figure:: result.soffice-macro-histogram-0-1000.png
+.. figure:: graphics/result-soffice-macro-histogram-0-1000.png
+   :scale: 50%
 
    This shows the number of objects within a specific lifetime. Short-lived objects dominates.
 
 By removing the short-lived objects, we can get a better understanding of the distribution of the other objects.
 
-.. figure:: result.soffice-macro-histogram-10-100.png
+.. figure:: graphics/result-soffice-macro-histogram-10-100.png
+   :scale: 50%
 
    Limited to blocks with a lifetime between 1% and 100%
 
 And conversely, if we want to see the distribution of the short-lived objects only:
 
-.. figure:: result.soffice-macro-histogram-0-20.png
+.. figure:: graphics/result-soffice-macro-histogram-0-20.png
+   :scale: 50%
 
    Limited to blocks with a lifetime between 0% and 2%
 
@@ -122,26 +125,28 @@ tools.
 Testing an allocator is done with a driver application by implementing an interface that calls the appropriate functions
 of the allocator and linking to a library. The functions to implement are::
 
-    extern bool user_init(uint32_t heap_size, void *heap, void *colormap, char *name);
-    extern void user_destroy();
-    extern void user_reset(); // basically destroy + init
-    extern bool user_handle_oom(int size, uint32_t *op_time); // number of bytes tried to be allocated, return true if <size> bytes could be compacted.
-    extern void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddress);
-    extern void user_free(void *, uint32_t handle, uint32_t *op_time);
-    extern void *user_lock(void *); // takes whatever's returned from user_malloc()
-    extern void user_unlock(void *); // takes whatever's returned from user_malloc() 
-    extern void *user_highest_address(bool full_calculation); // what is the highest address allocated? NULL if not accessible.
-    extern bool user_has_heap_layout_changed();
-
-    // currently in-use memory blocks. useful after compact() has happened.
-    extern uint32_t user_get_used_block_count();
-    extern void user_get_used_blocks(ptr_t *blocks); // caller allocates!
+    bool user_init(uint32_t heap_size,
+                   void *heap,
+                   char *name);
+    void user_destroy();
+    bool user_handle_oom(int size,
+                         uint32_t *op_time);
+    void *user_malloc(int size,
+                      uint32_t handle_id,
+                      uint32_t *op_time,
+                      void **memaddress);
+    void user_free(void *handle,
+                   uint32_t handle_id,
+                   uint32_t *op_time);
+    void *user_lock(void *handle);
+    void user_unlock(void *handle);
+    void *user_highest_address(bool full_calculation);
 
 All functions to be implemented by the driver has a ``user_`` prefix and the driver code is linked together with
 ``plot.cpp`` to form the binary.  An alternative would be to create a library and register callbacks instead.
 
-bool user_init(uint32_t heap_size, void *heap, /*void *colormap, */char *name)
--------------------------------------------------------------------------------
+``bool user_init(uint32_t heap_size, void *heap, char *name)``
+------------------------------------------------------------------------------------
 XXX: remove colormap from API (plot.h, plot.cpp, drivers)
 
 Initialize the allocator with the given parameters.  Since the heap is passed onto the driver, any *mmap* functionality
@@ -155,13 +160,8 @@ void user_destroy()
 -------------------------------------------------------------------------------
 Clean up internal structures. The heap given to ``user_init`` is owned by the framework and does not have to be freed.
 
-// XXX: UNUSED - void user_reset(); // basically destroy + init
+``bool user_handle_oom(int size, uint32_t *op_time)``
 -------------------------------------------------------------------------------
-
-bool user_handle_oom(int size, uint32_t *op_time)
--------------------------------------------------------------------------------
-// number of bytes tried to be allocated, return true if <size> bytes could be compacted.
-
 Handle an out-of-memory situation. ``size`` is the number of bytes requested at the time of OOM.
 ``op_time`` is an out variable storing the time of the actual OOM-handling code (such as a compact operation), not
 considering the code before or after. For convenience, Steve pre-defines macros for time measuring.  A typical
@@ -183,8 +183,8 @@ implementation where OOM is actually handled looks like this::
 ``op_time`` can also be ``NULL``, as shown in the example, in which case time must not be stored. Return value is *true*
 if the OOM was handled, *false* otherwise.
 
-void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddress)
-------------------------------------------------------------------------------------
+``void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddress)``
+---------------------------------------------------------------------------------------
 Perform a memory allocation and return it or NULL on error. ``op_time`` is the same as above.
 ``handle`` is an identifier for this allocation request as translated from the memtrace, unique for this block for the
 lifetime of the application being benchmarked. It can be used as an index to a map in case the driver wants to store
@@ -194,31 +194,25 @@ that case, the handle is returned by *user_malloc()* and the memory address stor
 If *memaddress* is NULL no data should be written to it, but if it is not NULL, either the address or NULL should be
 stored in ``*memaddress``.
 
-void user_free(void *, uint32_t handle, uint32_t *op_time)
+``void user_free(void *, uint32_t handle, uint32_t *op_time)``
 ------------------------------------------------------------------------------------
 Like ``user_malloc``.
 
-void *user_lock(void *)
+``void *user_lock(void *)``
 ------------------------------------------------------------------------------------
 This locks a block of memory, i.e. maps a handle to a pointer in memory, and marking it as in use. It can no longer be
 moved since the client code now has a reference to the memory referred to by this handle, until ``user_unlock()`` or
 ``user_free()`` is called on the handle. Its input value is the return value of ``user_malloc()``. 
 
-void user_unlock(void *)
+``void user_unlock(void *)``
 ------------------------------------------------------------------------------------
 This unlocks a block of memory, i.e. marking the block of memory as no longer being in use. Any memory operation is free
 to move this block around in memory.. Its input value is the return value of ``user_malloc()``. 
 
-void *user_highest_address(bool full_calculation)
+``void *user_highest_address(bool full_calculation)``
 ------------------------------------------------------------------------------------
 What is the highest address allocated at this time? NULL if not available.
 If ``full_calculation`` is false a less exakt calculation is acceptable if it's quicker.
-
-UNUSED
------------
-* // XXX: UNUSED - bool user_has_heap_layout_changed()
-* // XXX: UNUSED - uint32_t user_get_used_block_count()
-* // XXX: UNUSED - void user_get_used_blocks(ptr_t \*blocks) // caller allocates!
 
 Allocator driver usage
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -230,32 +224,54 @@ Steve does, in essense, two tasks: visualize memory and plot benchmark data. The
 
 The tools are described in more detail in the next section.
 
-All alloc drivers are linked to the same main program and have the same command line parameters::
-
-*  ``--allocstats opsfile resultfile killpercent oplimit peakmemsize theoretical_heap_size``
-
-    - killpercent - 0-100 how many percent of all handles to free at each rewind.
-    - oplimit = 0 => write header to <driver>.alloc_stats
-    - oplimit > 0 => write free/used/overhead/maxmem per op.
+All alloc drivers are linked to the same main program and have the same command line parameters:
 
 * ``--peakmem opsfile``
 
-    - Prints out therotical heap size used.
+    - opsfile - operations file created by ``translate-memtrace-to-ops.py``.
     
-* ``--memplot opsfile``
+    Prints out therotical heap size allocated as reported by the allocator driver. ``--allocstats`` passes this data to
+    benchmark data files.
+
+* ``--allocstats opsfile resultfile killpercent oplimit peakmemsize theoretical_heap_size``
+
+    - opsfile - operations file created by ``translate-memtrace-to-ops.py``.
+    - killpercent - 0-100 how many percent of all handles to free at each rewind.
+    - oplimit = 0 => write header to <driver>.alloc_stats
+    - oplimit > 0 => write free/used/overhead/maxmem per op.
+    
+* ``--memplot opsfile [heap_size]``
         
+    - opsfile - operations file created by ``translate-memtrace-to-ops.py``.
+    - (optional) heap_size - maximum heap size to use
     - XXX: description
-        
+
+At startup the mode of operation of the allocator driver is set to one of these. All modes perform follow the same basic
+flow:
+
+* Allocate heap according to specified heap size or use predefined size (currently 1 Gb)
+  If heap allocation fails, decrease by 10% until success.
+* Allocate and initialize colormap as 1/4 of heap size. (more on colormap later)
+* Initialize driver
+* Initialize randomness with compile-time set seed.
+* Open opsfile
+* Run mode's main loop
+* Destroy driver
+* Save statistics created by mode's main loop.
+
+First, I'll describe the three main loops (peakmem, allocstats, memplot) and then the tools that use them.
 
 ../../src/steve/run_memory_frag_animation.sh
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Syntax::
 
-    ALLOCATOR=path/to/alloc_driver ./run_memory_frag_animation.sh opsfile
+    ALLOCATOR=path/to/alloc_driver \
+        ./run_memory_frag_animation.sh opsfile
 
 Example::
 
-    ALLOCATOR=./drivers/plot_dlmalloc ./run_memory_frag_animation.sh result.soffice-ops
+    ALLOCATOR=./drivers/plot_dlmalloc \
+        ./run_memory_frag_animation.sh result.soffice-ops
 
 Output::
 
@@ -268,7 +284,8 @@ The shell script is a thin wrapper on top of the alloc driver
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Run::
 
-    CORES=2 ALLOCATOR=./drivers/plot_dlmalloc ./run_allocator_stats.sh result.soffice-ops
+    CORES=2 ALLOCATOR=./drivers/plot_dlmalloc \
+        ./run_allocator_stats.sh result.soffice-ops
 
 Generates::
 
@@ -297,7 +314,9 @@ Multiple
 ----------
 Run::
 
-    python run_graphs_from_allocstats.py soffice result.soffice-ops-dlmalloc result.soffice-ops-rmmalloc [...]
+    python run_graphs_from_allocstats.py soffice \
+        result.soffice-ops-dlmalloc \
+        result.soffice-ops-rmmalloc [...]
 
 Generates:
 
@@ -306,7 +325,14 @@ Generates:
 
 Things to consider for the future / partially implemented
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-* colormap
+* colormap parameter
+
+Unused
+-----------
+* // XXX: UNUSED - bool user_has_heap_layout_changed()
+* // XXX: UNUSED - uint32_t user_get_used_block_count()
+* // XXX: UNUSED - void user_get_used_blocks(ptr_t \*blocks) // caller allocates!
+* // XXX: UNUSED - void user_reset(); // basically destroy + init
 
 
 ... is a benchmark tool for memory access profiling without modifying apps, lets users simulate different allocators by
@@ -330,8 +356,7 @@ adding a small wrapper.
 - locking heuristics
   - full vs simple locking
   - access lock heuristics at http://rmalloc.blogspot.se/2013/09/memory-block-acces-locking-heuristics.html
-  - histogram for lifetime at http://rmalloc.blogspot.se/2013/09/making-sense-of-histograms.html and
-    http://rmalloc.blogspot.se/2012/08/determining-global-variables.html
+  - histogram for lifetime at http://rmalloc.blogspot.se/2013/09/making-sense-of-histograms.html and http://rmalloc.blogspot.se/2012/08/determining-global-variables.html
 - colormap (0xdeadbeef, 0xbeefbabe, 0xdeadbabe)
 - what animation shows
 - what benchmark(s) show(s)

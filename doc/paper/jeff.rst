@@ -1,6 +1,5 @@
 .. vim:tw=120
 
-====
 Jeff
 ====
 ... is a compacting allocator.
@@ -68,7 +67,10 @@ Freeing a block marks it as unused and adds it to the free list, for malloc to f
 The free list is an index array of 2^3..k-sized blocks with a linked list at each slot. All free blocks are guaranteed
 to be at least 2^n, but smaller than 2^(n-^1), bytes in size. Unlike the buddy allocator, blocks are not merged on free. <FUTURE-WORK: block merging possible?>. 
 
-.. image:: graphics/jeff-free-blockslots.png
+.. figure:: graphics/jeff-free-blockslots.png
+   :scale: 50%
+
+   Example slots in free list.
 
 TODO
 - explain Lisp-2
@@ -279,14 +281,17 @@ One pass of moving blocks around
   directly following previous position of last unlocked header's next header.
 
 .. figure:: graphics/compact-adjacent-relink-0.png
+   :scale: 50%
 
    Initial configuration with blocks Unlocked 1-4, Free 1-4, Rest
 
 .. figure:: graphics/compact-adjacent-relink-1.png
+   :scale: 50%
 
    Move all used blocks back (i.e. to the left), relink free blocks.
 
 .. figure:: graphics/compact-adjacent-relink-2.png
+   :scale: 50%
 
    Squish free block.
 
@@ -294,26 +299,32 @@ One pass of moving blocks around
   only the blocks that fit in the free space can be moved.
 
 .. figure:: graphics/compact-nonadjacent-relink-0.png
+   :scale: 50%
 
    Initial configuration with blocks Free 1-3, Locked 1-2, Unlocked 1-3, Rest
 
 .. figure:: graphics/compact-nonadjacent-relink-1.png
+   :scale: 50%
 
-    Create free block 6 in the area where the used blocks are now.
+   Create free block 6 in the area where the used blocks are now.
 
 .. figure:: graphics/compact-nonadjacent-relink-2a.png
+   :scale: 50%
 
    a): block U3 is too large to fit in the free area.
 
 .. figure:: graphics/compact-nonadjacent-relink-2b.png
+   :scale: 50%
 
    b): block U3 fits in the free area.
 
 .. figure:: graphics/compact-nonadjacent-relink-3a.png
+   :scale: 50%
 
    a): After, with a new block Free 5 with left-overs from Free 1-3 and F6 from the space between U1-U3 and Rest
 
 .. figure:: graphics/compact-nonadjacent-relink-3b.png
+   :scale: 50%
 
    b): Unlocked 3 fits, but not enough size to create a full block F5 -- instead extend size of Unlocked 3 with
    0 < n < sizeof(free_memory_block_t) bytes.

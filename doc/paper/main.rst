@@ -1,4 +1,4 @@
-.. include:: introduction.txt
+.. include:: introduction.rst
 
 Method
 ========
@@ -8,7 +8,7 @@ Making drawings in my sketch book, testing out scenarios and algorithms by hand 
 
 .. include:: steve.rst
 
-.. include:: results-and-conclusion.txt
+.. .. include:: results-and-conclusion.rst
 
-.. include:: future-work.txt
+.. .. include:: future-work.rst
 
