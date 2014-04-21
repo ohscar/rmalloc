@@ -216,7 +216,8 @@ If ``full_calculation`` is false a less exakt calculation is acceptable if it's 
 
 Allocator driver usage
 ~~~~~~~~~~~~~~~~~~~~~~~
-Steve does, in essense, two tasks: visualize memory and plot benchmark data. The framework can be extended to support more tools.
+Steve does, in essense, two tasks: visualize memory and plot benchmark data. The framework allows for fairly easy
+extension with more tools.
 
 * ``run_memory_frag_animation.sh``: create an animated memory allocation visualisation.
 * ``run_graphs_from_allocstats.py``:  create benchmark based on one or many allocator statistics inputs
@@ -227,24 +228,62 @@ The tools are described in more detail in the next section.
 All alloc drivers are linked to the same main program and have the same command line parameters:
 
 * ``--peakmem opsfile``
-
-    - opsfile - operations file created by ``translate-memtrace-to-ops.py``.
     
     Prints out therotical heap size allocated as reported by the allocator driver. ``--allocstats`` passes this data to
-    benchmark data files.
+    benchmark data files for later processing by the graphing tool.
+
+    Parameters:
+
+    - opsfile - operations file created by ``translate-memtrace-to-ops.py``.
 
 * ``--allocstats opsfile resultfile killpercent oplimit peakmemsize theoretical_heap_size``
 
-    - opsfile - operations file created by ``translate-memtrace-to-ops.py``.
-    - killpercent - 0-100 how many percent of all handles to free at each rewind.
-    - oplimit = 0 => write header to <driver>.alloc_stats
-    - oplimit > 0 => write free/used/overhead/maxmem per op.
+    Generates a file in JSON format in the following format. Header::
+
+        driver = "jemalloc"
+        opsfile = "result.program-ops"
+        heap_size = 13544700
+        theoretical_heap_size = 4514900
+        opmode = 'allocstats'
+        alloc_stats = [
+
+    Then, per line a dictionary with the following keys::
+
+        {'op_index':        <sequene number>,
+         'free':            <bytes: integer>,
+         'used':            <bytes: integer>,
+         'overhead':        <bytes: integer>,
+         'maxmem':          <bytes: integer>,
+         'current_op_time': <microseconds: integer>,
+         'oom_time':        <microsecond: integer>,
+         'optime_maxmem':   <microsecond: integer>,
+         'op':              <operation <- N, F, A, L, U: char>,
+         'size':            <bytes: integer>
+        }
     
+    Parameters:
+
+    - opsfile: Operations file created by ``translate-memtrace-to-ops.py``.
+    - resultfile: Statistics output file, convention is to use file stem of opsfile (without "-ops") and append
+      "-allocstats"
+    - killpercent: Optionally rewind and randomly free *killpercent* (0-100) of all headers at EOF, to simulate an application that destroys and creates new documents. The value 100'000 means no rewinding or killing takes place, i.e. just one round of the data gathered by running the application to be benchmarked.
+    - oplimit: Which operation ID (0..*total ops count*) to write alloctaion stats for. The special value 0 is for writing the original header.
+      Typically the driver application is called in a for loop from 0 to the number of operations, i.e. number of lines
+      in the opsfile.
+
 * ``--memplot opsfile [heap_size]``
-        
+
+    For each operation, call out ``run_memory_frag_animation_plot_animation.py`` to create a PNG of the heap at that
+    point in time.  The driver application only needs to be run once.
+
+    Also creates output similar to ``--allocstats``. (XXX: deprecate this!)
+
+    Parameters:
+
     - opsfile - operations file created by ``translate-memtrace-to-ops.py``.
     - (optional) heap_size - maximum heap size to use
-    - XXX: description
+
+These are not called directly, but instead called from by the tools described below.
 
 At startup the mode of operation of the allocator driver is set to one of these. All modes perform follow the same basic
 flow:
@@ -277,7 +316,8 @@ Output::
 
     result.soffice-ops-animation.avi
 
-The shell script is a thin wrapper on top of the alloc driver
+The toolcalls the *memplot* mode described above and calls *ffmpeg* to generate an animation of the heap image sequence
+produced by the alloc drver for the given ops file.
 
 
 ../../src/steve/run_allocator_stats.sh
