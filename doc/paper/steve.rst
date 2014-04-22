@@ -267,7 +267,7 @@ All alloc drivers are linked to the same main program and have the same command 
     - resultfile: Statistics output file, convention is to use file stem of opsfile (without "-ops") and append
       "-allocstats"
     - killpercent: Optionally rewind and randomly free *killpercent* (0-100) of all headers at EOF, to simulate an application that destroys and creates new documents. The value 100'000 means no rewinding or killing takes place, i.e. just one round of the data gathered by running the application to be benchmarked.
-    - oplimit: Which operation ID (0..*total ops count*) to write alloctaion stats for. The special value 0 is for writing the original header.
+    - oplimit: Which operation ID (0 .. *total ops count*) to write alloctaion stats for. The special value 0 is for writing the original header.
       Typically the driver application is called in a for loop from 0 to the number of operations, i.e. number of lines
       in the opsfile.
 
@@ -288,19 +288,69 @@ These are not called directly, but instead called from by the tools described be
 At startup the mode of operation of the allocator driver is set to one of these. All modes perform follow the same basic
 flow:
 
-* Allocate heap according to specified heap size or use predefined size (currently 1 Gb)
-  If heap allocation fails, decrease by 10% until success.
-* Allocate and initialize colormap as 1/4 of heap size. (more on colormap later)
-* Initialize driver
-* Initialize randomness with compile-time set seed.
-* Open opsfile
-* Run mode's main loop
-* Destroy driver
-* Save statistics created by mode's main loop.
+#. Allocate heap according to specified heap size or use predefined size (currently 1 Gb).
+   If heap allocation fails, decrease by 10% until success.
+#. Allocate and initialize colormap as 1/4 of heap size. (more on colormap later)
+#. Initialize driver.
+#. Initialize randomness with compile-time set seed.
+#. Open opsfile.
+#. Run mode's main loop.
+#. Save statistics created by mode's main loop.
+#. Destroy driver.
 
-First, I'll describe the three main loops (peakmem, allocstats, memplot) and then the tools that use them.
+The main loop follows the same basic structure:
 
-../../src/steve/run_memory_frag_animation.sh
+#. Scan a line of the ops file and put in the variables handle, *op*, *address* and *size*.
+#. Switch on op:
+
+   - Op is N (New): Call ``user_malloc`` with the size. On OOM, call ``user_handle_oom`` and call ``user_malloc`` again if
+     successfully handled. Make sure that there was no OOM on the final malloc. Retrieve the highest address in use by
+     ``user_highest_address``. Store object pointer (that may or may not be a directly accessible memory address) and
+     memory address (if available) from malloc along with size in maps keyed on the handle id.
+   - Op is F (Free): Retrieve the object pointer and call ``user_free``.
+   - Op is L (Lock): Retreive the object pointer and all ``user_lock``.
+   - Op is U (Unlock): Retreive the object pointer and all ``user_unlock``.
+
+   Access (load, store, modify) operations are not handled in the loop since their use is limited to calculating
+   lifetime statistics and locking behaviour.
+
+#. Exit on EOF.
+
+Next, I'll describe the specifics on the three main loops (peakmem, allocstats, memplot) and then the tools that use them.
+
+Driver mode: peakmem
+~~~~~~~~~~~~~~~~~~~~~
+Find the largest amount of memory during the driver's lifetime for a specific opsfile, as calculated by the highest
+address+size of a block minus the start address of the heap. This number is used as a theoretical maximum heap size to
+mesaure the amount of overhead. 
+
+Used by the tool ``run_allocator_stats.sh``. 
+
+Driver mode: allocstats
+~~~~~~~~~~~~~~~~~~~~~~~
+Adds rewinding of the input file and random free of a certain percentage, if requested, of the allocated objects on opsfile EOF. The
+purpose is to allow for the driver application to run several rounds of the application data, as explained above, to do
+a rough simulation of an application creating and destroying documents.
+It augments new and free with the time the operation takes and stores information about the operation in a list for
+later processing.
+
+Used by the tool ``run_allocator_stats.sh``.
+
+Driver mode: memplot
+~~~~~~~~~~~~~~~~~~~~
+Also adds non-optional rewinding to run until OOM. At each operation, a *colormap* is updated with all known objects. In
+order to retrieve the physical memory address they are locked (throuh ``user_lock``) and the pointer is registered.
+
+Colormap is 25% of the heap size, such that each 4-byte word maps onto a byte. The colormap is initially filled with
+white (for overhead), with a new operation painted as red and free painted as green. The heap is corresondingly filled
+with HEAP_INITIAL (``0xDEADBEEF``) initially, and newly created blocks are filled with HEAP_ALLOC (``0xBEEFBABE``) and
+blocks that are just about to be freed are filled with HEAP_FREE (``0xDEADBABE``).
+
+Now, by scanning the heap for values that are not in the set HEAP_INITIAL, HEAP_ALLOC nor HEAP_FREE, it can be concluded
+that this is overhead (i.e. allocator-internal structures). Paint the corresponding memory location in the colormap with
+white (for overhead).
+
+run_memory_frag_animation.sh
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Syntax::
 
@@ -320,7 +370,7 @@ The toolcalls the *memplot* mode described above and calls *ffmpeg* to generate 
 produced by the alloc drver for the given ops file.
 
 
-../../src/steve/run_allocator_stats.sh
+run_allocator_stats.sh
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Run::
 
@@ -331,12 +381,15 @@ Generates::
 
     result.soffice-ops.allocstats
 
+Heap size in allocstats mode is set te this value, increased by 5% until there is no OOM on the last
+operation, to make sure that the entire program can be run in full at least once.
 
-../../src/steve/run_allocator_stats_payload.sh
+
+run_allocator_stats_payload.sh
 -------------------------------------------------
 
 
-../../src/steve/run_graphs_from_allocstats.py
+run_graphs_from_allocstats.py
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 From data created by run_allocator_stats.
 
@@ -362,10 +415,77 @@ Generates:
 
     soffice.png
 
+Allocators tested
+~~~~~~~~~~~~~~~~~~~~~~
+TODO: Describe what each allocator does and is good for.
 
-Things to consider for the future / partially implemented
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+rmmalloc (Jeff) compacting
+--------------------------
+Maps all ``user_...`` calls to the corresponding calls in Jeff. ``user_handle_oom`` always performs a full compact.
+
+rmmalloc (Jeff) non-compacting
+------------------------------
+Same as above, except ``user_handle_oom`` is a no-op.
+
+jemalloc (v1.162 2008/02/06)
+----------------------------
+Main purpose of jemalloc is to ...
+
+Alloc and free calls mapped to the corresponding function call. Handle OOM is a no-op. Configured to use sbrk (``opt_dss
+= true``), but not mmap (``opt_mmap = false``).
+
+dlmalloc v2.8.6
+---------------
+Main purpose of dlmalloc is to ...
+
+Alloc and free calls mapped to the corresponding function call. Handle OOM is a no-op.
+
+tcmalloc (gperftools-2.1)
+-------------------------
+Main purpose of tcmalloc is to ...
+
+Alloc and free calls mapped to the corresponding function call. Handle OOM is a no-op.
+
+Input data
+~~~~~~~~~~
+* Opera v12.0
+* LibreOffice 4.0.2.2 (soffice)
+* sqlite 2.8.17 - ubuntu 13.04
+* zip 3.0 - ubuntu 13.04
+* ls 8.20 - ubuntu 13.04
+* cfrac 3.5.1 (3.51?)
+
+Results
+~~~~~~~~
+opera
+------
+
+libreoffice
+------------
+
+sqlite
+------
+
+zip
+----
+
+ls
+---
+
+cfrac
+------
+
+Limitations
+~~~~~~~~~~~~~~
+tcmalloc performs very poorly without mmap.
+
+Conclusions
+~~~~~~~~~~~~
+
+Future work (not implemented or partially implemented)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 * colormap parameter
+* theoretical free size based on colormap
 
 Unused
 -----------

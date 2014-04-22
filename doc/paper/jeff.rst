@@ -56,6 +56,9 @@ a locked block at or close to the top would make subsequent malloc calls to fail
 maintained even though it might be the case for real-world applications that the worst case occurs seldom. (REF-STEVE,
 FUTURE-WORK).
 
+<FUTURE-WORK: NOT thread-safe!>
+<FUTURE-WORK: NOT aligned!>
+
 When an allocation request comes in, the size of the request is checked against the top pointer and the end of the heap.
 A request that fits is associated with a new handle and returned. If there is no space left at the top, the free list is
 searched for a block that fits.
