@@ -27,7 +27,40 @@ does parts of what I was looking for but missing other parts. I instead ended up
 https://github.com/mikaelj/rmalloc/commit/a64ab55d9277492a936d7d7acfb0a3416c098e81> to capture load/store/access
 operations and logging them to file, if they were in the boundaries of *lowest address allocated* to *highest address
 allocated*. This will still give false positives when there are holes (lowest is only decreased and highest is only
-increased) but reduces the logging output somewhat. Memory access can then be analyzed offline.
+increased) but reduces the logging output somewhat. Memory access can then be analyzed offline. Note that it will only
+work for applications that use the system-malloc/free. Any applications using custom allocators must be modified to use
+the system allocator, which generally means changing a setting in the source code and recompiling.
+
+I've written a convenience script for this purpose and then optionally creates locking data::
+
+    #!/bin/bash
+
+    theapp=$1
+    if [[ "$theapp" == "" ]]; then
+        echo "Program plus parameters, e.g. $0 ls /usr/bin"
+        exit
+    fi
+
+    if [[ ! -d "$theapp" ]]; then
+        mkdir $theapp
+    fi
+    echo "$*" >> ${theapp}/${theapp}-commandline
+
+    echo "Getting memtrace..."
+    ../../valgrind/vg-in-place --tool=memcheck $* 2>&1 > /dev/null | grep '^>>>' > ${theapp}/${theapp}
+
+    echo "Translating..."
+    python -u ../steve/memtrace-to-ops/translate-memtrace-to-ops.py ${theapp}/${theapp}
+
+    echo "Warning: The following step is very slow. (full lifetime calculation)"
+    echo -n "Do you want to proceed? [yN] "
+    read answer
+    echo "Proceeding..."
+    if [[ "$answer" == "y" ]]; then
+        python -u ../steve/memtrace-to-ops/translate-ops-to-locking-lifetime.py ${theapp}/${theapp}
+    fi
+
+Beware that this takes long time for complex applications, about 30 minutes on an intel core i3-based system to load Opera with http://www.google.com
 
 memtrace-run.sh and translate-memtrace-to-ops.py
 -----------------------------------------------------
@@ -103,7 +136,7 @@ increases life by 1, and conversely, another block's operation (regardless of ty
 capped in the upper range but has a lower limit of 0. When life is higher than 0, the current operation's lock status is
 set, otherwise reset. 
 
-XXX: pretty picture.
+XXX: pretty picture why this particular number was chosen.
 
 When all ops have been processed they are written out to a new file that in addition to the regular ops also contained
 detailed locking information. Since the number of objects is large and the calculation is independent of other objects,
@@ -419,46 +452,65 @@ Allocators tested
 ~~~~~~~~~~~~~~~~~~~~~~
 TODO: Describe what each allocator does and is good for.
 
-rmmalloc (Jeff) compacting
+rmmalloc (Jeff)
 --------------------------
-Maps all ``user_...`` calls to the corresponding calls in Jeff. ``user_handle_oom`` always performs a full compact.
+Maps all ``user_...`` calls to the corresponding calls in Jeff. For the compacting version, ``user_handle_oom`` always performs a full compact, and on the non-compacting version, ``user_handle_oom`` is a no-op.
 
-rmmalloc (Jeff) non-compacting
-------------------------------
-Same as above, except ``user_handle_oom`` is a no-op.
+The workings of Jeff is described earlier in this paper.
 
 jemalloc (v1.162 2008/02/06)
 ----------------------------
-Main purpose of jemalloc is to ...
+jemalloc is an allocator written by Jason Evans, originally written for a custom development environment circa 2005, later
+integrated into FreeBSD for its multi-threading capabilities and later further adapted in 2007 for use by the Firefox
+project to deal with fragmentation issues. It's since been adapted for heavy-duty use in the Facebook servers. <REF:
+https://github.com/jemalloc/jemalloc/wiki/History>. As of 2010, it still performs better than the system-provided allocators in MacOS, Windows and Linux <REF: http://www.quora.com/Who-wrote-jemalloc-and-what-motivated-its-creation-and-implementation>.
+
+XXX: fill in more information about jemalloc: goal, design
 
 Alloc and free calls mapped to the corresponding function call. Handle OOM is a no-op. Configured to use sbrk (``opt_dss
 = true``), but not mmap (``opt_mmap = false``).
 
 dlmalloc v2.8.6
 ---------------
-Main purpose of dlmalloc is to ...
+dlmalloc is an allocator written by Doug Lea and is used by the GNU standard C library, glibc.  The source code states
+the following about its goal:
+    
+    This is not the fastest, most space-conserving, most portable, or most tunable malloc ever written. However it is
+    among the fastest while also being among the most space-conserving, portable and tunable.  Consistent balance across
+    these factors results in a good general-purpose allocator for malloc-intensive programs.
 
-Alloc and free calls mapped to the corresponding function call. Handle OOM is a no-op.
+XXX: fill in more information about dlmalloc: goal, design
+
+Alloc and free calls mapped to the corresponding function call. Handle OOM is a no-op. Configured to use sbrk but not
+mmap.
 
 tcmalloc (gperftools-2.1)
 -------------------------
-Main purpose of tcmalloc is to ...
+Written by Google and includes a profiling/benchmark framework/tools (<REF: gperftools>). It is used by, among others,
+Google Chrome, MySQL and WebKit <REF: paper-on-tcmalloc-and-dlmalloc>, which in turn is used by many other projects such
+as Apple's Safari.
 
-Alloc and free calls mapped to the corresponding function call. Handle OOM is a no-op.
+XXX: fill in more information about tcmalloc: goal, design
+
+Alloc and free calls mapped to the corresponding function call. Handle OOM is a no-op. Configured to use sbrk but not
+mmap.
 
 Input data
 ~~~~~~~~~~
-* Opera v12.0
-* LibreOffice 4.0.2.2 (soffice)
-* sqlite 2.8.17 - ubuntu 13.04
-* zip 3.0 - ubuntu 13.04
-* ls 8.20 - ubuntu 13.04
-* cfrac 3.5.1 (3.51?)
+Measuring an allocator must be done in conjunction with input data. These are the applications I've used.
+
+* Opera v12.0 loading http://www.google.com
+* LibreOffice 4.0.2.2 (soffice) and exiting
+* sqlite 2.8.17 - ubuntu 13.04 - loading an SQL file of XXX MB
+* zip 3.0 - ubuntu 13.04 - loading a set of files XXX # items and MB size
+* ls 8.20 - ubuntu 13.04 - displaying a directory
+* cfrac 3.5.1 (3.51?) - just running it
 
 Results
 ~~~~~~~~
 opera
 ------
+This yielded an 8.4 GB large opsfile 
 
 libreoffice
 ------------
