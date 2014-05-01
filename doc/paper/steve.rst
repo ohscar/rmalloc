@@ -136,7 +136,29 @@ increases life by 1, and conversely, another block's operation (regardless of ty
 capped in the upper range but has a lower limit of 0. When life is higher than 0, the current operation's lock status is
 set, otherwise reset. 
 
-XXX: pretty picture why this particular number was chosen.
+The value was chosen by testing different values against random data, and the graphs that looked best was verified
+against the smaller application memtraces. This is the algorithm used, with different values for percent, float speed
+and sink speed::
+
+    let life = 0
+    let lifetime = empty array
+    let number of points = 1000
+    for i from 0 to number of points:
+        let thishandle = random() < percent
+        if thishandle:
+            life = life + float_speed
+        else:
+            if life >= sink_speed:
+                life = life - sink_speed
+
+        lifetime.append(life)
+
+The results are shown below.
+
+.. figure:: graphics/locking-lifetime-explanation
+   :scale: 40%
+
+   Simulated lifetime calculations by varying the values of input parameters.
 
 When all ops have been processed they are written out to a new file that in addition to the regular ops also contained
 detailed locking information. Since the number of objects is large and the calculation is independent of other objects,
