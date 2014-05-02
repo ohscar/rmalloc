@@ -1,0 +1,71 @@
+% vim:tw=120
+
+\documentclass[a4paper,twoside,openany]{report}
+\pagestyle{headings}
+\usepackage[latin1]{inputenc}
+\usepackage{url}
+\usepackage{graphicx}
+\usepackage{verbatim}
+\usepackage{pdfpages}
+% \usepackage{amsmath}
+\usepackage{tocloft}
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks,
+    citecolor=black,
+    filecolor=black,
+    linkcolor=black,
+    urlcolor=black
+}
+% increase width of section numbers in toc
+\addtolength{\cftsecnumwidth}{0.4em}
+\addtolength{\cftsubsecindent}{0.4em}
+
+$fallbacks$pdfsetup
+
+\begin{document}
+
+%\title{ titledata}
+
+$titledata
+
+% \author{Mikael Jansson}
+
+\include{frontpage}
+
+\section*{Abstract}
+
+\renewenvironment{abstract}{}{}
+
+$abstract
+
+\clearpage
+
+%\addcontentsline{toc}{section}{Preface}
+\section*{Preface}
+
+XXX: This report describes the work and result conducted by the author on designing
+and implementing (...)
+
+
+\clearpage
+\tableofcontents
+
+\clearpage
+\addcontentsline{toc}{section}{Acknowledgments}
+\section*{Acknowledgments}
+
+XXX: I acnowledge
+
+\vspace{3ex}
+
+\noindent
+\textit{Mikael Jansson} \hspace{\stretch{1}} Chalmers, January 2014
+
+
+\clearpage
+
+$body
+
+\clearpage
+\end{document}

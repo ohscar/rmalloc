@@ -1,7 +1,5 @@
 .. vim:tw=120
 
-Jeff
-====
 ... is a compacting allocator.
 
 Overview
@@ -31,6 +29,8 @@ TODO:- requires modifications of application
   + enter Steve for automating testing
   + locked/unlocked objects (based on heuristics, Steve)
 
+Buddy allocator
+~~~~~~~~~~~~~~~
 To get started with my allocator, I started implementing a buddy allocator. Along with it, I developed tests using
 <LINK: Google Test Library> to make sure no regressions were introduced during development.  More on that later.
 
@@ -41,6 +41,8 @@ with physical memory layout. Indeed, I made the incorrect decision which made th
 implement. The buddy allocator prototype was discarded and work started with the actual allocator that was to be the end
 result, with the lessons about taking care in the design phase learned.
 
+Quick malloc, quick free, slow compact
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 My original idea was to have a quick malloc, a quick free and a quick compact. Compact could then be run at times when
 the client application was waiting for user input or otherwise not doing computations, such that the malloc would be
 very cheap. I had originally envisioned this as a malloc that would basically grow the top pointer of the
@@ -59,6 +61,8 @@ FUTURE-WORK).
 <FUTURE-WORK: NOT thread-safe!>
 <FUTURE-WORK: NOT aligned!>
 
+Free list
+~~~~~~~~~~
 When an allocation request comes in, the size of the request is checked against the top pointer and the end of the heap.
 A request that fits is associated with a new handle and returned. If there is no space left at the top, the free list is
 searched for a block that fits.
@@ -75,6 +79,9 @@ to be at least 2^n, but smaller than 2^(n-^1), bytes in size. Unlike the buddy a
 
    Example slots in free list.
 
+
+Compacting
+~~~~~~~~~~~~
 TODO
 - explain Lisp-2
 
@@ -88,6 +95,10 @@ one adjacent block that fits within the unused space will be moved together. In 
 fit the unused space (and there is a locked block directly after), scanning is restarted beginning with the block
 directly following the last free block found. The process is continued until there are no unused blocks left or top is
 reached.
+
+Algorithm
+==========
+XXX: pseudo-code
 
 Implementation
 ==============
