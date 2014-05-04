@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 import os.path
 
 # reference value color first
-COLORS = ["b-", "r-", "g-", "b-", "y-", "m-", "c-"]
+COLORS = ["b-", "r-", "g-", "k-", "m-", "y-", "c-"]
 #COLORS = ["k-", "k:", "k--", "k_", "k", "k", "k-."]
 #COLORS = ["k--", "g", "r-.", "y_", "k ", "k", "k-."]
 #COLORS = ["k--", "g", "r-.", "y_", "k ", "k", "k-."]
@@ -71,7 +71,9 @@ def plot_allocstats_multiple(app, allocstats_multiple):
         if len(opstats) > longest_length:
             longest_length = len(opstats)
 
-    g_multiple_figure.suptitle(app)
+    # Title of the graph, top title.
+    #g_multiple_figure.suptitle(app) # disabled for now
+
     #ax = subplot_multiple(title, "Time (op)", pretty)
     ax = subplot_multiple("Time per operation (nanoseconds), logarithmic scale", "Op number", "")
     plots = []
