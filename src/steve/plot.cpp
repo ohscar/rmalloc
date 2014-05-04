@@ -31,7 +31,7 @@
 // to get reproducability
 #define INITIAL_RANDOM_SEED 0x42424242
 
-#define KILLPERCENT_FOR_NOT_REWINDING 1000
+#define KILLPERCENT_FOR_NOT_REWINDING (float)1.0
 
 // exit codes:
 // 0 = ok, 

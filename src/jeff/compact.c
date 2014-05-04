@@ -1721,10 +1721,10 @@ void rmcompact(int maxtime) {
             //
             // * Create F6
             // *
-            // * Possible too big block U3?
+            // * Possible too big block U3? (A)
             // * - Link B to U3
             // * - Link U3 to F6
-            // * Else:
+            // * Else: (C)
             // * - Link B to F6
             //
             // * Link F6 to A
