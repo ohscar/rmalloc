@@ -8,13 +8,15 @@ Jeff and Steve: A Relocatable Memory Allocator and its Benchmarking Friend
 .. role:: latex(raw)
   :format: latex
 
-.. .. default-role:: latex
+.. role:: ref
 
-.. .. sectnum::
-..   :depth: 3
+.. role:: label
 
-.. `\label{sec1}`
-.. In section `\ref{sec1}`, almost nothing was said.
+.. raw:: latex
+
+   \newcommand*{\docutilsroleref}{\ref}
+   \newcommand*{\docutilsrolelabel}{\label}
+
 
 .. raw:: latex
 
@@ -59,3 +61,10 @@ Making drawings in my sketch book, testing out scenarios and algorithms by hand 
     \chapter{Appendix}
 
 .. include:: appendix.rst
+
+.. raw:: latex
+
+    \chapter{TODO XXX CHECKLIST}
+
+.. include:: todo-checklist.rst
+

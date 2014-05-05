@@ -9,3 +9,9 @@ How TCMalloc works:
 
 Malloc/free i separat tråd. Har tabell med utvärderingsprogram.
 http://www.ece.ncsu.edu/arpers/Papers/MMT_MEDEA_PRESENTATION.pdf
+
+http://blog.reverberate.org/2009/02/one-malloc-to-rule-them-all.html
+http://www.quora.com/Is-tcmalloc-stable-enough-for-production-use
+https://www.facebook.com/notes/facebook-engineering/scalable-memory-allocation-using-jemalloc/480222803919
+
+

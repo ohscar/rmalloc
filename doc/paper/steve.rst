@@ -1,13 +1,14 @@
 .. vim:tw=120
 
 
-... is a benchmark tool for collecting runtime memory access and allocation patterns in arbitrary binary applications that use
-the system malloc, without access to source code or recompilation.
+... is a benchmark tool for collecting and visualizing runtime memory access and allocation patterns in arbitrary binary
+applications that use the system malloc, without access to source code or recompilation.
 
 Overview
 =========
 Steve consists of mostly Python code and Cython for tight inner loops such as the memtrace to ops calculation, plus
-some Bash scripts for glueing it all together.
+some Bash scripts for glueing it all together. The data is plotted in graphs and there is also a tool that creates an
+animation of memory allocations as they happen in memory.
 
 Measuring Jeff requires a rewrite of the application needing to be tested, to use the new malloc interface. The simple
 solution to do so is to emulate a regular malloc, i.e. directly lock after malloc. But that would make the compact
@@ -17,7 +18,7 @@ is required, which is not always possible.
 
 Tools
 =====
-XXX: description of the tools
+For a detailed description of the tools, see the appendix.
 
 * translate-memtrace-to-ops.py
 * translate-ops-to-histogram.py
@@ -148,7 +149,7 @@ All alloc drivers are linked to the same main program and have the same command 
     For each operation, call out ``run_memory_frag_animation_plot_animation.py`` to create a PNG of the heap at that
     point in time.  The driver application only needs to be run once.
 
-    Also creates output similar to ``--allocstats``. (XXX: deprecate this!)
+    Also creates output similar to ``--allocstats``. (TODO: deprecate this!)
 
     Parameters:
 
@@ -227,7 +228,7 @@ white (for overhead).
 
 Allocators tested
 ==============================
-TODO: Describe what each allocator does and is good for.
+- TODO: Describe what each allocator does and is good for.
 
 rmmalloc (Jeff)
 ~~~~~~~~~~~~~~~~~~~~~
@@ -242,7 +243,7 @@ integrated into FreeBSD for its multi-threading capabilities and later further a
 project to deal with fragmentation issues. It's since been adapted for heavy-duty use in the Facebook servers. <REF:
 https://github.com/jemalloc/jemalloc/wiki/History>. As of 2010, it still performs better than the system-provided allocators in MacOS, Windows and Linux <REF: http://www.quora.com/Who-wrote-jemalloc-and-what-motivated-its-creation-and-implementation>.
 
-XXX: fill in more information about jemalloc: goal, design
+TODO: fill in more information about jemalloc: goal, design
 
 Alloc and free calls mapped to the corresponding function call. Handle OOM is a no-op. Configured to use sbrk (``opt_dss
 = true``), but not mmap (``opt_mmap = false``).
@@ -256,7 +257,7 @@ the following about its goal:
     among the fastest while also being among the most space-conserving, portable and tunable.  Consistent balance across
     these factors results in a good general-purpose allocator for malloc-intensive programs.
 
-XXX: fill in more information about dlmalloc: goal, design
+TODO: fill in more information about dlmalloc: goal, design
 
 Alloc and free calls mapped to the corresponding function call. Handle OOM is a no-op. Configured to use sbrk but not
 mmap.
@@ -267,53 +268,9 @@ Written by Google and includes a profiling/benchmark framework/tools (<REF: gper
 Google Chrome, MySQL and WebKit <REF: paper-on-tcmalloc-and-dlmalloc>, which in turn is used by many other projects such
 as Apple's Safari.
 
-XXX: fill in more information about tcmalloc: goal, design
+TODO: fill in more information about tcmalloc: goal, design
 
 Alloc and free calls mapped to the corresponding function call. Handle OOM is a no-op. Configured to use sbrk but not
 mmap.
 
-
-MISC TODO
-============
-Unused
-~~~~~~~~~~~
-* // XXX: UNUSED - bool user_has_heap_layout_changed()
-* // XXX: UNUSED - uint32_t user_get_used_block_count()
-* // XXX: UNUSED - void user_get_used_blocks(ptr_t \*blocks) // caller allocates!
-* // XXX: UNUSED - void user_reset(); // basically destroy + init
-
-Checklist
-~~~~~~~~~~
-... is a benchmark tool for memory access profiling without modifying apps, lets users simulate different allocators by
-adding a small wrapper.
-* Plot histogram of object lifetime
-* Plot efficiency, speed
-* Compare allocators
-* Produce animation of malloc ops
-
-- choices throughout the entire code
-- why not, in the end (large per-block structures -- too big overhead)
-
-- purpose
-- investigated
-  + valgrind
-  + bitblazer / temu
-  + clang / llvm
-- why valgrind
-  + modifications to memtest
-  + memtrace-to-ops-mapping at http://rmalloc.blogspot.se/2012/08/large-scale-data-processing.html
-- locking heuristics
-  - full vs simple locking
-  - access lock heuristics at http://rmalloc.blogspot.se/2013/09/memory-block-acces-locking-heuristics.html
-  - histogram for lifetime at http://rmalloc.blogspot.se/2013/09/making-sense-of-histograms.html and http://rmalloc.blogspot.se/2012/08/determining-global-variables.html
-- colormap (0xdeadbeef, 0xbeefbabe, 0xdeadbabe)
-- what animation shows
-- what benchmark(s) show(s)
-- sample outputs
-  + allocators
-  + test programs w/ inputs
-- results
-- conclusion?
-- future work
-- how to run tools
 

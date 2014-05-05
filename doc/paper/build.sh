@@ -9,6 +9,10 @@
 #options="--hyperlink-color=false --use-latex-abstract --use-latex-citations --template=default.tex"
 options="--use-latex-abstract --use-latex-citations --template=default.tex"
 
+for file in frontpage.aux main.aux paper.aux main.aux main.dvi main.latex main.log main.out main.rst.html main.toc introduction.rst.html jeff.rst.html main-tetex.tetex paper.aux paper.log paper.pdf paper.toc steve.rst.html; do
+    rm -rf $file
+done
+
 rst2latex $options main.rst > main.latex
 
 #latex main.latex 

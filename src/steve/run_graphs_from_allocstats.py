@@ -455,7 +455,8 @@ def plot_save(fname):
 
 def plot_init_multiple():
     global g_multiple_figure
-    g_multiple_figure = plt.figure(figsize=(19.2,12.0), dpi=300)
+    #g_multiple_figure = plt.figure(figsize=(19.2,12.0), dpi=300)
+    g_multiple_figure = plt.figure(figsize=(12,19.2), dpi=300)
     #plt.axis('tight')
     #plt.grid(True)
 

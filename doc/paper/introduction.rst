@@ -1,22 +1,8 @@
 .. vim:tw=120
 
-Hypothesis
-===================
-Given an allocator with the following interface::
+.. Allocators
+.. ===========
 
-    handle_t malloc(size_t n);
-    void *lock(handle_t h);
-    void unlock(handle_t h);
-    void free(handle_t h);
-
-The purpose of the lock/unlock operations is to introduce an indirection for memory access that gives the ability to
-move data blocks around when not in used (*unlocked* state), specifically to cope with fragmentation problems by
-compacting the heap. 
-
-Can such an allocator be efficient in space and time?
-
-Allocators
-===========
 Computer systems can be generalized to be composed of two things: data, and code operating on said data.  In order to
 perform useful calculations, real-world applications accept user data which often varies in size.  To accomodate the
 differences, memory is requested dynamically, at runtime, using a memory allocator.  The basic interface to the
@@ -41,13 +27,32 @@ all e.g. 8-byte chunks into one or more pages, it will be easier to return the p
 Lookup can also be more efficient, since the allocator can use offsets to find a suitable free block, instead of
 iterating through a list of free blocks.
 
+Hypothesis
+===================
+Given an allocator with the following interface::
+
+    handle_t malloc(size_t n);
+    void *lock(handle_t h);
+    void unlock(handle_t h);
+    void free(handle_t h);
+
+The purpose of the lock/unlock operations is to introduce an indirection for memory access that gives the ability to
+move data blocks around when not in used (*unlocked* state), specifically to cope with fragmentation problems by
+compacting the heap. 
+
+Can such an allocator be efficient in space and time?
+
+Allocator Types
+=========================
+I'll describe the most common style of allocator implementation strategies. <REF: gc-book?>
+
 Buddy Allocator
-=======================
+~~~~~~~~~~~~~~~~~~~~~
 The most common allocator type is the buddy allocator, and many allocators are built on its principles, or at least
 incorporate them in some way: start with a single block and see if the requested chunk fits in half of the block. If it
 does, split the block into two and repeat, until there no smaller block size would fit the request.
 
-TODO: <illustration of 2^k list>
+- TODO: <illustration of 2^k list>
 
 Over time, there will be more and more items of size 2^n, that are stored on a free list for that block size. Each pair
 of split-up blocks is said to be two buddies. When two buddy blocks are free, they can be joined. A block of the next
@@ -67,14 +72,14 @@ allocator, but not the user code.
 Conceptually, the buddy allocator is a very simple allocator to use and implement, but not the most efficient because of
 internal fragmentation.
 
-Pool Allocators
-=======================
+Pool Allocator
+~~~~~~~~~~~~~~~~~~~~~~~~~
 Certain applications use a large amount of objects of the same size that are allocated and freed continuously. This
 information can be used to create specialized pool allocators for different object sizes, where each pool can be easily
 stored in an array of *N \* sizeof(object)* bytes, allowing for fast lookup by alloc and free.
 
-Arena Alocators
-=======================
+Arena Alocator
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Code with data structures that are related to each other can be allocated from the same arena, or region, of memory, for
 example a document in a word processor. Instead of allocating memory from the system, the allocator requests data from a
 pre-allocated larger chunk of data (possibly allocated from the system). The main point of this type of allocator is
@@ -84,8 +89,8 @@ applications where a document/task has a well-defined set of objects associated 
 but of the document, but many documents created/destroyed over the total application lifetime, there is a large speed
 benefit to be had from making the free operation faster.
 
-Garbage Collectors
-=======================
+Garbage Collector
+~~~~~~~~~~~~~~~~~~~~~~~
 A garbage collector is an allocator that automatically provides memory for data as-needed. There is no need to
 explicitly ask for memory from the allocator, nor to free it when done. Instead, the garbage collector periodically
 checks for which objects are still in use by the application (*alive*). An object is is anything that uses heap memory: a number,
@@ -109,8 +114,9 @@ I've touched upon internal and external fragmentation. In addition, multi-thread
 need to work without the allocator crashing or currupting data. As in all concurrency situations, care needs to be taken
 to do proper locking of sensitive data structures, while not being too coarse such that performance suffers.
 
-Fast or Efficient?
-~~~~~~~~~~~~~~~~~~~~
+.. Fast or Efficient?
+.. ~~~~~~~~~~~~~~~~~~~~
+
 There are many trade-offs.
 
 Allocators are often written to solve a specific goal, while still performing well in the average case. Some allocator

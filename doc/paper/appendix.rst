@@ -17,26 +17,28 @@ translate-ops-to-histogram.py
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 To visualize and experiment with different ways of calculating lifetime I have a small application that takes as input
 an ops file (created by ``translate-memtrace-to-ops.py``), in particular to look at macro lifetimes in different
-intervals. It turns out that for some (larger) applications, lifetimes are highly clustered for the short-lived objects:
+intervals. It turns out that for some (larger) applications, lifetimes are highly clustered for the short-lived objects,
+as seen in Figure :ref:`appendixhistogram01000`.
 
 .. figure:: graphics/result-soffice-macro-histogram-0-1000.png
    :scale: 50%
 
-   This shows the number of objects within a specific lifetime. Short-lived objects dominates.
+   :label:`appendixhistogram01000` This shows the number of objects within a specific lifetime. Short-lived objects dominates.
 
-By removing the short-lived objects, we can get a better understanding of the distribution of the other objects.
+By removing the short-lived objects, we can get a better understanding of the distribution of the other objects in
+Figure :ref:`appendixhistogram10100`.
 
 .. figure:: graphics/result-soffice-macro-histogram-10-100.png
    :scale: 50%
 
-   Limited to blocks with a lifetime between 1% and 100%
+   :label:`appendixhistogram10100` Limited to blocks with a lifetime between 1% and 100%
 
-And conversely, if we want to see the distribution of the short-lived objects only:
+And conversely, if we want to see the distribution of the short-lived objects only, as in :ref:`appendixhistogram020`.
 
 .. figure:: graphics/result-soffice-macro-histogram-0-20.png
    :scale: 50%
 
-   Limited to blocks with a lifetime between 0% and 2%
+   :label:`appendixhistogram020` Limited to blocks with a lifetime between 0% and 2%
 
 translate-ops-to-locking-lifetime.py
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -69,12 +71,12 @@ and sink speed::
 
         lifetime.append(life)
 
-The results are shown below. 
+The results are shown in Figure :ref:`appendixlockinglifetime`.
 
 .. figure:: graphics/locking-lifetime-explanation
    :scale: 40%
 
-   Simulated lifetime calculations by varying the values of input parameters.
+   :label:`appendixlockinglifetime` Simulated lifetime calculations by varying the values of input parameters.
 
 Clockwise from upper left corner, we see that lock status (i.e. lifetime > 0) varies if the current handle is less than
 30% of the ops, and if it's less than 50%, it'll diverge towards always being locked -- which is sound, since any object
@@ -132,7 +134,7 @@ operation, to make sure that the entire program can be run in full at least once
 
 run_allocator_stats_payload.sh
 -------------------------------
-XXX: document me!
+TODO: document me!
 
 
 run_graphs_from_allocstats.py
@@ -193,7 +195,7 @@ user_init(heap_size, heap, name)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ``bool user_init(uint32_t heap_size, void *heap, char *name)``
 
-XXX: remove colormap from API (plot.h, plot.cpp, drivers)
+TODO: remove colormap from API (plot.h, plot.cpp, drivers)
 
 Initialize the allocator with the given parameters.  Since the heap is passed onto the driver, any *mmap* functionality
 must beO disabled and only *sbrk*-style allocation is possible. The driver must fill ``name`` with a name that can be

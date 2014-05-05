@@ -4,8 +4,7 @@
 
 Overview
 ========
-TODO:
-- different signature
+- TODO: different signature
 
 In order to achieve compacting, memory must be accessed indirectly. This is the signature::
 
@@ -23,7 +22,8 @@ move it. If it could be moved, the pointer obtained by the client code would no 
 certain limitations on the compactor, since it needs to deal with possibly locked blocks.  More on `compact()` later.
 Also, client code needs to be adapted to this allocator.
 
-TODO:- requires modifications of application
+- TODO: requires modifications of application
+
   + indirect memory access through handles
   + benchmark w/ modified apps? time-consuming
   + enter Steve for automating testing
@@ -61,29 +61,28 @@ FUTURE-WORK).
 <FUTURE-WORK: NOT thread-safe!>
 <FUTURE-WORK: NOT aligned!>
 
-Free list
-~~~~~~~~~~
+Free in more detail
+~~~~~~~~~~~~~~~~~~~~~~~~~
 When an allocation request comes in, the size of the request is checked against the top pointer and the end of the heap.
 A request that fits is associated with a new handle and returned. If there is no space left at the top, the free list is
 searched for a block that fits.
 
-TODO:
-- why is block merging not possible?
-
-Freeing a block marks it as unused and adds it to the free list, for malloc to find later as needed.
-The free list is an index array of 2^3..k-sized blocks with a linked list at each slot. All free blocks are guaranteed
-to be at least 2^n, but smaller than 2^(n-^1), bytes in size. Unlike the buddy allocator, blocks are not merged on free. <FUTURE-WORK: block merging possible?>. 
+Freeing a block marks it as unused and adds it to the free list, for malloc to find later as needed.  The free list is
+an index array of 2^3..k-sized blocks with a linked list at each slot. All free blocks are guaranteed to be at least
+2^n, but smaller than 2^(n-^1), bytes in size. Unlike the buddy allocator, blocks are not merged on free.
+<FUTURE-WORK: block merging possible?>.  
 
 .. figure:: graphics/jeff-free-blockslots.png
    :scale: 50%
 
-   Example slots in free list.
+   :label:`jeffexampleblockslots` Example slots in free list.
+
+An example free blockslots list is given in Figure :ref:`jeffexampleblockslots`.
 
 
 Compacting
 ~~~~~~~~~~~~
-TODO
-- explain Lisp-2
+- TODO: explain Lisp-2
 
 Compacting is a greedy Lisp-2-style compacting, where blocks are moved closer to bottom of the heap (if possible),
 otherwise the first block (or blocks) to fit in the unused space is moved there. The first case happens if there are no
@@ -98,14 +97,14 @@ reached.
 
 Algorithm
 ==========
-XXX: pseudo-code
+TODO: pseudo-code
 
 Implementation
 ==============
 In the previous overview section I described the general functionality. This section will in more details describe how
 each of the key parts work, including memory layout and performance metrics.
 
-TODO: describe O(...) of all complex operations.
+- TODO: describe O(...) of all complex operations.
 
 rminit
 ~~~~~~
@@ -209,7 +208,7 @@ block. This is the most complex part of alloc/free.
 
 find free block
 ----------------
-TODO: describe O(...) of all complex operations.
+- TODO: describe O(...) of all complex operations.
 
 Calculate the index *k* into the free block slots list from *log2(size)+1*. As previously explained, the free block
 slot list has a stack (implemented as a singly linked list) hanging off each slot, such that finding a suiting block
@@ -248,7 +247,7 @@ with them, regardless of flags.  This step only has to be done once each call to
 Actual compacting is done in passes so it can be optionally time limited, with a granularity of the time it takes to
 perform a single pass.
 
-XXX: pretty pictures
+TODO: pretty pictures
 
 One pass of moving blocks around
 ------------------------------------
@@ -292,55 +291,55 @@ One pass of moving blocks around
   - Adjust used header pointers
 
 * Adjacent: relink blocks so unlocked headers is placed before what's left of free area, and free area pointing to header
-  directly following previous position of last unlocked header's next header.
+  directly following previous position of last unlocked header's next header, see Figure :ref:`jeffcompactadj0`, :ref:`jeffcompactadj1` and :ref:`jeffcompactadj2`.
 
 .. figure:: graphics/compact-adjacent-relink-0.png
    :scale: 50%
 
-   Initial configuration with blocks Unlocked 1-4, Free 1-4, Rest
+   :label:`jeffcompactadj0` Initial configuration with blocks Unlocked 1-4, Free 1-4, Rest
 
 .. figure:: graphics/compact-adjacent-relink-1.png
    :scale: 50%
 
-   Move all used blocks back (i.e. to the left), relink free blocks.
+   :label:`jeffcompactadj1` Move all used blocks back (i.e. to the left), relink free blocks.
 
 .. figure:: graphics/compact-adjacent-relink-2.png
    :scale: 50%
 
-   Squish free block.
+   :label:`jeffcompactadj2` Squish free block.
 
 * Non-adjacent: similar to adjacent, except blocks can't just be simply memmov'ed because of the locked blocks. Instead,
-  only the blocks that fit in the free space can be moved.
+  only the blocks that fit in the free space can be moved. See Figure :ref:`jeffcompactnonadj0`, :ref:`jeffcompactnonadj1`, :ref:`jeffcompactnonadj2a`, :ref:`jeffcompactnonadj2b`, :ref:`jeffcompactnonadj3a` and :ref:`jeffcompactnonadj3b`.
 
 .. figure:: graphics/compact-nonadjacent-relink-0.png
    :scale: 50%
 
-   Initial configuration with blocks Free 1-3, Locked 1-2, Unlocked 1-3, Rest
+   :label:`jeffcompactnonadj0` Initial configuration with blocks Free 1-3, Locked 1-2, Unlocked 1-3, Rest
 
 .. figure:: graphics/compact-nonadjacent-relink-1.png
    :scale: 50%
 
-   Create free block 6 in the area where the used blocks are now.
+   :label:`jeffcompactnonadj1` Create free block 6 in the area where the used blocks are now.
 
 .. figure:: graphics/compact-nonadjacent-relink-2a.png
    :scale: 50%
 
-   a): block U3 is too large to fit in the free area.
+   :label:`jeffcompactnonadj2a` a): block U3 is too large to fit in the free area.
 
 .. figure:: graphics/compact-nonadjacent-relink-2b.png
    :scale: 50%
 
-   b): block U3 fits in the free area.
+   :label:`jeffcompactnonadj2b` b): block U3 fits in the free area.
 
 .. figure:: graphics/compact-nonadjacent-relink-3a.png
    :scale: 50%
 
-   a): After, with a new block Free 5 with left-overs from Free 1-3 and F6 from the space between U1-U3 and Rest
+   :label:`jeffcompactnonadj3a` a): After, with a new block Free 5 with left-overs from Free 1-3 and F6 from the space between U1-U3 and Rest
 
 .. figure:: graphics/compact-nonadjacent-relink-3b.png
    :scale: 50%
 
-   b): Unlocked 3 fits, but not enough size to create a full block F5 -- instead extend size of Unlocked 3 with
+   :label:`jeffcompactnonadj3b` b): Unlocked 3 fits, but not enough size to create a full block F5 -- instead extend size of Unlocked 3 with
    0 < n < sizeof(free_memory_block_t) bytes.
 
 * Continue to next round, repeating until time limit reached or done (if no time limit set)
@@ -376,7 +375,7 @@ filling the allocated data with a constant byte value determined by the address 
 bugs were found this way, many of them not happening until thousands of allocations.  That shows randomized testing in
 large volume is a useful technique for finding problems in complex data structures, such as an allocator.
 
-XXX: describe test strategy more in detail?
+TODO: describe test strategy more in detail?
 
 Real-world testing
 ~~~~~~~~~~~~~~~~~~~~
@@ -402,51 +401,3 @@ rest of the code were evenly distributed and no single point was more CPU-intens
 which helped cut down execution time yet some more at the expense of higher memory usage per block.
 
 More details and benchmarks in the chapter on <REF: Steve>.
-
-
-- detailed breakdown of
-  + rminit
-  + rmmalloc -> newblock -> find free header -> find free block -> ...
-  + rmfree -> add to free list
-  + rmcompact -> find blocks
-  + rmdestroy
-
-- based on buddy allocator
-- requires modifications of application
-  + indirect memory access through handles
-  + benchmark w/ modified apps? time-consuming
-  + enter Steve for automating testing
-  + locked/unlocked objects (based on heuristics, Steve)
-- unknown since first time writing allocator, iterations w/ problems
-  + first iteration build a plain buddy allocator to get a feel for problems, proved devil is in the details
-  + gtest in beginning to find regressions
-  + naive malloc/compact cycle doesn't work w/ locked block at the end
-
-    - need proper free list and splitting, describe free list
-    - not considered in original design
-
-  + double indirection creates memory overhead <STEVE>
-- header list: design choices (describe layout of internal house-keeping structures)
-- original idea of simple malloc, simple free not possible due to locked-blocks-at-end.
-- compacting based on lisp-2(?) naive greedy allocator 
-- sorting (possible future optimization)
-- benchmark (see Steve)
-- discarded ideas
-  + notification on low memory for user compact (spent much time trying to work out algorithm before there was working
-  code, premature optimization) <FUTURE-WORK>
-- possible optimizations (future work)
-  - speed is good enough
-  - memory usage: make it more specific to save memory per-handle
-  - weak locking
-
-* existing work
-* fragmentation issue
-* how it works
-  + alloc
-  + free
-  + compacting
-* compare w/ others (results)
-* conclusion
-* future work
-* design choices during implementation, including discarded code (e.g. fragmentation formula in sketch book)
-

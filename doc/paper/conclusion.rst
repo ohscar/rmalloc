@@ -1,5 +1,11 @@
 Contclusions schmonklusions go here
 
+Speed
+==========
+
+Memory
+==========
+
 Future work
 ===========
 Jeff
