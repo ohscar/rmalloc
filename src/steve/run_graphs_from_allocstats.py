@@ -75,6 +75,7 @@ def plot_allocstats_multiple(app, allocstats_multiple):
     #g_multiple_figure.suptitle(app) # disabled for now
 
     #ax = subplot_multiple(title, "Time (op)", pretty)
+    accumulated_times = []
     ax = subplot_multiple("Time per operation (nanoseconds), logarithmic scale", "Op number", "")
     plots = []
     color_counter = 0
@@ -176,11 +177,14 @@ def plot_allocstats_multiple(app, allocstats_multiple):
 
         #plot_time, = ax2.plot(accumulated_time, plot_color, label='Time: %s %s' % (driver, opsfile))
         plot_time, = ax.plot(accumulated_time, plot_color, label='%s' % (driver))
+        accumulated_times.append(accumulated_time)
 
         plots.append(plot_time)
 
     plt.legend(plots, [plot.get_label() for plot in plots], loc=2) # loc= 2=upper left, 4=lower right, 3=lower left
 
+    accumulated_spaces = []
+    foo = []
     plots = []
     ax = subplot_multiple("Maximum allocatable memory after each operation from original allocation list", "Op number", "")
     for i in range(len(allocstats_multiple)):
@@ -229,8 +233,13 @@ def plot_allocstats_multiple(app, allocstats_multiple):
             maxmem.extend([0] * (longest_length - len(maxmem)))
 
         #p1a, = ax.plot(map(lambda x: x/1024, free), 'g-', label='Theoretical usable space')
-        p1b, = ax.plot(map(lambda x: x/1024, maxmem), plot_color, label='%s' % driver)
+        sz = map(lambda x: x/1024, maxmem)
+        p1b, = ax.plot(sz, plot_color, label='%s' % driver)
         #p1, = ax.plot(freediff, 'y-', label='diff Allocatable vs Theoretical')
+
+        accumulated_spaces.append(sz)
+
+        foo = maxmem[:]
 
         """
         ax2 = ax.twinx()
@@ -249,6 +258,128 @@ def plot_allocstats_multiple(app, allocstats_multiple):
         plots.append(p1b)
 
     plt.legend(plots, [plot.get_label() for plot in plots], loc=1) # loc= 2=upper left, 4=lower right, 3=lower left
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    #################################################
+    import operator, os.path
+
+    tablelabelbase = os.path.basename(app)
+    i = tablelabelbase.find('.')
+    if i > 0:
+        tablelabelbase = tablelabelbase[:i]
+
+    def dostuffwith(foos, title, rev=False):
+        if rev:
+            bestfunc, worstfunc = operator.gt, operator.lt
+        else:
+            bestfunc, worstfunc = operator.lt, operator.gt
+        # keep track of which allocator performed best at every point by increasing its index
+        bestest = [0] * len(foos)
+        worstest = [0] * len(foos)
+        penalty = [0] * len(foos)
+        goodness = [0] * len(foos)
+
+        maxpen = float(len(foos[0]) * len(foos))
+        for i in range(len(foos[0])): # for each point
+            best_j = 0
+            best = 0
+            worst_j = 0
+            worst = 0
+            times = []
+            for j in range(len(foos)): # for each allocator
+                times.append(foos[j][i])
+                if bestfunc(foos[j][i], best):
+                    best = foos[j][i]
+                    best_j = j
+                if worstfunc(foos[j][i], worst):
+                    worst = foos[j][i]
+                    worst_j = j
+
+            bestest[best_j] += 1
+            worstest[worst_j] += 1
+
+            # ascending order, i.e least time = lowest index
+            timesindex = sorted((e, index) for index, e in enumerate(times))
+            if rev:
+                timesindex.reverse()
+
+            best_goodness = timesindex[0][0]
+            for j in range(len(timesindex)):
+                foo, index = timesindex[j] # note, foo unused
+                diff = float(abs(foo - best_goodness)) / float(best_goodness)
+
+                #penalty[timesindex[j][1]] += j # quick = less penalty
+                #penalty[index] += j # quick = less penalty
+
+                #penalty[index] += j # quick = less penalty
+                #goodness[index] += diff # j*diff
+
+                penalty[index] += j # quick = less penalty
+                goodness[index] += (j*diff) # j*diff
+
+
+        print
+        print ".. raw:: latex\n"
+        print "   \\begin{table}"
+        print "   \\begin{tabular}{r | l c c c}"
+        print "   \\hline"
+        print "   \\multicolumn{5}{c}{\\bf %s} \\\\" % title
+        print "   \\hline"
+        print "   {\\bf Driver} & {\\bf Penalty (count)} & {\\bf Penalty (weighted)} & {\\bf Best} & {\\bf Worst} \\\\"
+        print "   \\hline"
+        stats = []
+        for i in range(len(allocstats_multiple)):
+            pen = float(penalty[i])/maxpen * 100.0
+            good = float(goodness[i])/maxpen * 100.0
+            b = float(bestest[i])/float(len(foos[0]))*100.0
+            w = float(worstest[i])/float(len(foos[0]))*100.0  #float(worstest[i])/float(len(foos))))
+            stats.append((pen,
+                          allocstats_multiple[i]['driver'],
+                          good,
+                          b,
+                          w))
+
+        stats.sort()
+        for stat in stats:
+            goodness = stat[2] - stat[3]
+            print "   %s & %d\\%% & %d\\%% & %d\\%% & %d\\%% \\\\" % (stat[1], int(stat[0]), int(stat[2]), int(stat[3]), int(stat[4]))
+            #print "%s % 15d % 15d % 15d" % (stat[1].ljust(32), stat[0], stat[2], stat[3])
+        print "   \\hline"
+        print "   \\end{tabular}"
+        print "   \\caption{%s-%s}" % (tablelabelbase, title.lower())
+        print "   \\label{table:%s-%s}" % (tablelabelbase, title.lower())
+        print "   \\end{table}"
+        print
+
+    #################################################
+    # T I M E
+    #################################################
+
+    # TODO: Vikta placeringen mot skillnaden!!!
+
+    #ts = [time for times in accumulated_times for time in times]
+    #median = sorted(ts)[len(ts)/2]
+    dostuffwith(accumulated_times, "Speed")
+
+    #################################################
+    # S P A C E 
+    #################################################
+
+    dostuffwith(accumulated_spaces, "Space", rev=True)
+
+
 
 
 def subplot2(t, xl, yl):
@@ -456,7 +587,9 @@ def plot_save(fname):
 def plot_init_multiple():
     global g_multiple_figure
     #g_multiple_figure = plt.figure(figsize=(19.2,12.0), dpi=300)
-    g_multiple_figure = plt.figure(figsize=(12,19.2), dpi=300)
+    #g_multiple_figure = plt.figure(figsize=(12,19.2), dpi=300)
+    g_multiple_figure = plt.figure(figsize=(12,16), dpi=300)
+    #g_multiple_figure = plt.figure(figsize=(12,28.8), dpi=300)
     #plt.axis('tight')
     #plt.grid(True)
 

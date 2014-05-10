@@ -5,9 +5,6 @@ Jeff and Steve: A Relocatable Memory Allocator and its Benchmarking Friend
 :abstract:
   Foo bar abstract bazquux.
 
-.. role:: latex(raw)
-  :format: latex
-
 .. role:: ref
 
 .. role:: label
@@ -16,7 +13,6 @@ Jeff and Steve: A Relocatable Memory Allocator and its Benchmarking Friend
 
    \newcommand*{\docutilsroleref}{\ref}
    \newcommand*{\docutilsrolelabel}{\label}
-
 
 .. raw:: latex
 

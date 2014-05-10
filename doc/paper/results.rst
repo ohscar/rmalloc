@@ -1,3 +1,5 @@
+.. DOC: nifty table layout: http://tex.stackexchange.com/questions/102512/remove-vertical-line-in-tabular-head
+
 Limitations
 =======================================================
 Both tcmalloc and jemalloc perform poorly without mmap. tcmalloc did not manage to finish for Opera with
@@ -16,22 +18,103 @@ Measuring an allocator must be done in conjunction with input data. These are th
 
 opera
 =========
+This is the largest input application of the examples used. (The opsfile is 8,4 Gb). As mentioned before (TODO: where?),
+the full opsfile is only useful for lifetime calculations. An opsfile with complete locking/unlocking and malloc/free
+information is significantly smaller.
+
+See Figure :ref:`resultsopera`.
+
 .. figure:: allocstats/result-opera-google.png
-   :scale: 30%
+   :scale: 50%
 
    :label:`resultsopera` Opera results. tcmalloc DNF.
 
-This yielded an 8.4 GB large opsfile. See Figure :ref:`resultsopera`.
+.. raw:: latex
+
+   \begin{table}
+   \begin{tabular}{r | l c c c}
+   \hline
+   \multicolumn{5}{c}{\bf Speed} \\
+   \hline
+   {\bf Driver} & {\bf Penalty (count)} & {\bf Penalty (weighted)} & {\bf Best} & {\bf Worst} \\
+   \hline
+   rmmalloc & 16\% & 0\% & 0\% & 9\% \\
+   dlmalloc & 29\% & 1\% & 100\% & 22\% \\
+   jemalloc & 54\% & 5\% & 0\% & 68\% \\
+   \hline
+   \end{tabular}
+   \caption{result-opera-google-speed}
+   \label{table:result-opera-google-speed}
+   \end{table}
+
+
+.. raw:: latex
+
+   \begin{table}
+   \begin{tabular}{r | l c c c}
+   \hline
+   \multicolumn{5}{c}{\bf Space} \\
+   \hline
+   {\bf Driver} & {\bf Penalty (count)} & {\bf Penalty (weighted)} & {\bf Best} & {\bf Worst} \\
+   \hline
+   dlmalloc & 0\% & 0\% & 99\% & 100\% \\
+   rmmalloc & 33\% & 11\% & 0\% & 0\% \\
+   jemalloc & 66\% & 66\% & 0\% & 0\% \\
+   \hline
+   \end{tabular}
+   \caption{result-opera-google-space}
+   \label{table:result-opera-google-space}
+   \end{table}
+
 
 libreoffice
 =============
 .. figure:: allocstats/result-soffice.png
-   :scale: 30%
+   :scale: 50%
    
-   :label:`resultslibreoffice` LibreOffice results. Poor performance of jemalloc.
+   :label:`soffice` LibreOffice results. Poor performance of jemalloc.
 
-Foo bralfar target see Figure :ref:`resultslibreoffice`.
+.. raw:: latex
 
+   \begin{table}
+   \begin{tabular}{r | l c c c}
+   \hline
+   \multicolumn{5}{c}{\bf Speed} \\
+   \hline
+   {\bf Driver} & {\bf Penalty (count)} & {\bf Penalty (weighted)} & {\bf Best} & {\bf Worst} \\
+   \hline
+   dlmalloc & 22\% & 0\% & 100\% & 5\% \\
+   rmmalloc & 24\% & 1\% & 0\% & 6\% \\
+   tcmalloc & 38\% & 3\% & 0\% & 15\% \\
+   jemalloc & 65\% & 7\% & 0\% & 72\% \\
+   \hline
+   \end{tabular}
+   \caption{result-soffice-speed}
+   \label{table:result-soffice-speed}
+   \end{table}
+
+
+.. raw:: latex
+
+   \begin{table}
+   \begin{tabular}{r | l c c c}
+   \hline
+   \multicolumn{5}{c}{\bf Space} \\
+   \hline
+   {\bf Driver} & {\bf Penalty (count)} & {\bf Penalty (weighted)} & {\bf Best} & {\bf Worst} \\
+   \hline
+   tcmalloc & 0\% & 0\% & 100\% & 0\% \\
+   dlmalloc & 29\% & 1\% & 0\% & 100\% \\
+   rmmalloc & 45\% & 12\% & 0\% & 0\% \\
+   jemalloc & 75\% & 70\% & 0\% & 0\% \\
+   \hline
+   \end{tabular}
+   \caption{result-soffice-space}
+   \label{table:result-soffice-space}
+   \end{table}
+
+.. See table :ref:`table:result-opera-google-space` for blarf.
+.. See table :ref:`table:result-opera-google-speed` for glorf.
 
 sqlite
 =============

@@ -16,6 +16,11 @@ operation no-op since no blocks can be moved. On the other hand, adapting existi
 is error-prone, it is not obvious which application would make good candidates, and finally, source code to the applications
 is required, which is not always possible.
 
+Definitions
+===========
+* opsfile: file created by ``translate-memtrace-to-ops.py``, contains one operation per line. See the appendix for full
+  definition.
+
 Tools
 =====
 For a detailed description of the tools, see the appendix.

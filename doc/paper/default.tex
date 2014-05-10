@@ -1,8 +1,12 @@
 % vim:tw=120
 
 \documentclass[a4paper,twoside,openany]{report}
+
+\usepackage{fixltx2e} % LaTeX patches, \textsubscript
+\usepackage{cmap} % fix search and cut-and-paste in Acrobat
+
 \pagestyle{headings}
-\usepackage[latin1]{inputenc}
+%\usepackage[latin1]{inputenc}
 \usepackage{url}
 \usepackage{graphicx}
 \usepackage{verbatim}
@@ -20,6 +24,22 @@
 % increase width of section numbers in toc
 \addtolength{\cftsecnumwidth}{0.4em}
 \addtolength{\cftsubsecindent}{0.4em}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%% dollar requirements
+\usepackage{ifthen}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{float} % float configuration
+\floatplacement{figure}{H} % place figures here definitely
+\usepackage{graphicx}
+%\setcounter{secnumdepth}{0}
+\usepackage{longtable,ltcaption,array}
+\setlength{\extrarowheight}{2pt}
+\newlength{\DUtablewidth} % internal use in tables
+\usepackage{tabularx}
+\usepackage{textcomp} % text symbol macros
+
+%%%%%%%%%%%%%%%%%%%%%%%%%% end of dollar requirements
 
 $fallbacks$pdfsetup
 

@@ -13,6 +13,10 @@ possible to map memory access (L, S, M) to a specific pointer. This is done by c
 keys from *address* to *address+size* to that identifier. On free, conversely, all mappings in that address range are
 removed. At each access a list of (id, access type, address, size) is recorded. 
 
+The output file (*opsfile*) has the following format::
+
+    <handle> <op> <address> <size>
+
 translate-ops-to-histogram.py
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 To visualize and experiment with different ways of calculating lifetime I have a small application that takes as input
