@@ -41,7 +41,8 @@ def log10_(x):
 def subplot_multiple(t, xl, yl):
     global g_multiple_figure_nr
 
-    ax = g_multiple_figure.add_subplot(2, 1, g_multiple_figure_nr, xlabel=xl, ylabel=yl, title=t)
+    #ax = g_multiple_figure.add_subplot(2, 1, g_multiple_figure_nr, xlabel=xl, ylabel=yl, title=t)
+    ax = plt.subplot(1, 2, g_multiple_figure_nr, xlabel=xl, ylabel=yl, title=t)
     g_multiple_figure_nr += 1
 
     return ax
@@ -76,7 +77,8 @@ def plot_allocstats_multiple(app, allocstats_multiple):
 
     #ax = subplot_multiple(title, "Time (op)", pretty)
     accumulated_times = []
-    ax = subplot_multiple("Time per operation (nanoseconds), logarithmic scale", "Op number", "")
+    #ax = subplot_multiple("Time per operation (nanoseconds), logarithmic scale", "Op number", "")
+    ax = subplot_multiple("Speed", "Operation number", "")
     plots = []
     color_counter = 0
     for i in range(len(allocstats_multiple)):
@@ -173,7 +175,7 @@ def plot_allocstats_multiple(app, allocstats_multiple):
         ax.yaxis.set_label_position('right')
         ax.set_ylabel('KiB')
         """
-        ax.set_ylabel('Time (ns, log10-scale)')
+        ax.set_ylabel('Time (ns), log10-scale')
 
         #plot_time, = ax2.plot(accumulated_time, plot_color, label='Time: %s %s' % (driver, opsfile))
         plot_time, = ax.plot(accumulated_time, plot_color, label='%s' % (driver))
@@ -186,7 +188,8 @@ def plot_allocstats_multiple(app, allocstats_multiple):
     accumulated_spaces = []
     foo = []
     plots = []
-    ax = subplot_multiple("Maximum allocatable memory after each operation from original allocation list", "Op number", "")
+    #ax = subplot_multiple("Maximum allocatable memory after each operation from original allocation list", "Op number", "")
+    ax = subplot_multiple("Maximum allocatable memory", "Operation number", "")
     for i in range(len(allocstats_multiple)):
         allocstats = allocstats_multiple[i]
         plot_color = COLORS[i]
@@ -227,19 +230,42 @@ def plot_allocstats_multiple(app, allocstats_multiple):
         overhead = [op['overhead'] for op in opstats]
 
 
-        maxmem = map(lambda x: x/1024, maxmem)
+        # Correct label
+        maxmem_to_kb = 0
+        maxmem_to_mb = 0
+        maxmem_to_gb = 0
+        for m in maxmem:
+            if m < 1024:
+                maxmem_to_kb += 1
+            elif m < 1024**2:
+                maxmem_to_mb += 1
+            elif m < 1024**3:
+                maxmem_to_gb += 1
+
+        if maxmem_to_gb > maxmem_to_mb:
+            l = "Megabytes"
+            d = 1024**2
+        elif maxmem_to_mb > maxmem_to_kb:
+            l = "Kilobytes"
+            d = 1024
+        else:
+            l = "Bytes"
+            d = 1
+
+        #print "maxmem: l =", l, "d =", d, "data =", maxmem
+
+        ax.set_ylabel(l)
+        maxmem = map(lambda x: x/d, maxmem)
 
         if len(maxmem) < longest_length:
             maxmem.extend([0] * (longest_length - len(maxmem)))
 
+
         #p1a, = ax.plot(map(lambda x: x/1024, free), 'g-', label='Theoretical usable space')
-        sz = map(lambda x: x/1024, maxmem)
-        p1b, = ax.plot(sz, plot_color, label='%s' % driver)
+        p1b, = ax.plot(maxmem, plot_color, label='%s' % driver)
         #p1, = ax.plot(freediff, 'y-', label='diff Allocatable vs Theoretical')
 
-        accumulated_spaces.append(sz)
-
-        foo = maxmem[:]
+        accumulated_spaces.append(maxmem)
 
         """
         ax2 = ax.twinx()
@@ -250,7 +276,7 @@ def plot_allocstats_multiple(app, allocstats_multiple):
         ax.yaxis.tick_right()
         ax.yaxis.set_label_position('right')
         """
-        ax.set_ylabel('KiB')
+
 
         #plot_time, = ax2.plot(accumulated_time, plot_color, label='Time: %s %s' % (driver, opsfile))
         #plot, = ax2.plot(accumulated_time, plot_color, label='Time: %s' % (driver))
@@ -343,8 +369,8 @@ def plot_allocstats_multiple(app, allocstats_multiple):
         for i in range(len(allocstats_multiple)):
             pen = float(penalty[i])/maxpen * 100.0
             good = float(goodness[i])/maxpen * 100.0
-            b = float(bestest[i])/float(len(foos[0]))*100.0
-            w = float(worstest[i])/float(len(foos[0]))*100.0  #float(worstest[i])/float(len(foos))))
+            b = float(bestest[i])*100.0/float(len(foos[0]))
+            w = float(worstest[i])*100.0/float(len(foos[0]))  #float(worstest[i])/float(len(foos))))
             stats.append((pen,
                           allocstats_multiple[i]['driver'],
                           good,
@@ -354,11 +380,11 @@ def plot_allocstats_multiple(app, allocstats_multiple):
         stats.sort()
         for stat in stats:
             goodness = stat[2] - stat[3]
-            print "   %s & %d\\%% & %d\\%% & %d\\%% & %d\\%% \\\\" % (stat[1], int(stat[0]), int(stat[2]), int(stat[3]), int(stat[4]))
+            print "   %s & %d\\%% & %.2f\\%% & %.2f\\%% & %.2f\\%% \\\\" % (stat[1], int(stat[0]), (stat[2]), (stat[3]), (stat[4]))
             #print "%s % 15d % 15d % 15d" % (stat[1].ljust(32), stat[0], stat[2], stat[3])
         print "   \\hline"
         print "   \\end{tabular}"
-        print "   \\caption{%s-%s}" % (tablelabelbase, title.lower())
+        print "   \\caption{%s measurements for %s}" % (title, tablelabelbase)
         print "   \\label{table:%s-%s}" % (tablelabelbase, title.lower())
         print "   \\end{table}"
         print
@@ -577,19 +603,28 @@ def plot_allocstats(allocstats):
 def plot_init():
     global g_figure
     g_figure = plt.figure(figsize=(19.2,12.0), dpi=300)
-    #plt.axis('tight')
-    #plt.grid(True)
+    plt.axis('tight')
+    plt.grid(True)
 
 def plot_save(fname):
     print "Saving plot to", fname
     plt.savefig(fname)
 
+def plot_init_generic():
+
+    from matplotlib import rc
+    #rc('font',**{'family':'sans-serif','sans-serif':['Helvetica']})
+    ## fuor Palatino and other serif fonts use:
+    rc('font',**{'family':'serif','serif':['Comuter Modern Roman']})
+    rc('text', usetex=True)
+
 def plot_init_multiple():
     global g_multiple_figure
     #g_multiple_figure = plt.figure(figsize=(19.2,12.0), dpi=300)
     #g_multiple_figure = plt.figure(figsize=(12,19.2), dpi=300)
-    g_multiple_figure = plt.figure(figsize=(12,16), dpi=300)
+    #g_multiple_figure = plt.figure(figsize=(12,16), dpi=300)
     #g_multiple_figure = plt.figure(figsize=(12,28.8), dpi=300)
+    g_multiple_figure = plt.figure(figsize=(8,3.5), dpi=600)
     #plt.axis('tight')
     #plt.grid(True)
 
@@ -608,6 +643,8 @@ def main():
         print "usage: %s app plotdatafile1 plotdatafile2 ..." % sys.argv[0]
         print "<plotsdatafile> is the name of a file of Python data generated from plot_<driver>."
         sys.exit(1)
+
+    plot_init_generic()
 
     if len(sys.argv) > 3:
         app = sys.argv[1]

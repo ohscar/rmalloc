@@ -44,7 +44,7 @@ Can such an allocator be efficient in space and time?
 
 Allocator Types
 =========================
-I'll describe the most common style of allocator implementation strategies. <REF: gc-book?>
+I'll describe the most common style of allocator implementation strategies.
 
 Buddy Allocator
 ~~~~~~~~~~~~~~~~~~~~~
@@ -131,19 +131,7 @@ information about freed blocks in a list, there would be little wasting of memor
 efficiency requirement, pages would only be requested when there were no blocks of the correct size and therefore the
 entire free list must be searched for a suiting block before giving up and requesting a page.
 
-Commonly Used Allocators
-=================================
-The allocator often used by Linux and elsewhere in the open-source world is Doug Lea's Malloc *dlmalloc*, that performs
-well in the average case. For FreeBSD, Poul-Henning Kamp wrote an allocator that he aptly named *pkhmalloc*. *dlmalloc*
-aims to be good enough for most single-threaded use cases and is well-documented, therefore attractive to anyone in need
-of an allocator.  It does not perform optimally in multi-threaded applications because of the coarse (operation-level)
-locking.  Other allocators are designed to be used in a mutli-threaded application where locking is performed on a finer
-level, not blocking other threads trying to use the allocator at the same time.
-
-In fact, at Opera, *dlmalloc* was used internally to better tune allocator characteristics for memory-constrained
-devices, where all available memory was requested at startup and then used by the internal malloc.
-
-- TODO: discuss allocators in depth: dlmalloc, phkmalloc, jemalloc, tcmalloc (google)
+Some of the most common allocators are tested and discussed in Section :ref:`tested-allocators`.
 
 Efficiency, revisited
 ======================================
@@ -152,7 +140,7 @@ specifically images, created holes in memory when freed, such that after a few p
 load any more pages. On a small-memory device, such as early smart phones/feature phones, with 4-8M RAM, this was indeed
 an issue. The out-of-memory situation happens despite there theoretically being enough memory available, but because of
 fragmentation large enough chunks could not be allocated. This goes against the findings in
-<PAPER: "The Memory Fragmentation Problem: Solved? ismm98.ps>, where in the average case, fragmentation level is good
+(M. S. Johnstone, P. R. Wilson, 1998), where in the average case, fragmentation level is good
 enough. However, for Opera, that was insufficient.  By making a custom allocator with the signature outlined in the
 hypothesis, they hoped to solve the fragmentation problem in the specific situations that occur in a web
 browser.

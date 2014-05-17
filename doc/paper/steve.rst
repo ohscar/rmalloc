@@ -42,13 +42,14 @@ TEMU from the BitBlazer project, but because it would not build on my Linux syst
 again. Turns out Valgrind has good instrumentation support in their tools. Valgrind was originally a tool for
 detecting memory leaks in applications on the x86 platform via emulation and has since evolved to support more hardware
 platforms and providing tools for doing other instrumentation tasks. Provided with Valgrind an example tool *Lackey*
-does parts of what I was looking for but missing other parts. I instead ended up patching the *memcheck* tool <REF: PATCH:
-https://github.com/mikaelj/rmalloc/commit/a64ab55d9277492a936d7d7acfb0a3416c098e81> to capture load/store/access
+does parts of what I was looking for but missing other parts. I instead ended up patching the *memcheck* tool [#]_ to capture load/store/access
 operations and logging them to file, if they were in the boundaries of *lowest address allocated* to *highest address
 allocated*. This will still give false positives when there are holes (lowest is only decreased and highest is only
 increased) but reduces the logging output somewhat. Memory access can then be analyzed offline. Note that it will only
 work for applications that use the system-malloc/free. Any applications using custom allocators must be modified to use
 the system allocator, which generally means changing a setting in the source code and recompiling.
+
+.. [#] https://github.com/mikaelj/rmalloc/commit/a64ab55d9277492a936d7d7acfb0a3416c098e81 (2014-02-09: "valgrind-3.9.0: memcheck patches")
 
 I've written a convenience script for this purpose and then optionally creates locking data::
 
@@ -67,7 +68,7 @@ I've written a convenience script for this purpose and then optionally creates l
     python -u ../steve/memtrace-to-ops/translate-ops-to-locking-lifetime.py \
       ${theapp}/${theapp}
 
-Beware that this takes long time for complex applications, about 30 minutes on an intel core i3-based system to load
+Beware that this takes long time for complex applications, about 30 minutes on an Intel Core i3-based system to load
 Opera with http://www.google.com
 
 Simulating locking behaviour based on heuristics
@@ -154,12 +155,13 @@ All alloc drivers are linked to the same main program and have the same command 
     For each operation, call out ``run_memory_frag_animation_plot_animation.py`` to create a PNG of the heap at that
     point in time.  The driver application only needs to be run once.
 
-    Also creates output similar to ``--allocstats``. (TODO: deprecate this!)
+    .. Also creates output similar to ``--allocstats``. (TODO: deprecate this!)
 
     Parameters:
 
     - opsfile - operations file created by ``translate-memtrace-to-ops.py``.
     - (optional) heap_size - maximum heap size to use
+
 
 These are not called directly, but instead called from by the tools described below.
 
@@ -230,10 +232,17 @@ Now, by scanning the heap for values that are not in the set HEAP_INITIAL, HEAP_
 that this is overhead (i.e. allocator-internal structures). Paint the corresponding memory location in the colormap with
 white (for overhead).
 
+Tested Allocators
+=================================
+The allocator often used by Linux and elsewhere in the open-source world is Doug Lea's Malloc *dlmalloc*, that performs
+well in the average case. For FreeBSD, Poul-Henning Kamp wrote an allocator that he aptly named *pkhmalloc*. *dlmalloc*
+aims to be good enough for most single-threaded use cases and is well-documented, therefore attractive to anyone in need
+of an allocator.  It does not perform optimally in multi-threaded applications because of the coarse (operation-level)
+locking.  Other allocators are designed to be used in a mutli-threaded application where locking is performed on a finer
+level, not blocking other threads trying to use the allocator at the same time.
 
-Allocators tested
-==============================
-- TODO: Describe what each allocator does and is good for.
+In fact, at Opera, *dlmalloc* was used internally to better tune allocator characteristics for memory-constrained
+devices, where all available memory was requested at startup and then used by the internal malloc.
 
 rmmalloc (Jeff)
 ~~~~~~~~~~~~~~~~~~~~~
@@ -245,8 +254,11 @@ jemalloc (v1.162 2008/02/06)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 jemalloc is an allocator written by Jason Evans, originally written for a custom development environment circa 2005, later
 integrated into FreeBSD for its multi-threading capabilities and later further adapted in 2007 for use by the Firefox
-project to deal with fragmentation issues. It's since been adapted for heavy-duty use in the Facebook servers. <REF:
-https://github.com/jemalloc/jemalloc/wiki/History>. As of 2010, it still performs better than the system-provided allocators in MacOS, Windows and Linux <REF: http://www.quora.com/Who-wrote-jemalloc-and-what-motivated-its-creation-and-implementation>.
+project to deal with fragmentation issues. It's since been adapted for heavy-duty use in the Facebook servers [#]_.
+As of 2010, it still performs better than the system-provided allocators in MacOS, Windows and Linux. [#]_ 
+
+.. [#] https://github.com/jemalloc/jemalloc/wiki/History
+.. [#] http://www.quora.com/Who-wrote-jemalloc-and-what-motivated-its-creation-and-implementation
 
 TODO: fill in more information about jemalloc: goal, design
 
@@ -269,9 +281,11 @@ mmap.
 
 tcmalloc (gperftools-2.1)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Written by Google and includes a profiling/benchmark framework/tools (<REF: gperftools>). It is used by, among others,
-Google Chrome, MySQL and WebKit <REF: paper-on-tcmalloc-and-dlmalloc>, which in turn is used by many other projects such
+gperftools [#]_ is written by Google and includes a profiling/benchmark framework/tools. It is used by, among others,
+Google Chrome, MySQL and WebKit (W. Fang, 2012), which in turn is used by many other projects such
 as Apple's Safari.
+
+.. [#] http://code.google.com/p/gperftools/
 
 TODO: fill in more information about tcmalloc: goal, design
 

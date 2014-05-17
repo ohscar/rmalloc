@@ -30,37 +30,49 @@ Making drawings in my sketch book, testing out scenarios and algorithms by hand 
 
 .. raw:: latex
 
-    \chapter{Jeff}
+    \chapter{Jeff
+        \label{chapter-jeff}}
 
 .. include:: jeff.rst
 
 .. raw:: latex
 
-    \chapter{Steve}
+    \chapter{Steve
+        \label{chapter-steve}}
 
 .. include:: steve.rst
 
 .. raw:: latex
 
-    \chapter{Results}
+    \chapter{Results
+        \label{chapter-results}}
 
 .. include:: results.rst
 
 .. raw:: latex
 
-    \chapter{Conclusion}
+    \chapter{Conclusion
+        \label{chapter-conclusion}}
 
 .. include:: conclusion.rst
 
 .. raw:: latex
 
-    \chapter{Appendix}
+    \chapter{References
+        \label{chapter-references}}
+
+.. include:: references.rst
+
+.. raw:: latex
+
+    \chapter{Appendix
+        \label{chapter-appendix}}
 
 .. include:: appendix.rst
 
 .. raw:: latex
 
-    \chapter{TODO XXX CHECKLIST}
+    \chapter{T O D O - X X X - CHECKLIST}
 
 .. include:: todo-checklist.rst
 

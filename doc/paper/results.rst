@@ -11,10 +11,14 @@ Measuring an allocator must be done in conjunction with input data. These are th
 
 * Opera v12.0 loading http://www.google.com
 * LibreOffice 4.0.2.2 (soffice) and exiting
-* sqlite 2.8.17 - ubuntu 13.04 - loading an SQL file of TODO megabytes
-* zip 3.0 - ubuntu 13.04 - loading a set of files TODO # items and MB size
+* sqlite 2.8.17 - ubuntu 13.04 - loading 17 MB phpBB3 [#]_ SQL data
+* zip 3.0 - ubuntu 13.04 - compressing the contents of the gperftools distribution version 2.1 (6.2 MB)
 * ls 8.20 - ubuntu 13.04 - displaying a directory
 * cfrac 3.5.1 (3.51?) - just running it
+
+TODO: Presented in tables. Explain headings.
+
+.. [#] http://www.phpbb.com - a bulletin-board system
 
 opera
 =========
@@ -25,7 +29,7 @@ information is significantly smaller.
 See Figure :ref:`resultsopera`.
 
 .. figure:: allocstats/result-opera-google.png
-   :scale: 50%
+   :scale: 80%
 
    :label:`resultsopera` Opera results. tcmalloc DNF.
 
@@ -38,12 +42,12 @@ See Figure :ref:`resultsopera`.
    \hline
    {\bf Driver} & {\bf Penalty (count)} & {\bf Penalty (weighted)} & {\bf Best} & {\bf Worst} \\
    \hline
-   rmmalloc & 16\% & 0\% & 0\% & 9\% \\
-   dlmalloc & 29\% & 1\% & 100\% & 22\% \\
-   jemalloc & 54\% & 5\% & 0\% & 68\% \\
+   rmmalloc & 16\% & 0.80\% & 0.00\% & 9.37\% \\
+   dlmalloc & 29\% & 1.67\% & 100.00\% & 22.26\% \\
+   jemalloc & 54\% & 5.35\% & 0.00\% & 68.37\% \\
    \hline
    \end{tabular}
-   \caption{result-opera-google-speed}
+   \caption{Speed measurements for result-opera-google}
    \label{table:result-opera-google-speed}
    \end{table}
 
@@ -57,20 +61,19 @@ See Figure :ref:`resultsopera`.
    \hline
    {\bf Driver} & {\bf Penalty (count)} & {\bf Penalty (weighted)} & {\bf Best} & {\bf Worst} \\
    \hline
-   dlmalloc & 0\% & 0\% & 99\% & 100\% \\
-   rmmalloc & 33\% & 11\% & 0\% & 0\% \\
-   jemalloc & 66\% & 66\% & 0\% & 0\% \\
+   dlmalloc & 12\% & 3.66\% & 62.09\% & 100.00\% \\
+   jemalloc & 29\% & 13.25\% & 37.81\% & 0.00\% \\
+   rmmalloc & 57\% & 24.62\% & 0.10\% & 0.00\% \\
    \hline
    \end{tabular}
-   \caption{result-opera-google-space}
+   \caption{Space measurements for result-opera-google}
    \label{table:result-opera-google-space}
    \end{table}
-
 
 libreoffice
 =============
 .. figure:: allocstats/result-soffice.png
-   :scale: 50%
+   :scale: 80%
    
    :label:`soffice` LibreOffice results. Poor performance of jemalloc.
 
@@ -83,13 +86,13 @@ libreoffice
    \hline
    {\bf Driver} & {\bf Penalty (count)} & {\bf Penalty (weighted)} & {\bf Best} & {\bf Worst} \\
    \hline
-   dlmalloc & 22\% & 0\% & 100\% & 5\% \\
-   rmmalloc & 24\% & 1\% & 0\% & 6\% \\
-   tcmalloc & 38\% & 3\% & 0\% & 15\% \\
-   jemalloc & 65\% & 7\% & 0\% & 72\% \\
+   dlmalloc & 22\% & 0.92\% & 100.00\% & 5.87\% \\
+   rmmalloc & 24\% & 1.08\% & 0.00\% & 6.09\% \\
+   tcmalloc & 38\% & 3.27\% & 0.00\% & 15.43\% \\
+   jemalloc & 65\% & 7.65\% & 0.00\% & 72.61\% \\
    \hline
    \end{tabular}
-   \caption{result-soffice-speed}
+   \caption{Speed measurements for result-soffice}
    \label{table:result-soffice-speed}
    \end{table}
 
@@ -103,13 +106,13 @@ libreoffice
    \hline
    {\bf Driver} & {\bf Penalty (count)} & {\bf Penalty (weighted)} & {\bf Best} & {\bf Worst} \\
    \hline
-   tcmalloc & 0\% & 0\% & 100\% & 0\% \\
-   dlmalloc & 29\% & 1\% & 0\% & 100\% \\
-   rmmalloc & 45\% & 12\% & 0\% & 0\% \\
-   jemalloc & 75\% & 70\% & 0\% & 0\% \\
+   tcmalloc & 0\% & 0.00\% & 100.00\% & 0.00\% \\
+   dlmalloc & 29\% & 1.38\% & 0.00\% & 100.00\% \\
+   rmmalloc & 45\% & 12.61\% & 0.00\% & 0.00\% \\
+   jemalloc & 75\% & 70.87\% & 0.00\% & 0.00\% \\
    \hline
    \end{tabular}
-   \caption{result-soffice-space}
+   \caption{Space measurements for result-soffice}
    \label{table:result-soffice-space}
    \end{table}
 

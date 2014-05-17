@@ -83,7 +83,7 @@ def calculator(start, opslist=g_ops_list):
 
 
     #print "->", handle, "from", start, "to", stop, "=", (stop-start)/(1000.0*1000.0), "M ops"
-    print "->", handle, "=", (stop-start)/(1000.0*1000.0), "M ops"
+    #print "->", handle, "=", (stop-start)/(1000.0*1000.0), "M ops"
 
     last_lock_status = 0
     lock_status = -1

@@ -186,6 +186,7 @@ def remove(add):
 
 def add_op(mid, op, address, size):
     global g_ops
+    #print le, "%lu %s %lu %lu" % (int(mid), op, int(address), int(size))
     print >> g_ops_file, "%lu %s %lu %lu" % (int(mid), op, int(address), int(size))
     g_ops.append((mid, op, size, address))
 

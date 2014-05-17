@@ -27,6 +27,8 @@ export DATAPOINTS=3000 # requested -- will be adjusted down if neccessary.
 export opsfile=$1
 export RESULTFILE=$(basename $opsfile)-$(basename $ALLOCATOR)-kill${KILLPERCENT}-allocstats
 
+set -x
+
 echo -n "* Calculating theoretical peak mem used by the allocator ($ALLOCATOR --peakmem $opsfile)... "
 export peakmem=$($ALLOCATOR --peakmem $opsfile 2> /dev/null)
 export theory_peakmem=$peakmem
@@ -64,7 +66,7 @@ export OPS_COUNT=$(echo "$OPS_COUNT*2" | bc)
 
 
 
-#set -x
+set -x
 
 peakmem=$(echo "$peakmem*3" | bc)
 

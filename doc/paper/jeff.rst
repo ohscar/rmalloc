@@ -4,12 +4,10 @@
 
 Overview
 ========
-- TODO: different signature
-
 In order to achieve compacting, memory must be accessed indirectly. This is the signature::
 
     void rminit(void *heap, size_t heap_size);
-    handle_t *rmmalloc(size_t nbytes);
+    handle_t rmmalloc(size_t nbytes);
     void rmfree(handle_t *handle);
     void *lock(handle_t handle);
     void unlock(handle_t handle);
@@ -20,19 +18,24 @@ In order to achieve compacting, memory must be accessed indirectly. This is the 
 pointer to memory. During the time a block pointed out by a handle is locked, the compact operation is not allowed to
 move it. If it could be moved, the pointer obtained by the client code would no longer be invalid. This also puts
 certain limitations on the compactor, since it needs to deal with possibly locked blocks.  More on `compact()` later.
-Also, client code needs to be adapted to this allocator.
+This forces client code needs to be adapted to this allocator, such that memory is always appropriately locked/unlocked
+as needd.
 
-- TODO: requires modifications of application
+Algorithm
+==========
+TODO: pseudo-code
 
-  + indirect memory access through handles
-  + benchmark w/ modified apps? time-consuming
-  + enter Steve for automating testing
-  + locked/unlocked objects (based on heuristics, Steve)
+Starting out
+=============
+TODO: Move buddy allocator to "planning phase" earlier?
 
 Buddy allocator
 ~~~~~~~~~~~~~~~
 To get started with my allocator, I started implementing a buddy allocator. Along with it, I developed tests using
-<LINK: Google Test Library> to make sure no regressions were introduced during development.  More on that later.
+Google's C++ testing framework, googletest [#]_, to make sure no regressions were introduced during development.  More
+on that in Section :ref:`unit-testing`.
+
+.. [#] http://code.google.com/p/googletest/
 
 During the development, it quickly became apparent that the internal data structures of the allocator must match the
 buddy allocator memory layout closely.  Picking the wrong data structure for storing the block list made the merge-block
@@ -55,11 +58,7 @@ However, chunks can be locked. Remember that locking a chunk gives the client co
 unlocking the chunks invalidates the pointer. Therefore, the worst-case scenario is that a block at the very top of the
 heap is locked when the compact occurs: even though all unlocked free blocks would be coerced into a single free block,
 a locked block at or close to the top would make subsequent malloc calls to fails. Therefore, a free list needs to be
-maintained even though it might be the case for real-world applications that the worst case occurs seldom. (REF-STEVE,
-FUTURE-WORK).
-
-<FUTURE-WORK: NOT thread-safe!>
-<FUTURE-WORK: NOT aligned!>
+maintained even though it might be the case for real-world applications that the worst case occurs seldom.
 
 Free in more detail
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -69,8 +68,8 @@ searched for a block that fits.
 
 Freeing a block marks it as unused and adds it to the free list, for malloc to find later as needed.  The free list is
 an index array of 2^3..k-sized blocks with a linked list at each slot. All free blocks are guaranteed to be at least
-2^n, but smaller than 2^(n-^1), bytes in size. Unlike the buddy allocator, blocks are not merged on free.
-<FUTURE-WORK: block merging possible?>.  
+2^n, but smaller than 2^(n-^1), bytes in size. Unlike the buddy allocator, blocks are not merged on free. (See
+:ref:`future-work-in-jeff` for a brief discusson.)
 
 .. figure:: graphics/jeff-free-blockslots.png
    :scale: 50%
@@ -82,9 +81,8 @@ An example free blockslots list is given in Figure :ref:`jeffexampleblockslots`.
 
 Compacting
 ~~~~~~~~~~~~
-- TODO: explain Lisp-2
-
-Compacting is a greedy Lisp-2-style compacting, where blocks are moved closer to bottom of the heap (if possible),
+Compacting uses a greedy Lisp-2-style compacting algorithm (R. Jones, R. Lins, 1997, p. 103), where blocks are moved
+closer to bottom of the heap (if possible),
 otherwise the first block (or blocks) to fit in the unused space is moved there. The first case happens if there are no
 locked blocks between the unused space and next used (but not locked) block. Simply performing a memmove and updating
 pointers is enough. A quick operation that leaves no remainding holes. If however there are any locked blocks between
@@ -94,10 +92,6 @@ one adjacent block that fits within the unused space will be moved together. In 
 fit the unused space (and there is a locked block directly after), scanning is restarted beginning with the block
 directly following the last free block found. The process is continued until there are no unused blocks left or top is
 reached.
-
-Algorithm
-==========
-TODO: pseudo-code
 
 Implementation
 ==============
@@ -167,10 +161,6 @@ pointer is set to the old unused header root.  Setting ``memory`` to ``NULL`` in
 
 ``g_header_root`` points to the latest used header. At compact time, it's sorted in memory order.
 
-<FUTURE-WORK have a callback for when moving a locked block?>
-<FUTURE-WORK possible optimization: next_unused reduce to to just store offset into the header array>
-<FUTURE-WORK possible optimization: use some bits of memory to store flags?>
-
 Free block slots (g_free_block_slots)
 -------------------------------------
 As touched upon previously, this contains the memory blocks that have been freed and not yet merged into unused space
@@ -206,10 +196,13 @@ compacting).
 In the other case, there is no space left after ``g_memory_top`` and the free block must be searched for an appropriate
 block. This is the most complex part of alloc/free.
 
-find free block
-----------------
-- TODO: describe O(...) of all complex operations.
+The time complexity of the simple case with the aferementioned optimization is *O(1)*, or *O(n)* (in terms of number of
+handles in the system) in the unoptimized case. In the case where memory can't grow up (see Section
+:ref:`find-free-block` below), the time complexity is worst case  *O(n)* (in terms of the number of blocks of the
+specific size) and best case *O(1)*.
 
+Find free block
+----------------
 Calculate the index *k* into the free block slots list from *log2(size)+1*. As previously explained, the free block
 slot list has a stack (implemented as a singly linked list) hanging off each slot, such that finding a suiting block
 will be a fast operation. The exeption is for requests of blocks in the highest slot have to be searched in full, since
@@ -227,14 +220,14 @@ remainder of the shrunk block is then inserted into the tree at the proper locat
 
 Returns NULL if no block was found.
 
-shrink block
+Shrink block
 ------------
 Adjusts size of current block, allocates a new header for the remainder and associates it with a ``free_memory_block_t``
 and stores it in the shrunk block.
 
 rmfree
 ~~~~~~
-Mark the block as unused. <FUTURE-WORK automatic merge with adjacent prev/next block?>
+Mark the block as unused. 
 
 rmcompact
 ~~~~~~~~~
@@ -246,8 +239,6 @@ with them, regardless of flags.  This step only has to be done once each call to
 
 Actual compacting is done in passes so it can be optionally time limited, with a granularity of the time it takes to
 perform a single pass.
-
-TODO: pretty pictures
 
 One pass of moving blocks around
 ------------------------------------
@@ -352,7 +343,7 @@ block slots by iterating through ``g_header_root`` and placing free blocks in th
 
 rmdestroy
 ~~~~~~~~~
-Doesn't do anything - client code owns the heap.
+Doesn't do anything - client code owns the heap passed on to rminit.
 
 Testing
 ===========
@@ -362,8 +353,8 @@ All applications should be bug-free, but for an allocator it is extra important 
 allocator has a small interface for which tests can be easily written. In particular, randomized testing is easy, which
 although not guaranteed to catch all bugs gives a good coverage.
 
-I decided to use Google's GTest <REF: GTest> since it was easy to setup, use and the results are easy to read. It's
-similar in style to the original SUnit <REF: SUNit> that is popular to use.  During the development of the allocator I
+I decided to use googletest since it was easy to setup, use and the results are easy to read. It's
+similar in style to the original SUnit [#]_ that is popular to use.  During the development of the allocator I
 wrote tests and code in parallell, similar to test-driven development in order to verify that each change did not
 introduce a regression. Of the approximately 2500 lines of code in the allocator and tests, about half are tests. In
 addition to randomized unit testing there are consistency checks and asserts that can be turned on with at compile-time,
@@ -375,7 +366,7 @@ filling the allocated data with a constant byte value determined by the address 
 bugs were found this way, many of them not happening until thousands of allocations.  That shows randomized testing in
 large volume is a useful technique for finding problems in complex data structures, such as an allocator.
 
-TODO: describe test strategy more in detail?
+.. [#] http://en.wikipedia.org/wiki/SUnit
 
 Real-world testing
 ~~~~~~~~~~~~~~~~~~~~
@@ -384,11 +375,11 @@ testing and benchmarking of real-world applications, applications need to be rew
 is that it requires access to source code, and rewriting much of the source code. Instead, I've developed heuristics for
 calculating locking/unlocking based on runtime data of unmodified applicaions. The tool for doing so grew from a
 small script into a larger collection of tools related to data collection, analysis and benchmarking. This is described
-in greater detail in the chapter on <REF: Steve>.
+in greater detail in chapter :ref:`chapter-steve`.
 
 Profiling
 ==========
-The GNU tool ``gprof`` was used to find code hotspots, where the two biggest finds were:
+The GNU profiling tool *gprof* [#]_ was used to find code hotspots, where the two biggest finds were:
 
 * *log2()*
 * *header_find_free()*
@@ -400,4 +391,6 @@ rest of the code were evenly distributed and no single point was more CPU-intens
 *header_find_free()*. As described above, there's a compile-time optimization that cuts down time from *O(n)* to *O(1)*,
 which helped cut down execution time yet some more at the expense of higher memory usage per block.
 
-More details and benchmarks in the chapter on <REF: Steve>.
+More details and benchmarks in Chapter :ref:`chapter-steve`.
+
+.. [#] http://www.gnu.org/software/binutils/ 

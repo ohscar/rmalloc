@@ -21,8 +21,15 @@ rst2latex $options main.rst > main.latex
 
 pdflatex main.latex
 pdflatex main.latex
-#pdflatex main.latex
+pdflatex main.latex
 
 #rst2xetex main.rst > main-xetex.xetex
 #xetex main-xetex.xetex
+
+echo "--------------------"
+echo
+echo "TODO's and similar:"
+echo
+grep '\(<[A-Z]\+\|TODO\|XXX\)' *rst | grep -v '\(todo-checklist\|conclusion\)'
+echo
 

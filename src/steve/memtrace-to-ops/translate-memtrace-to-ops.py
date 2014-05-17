@@ -185,6 +185,8 @@ def main():
 
     f.close()
 
+    print "blocks.g_ops", blocks.g_ops
+
     blocks.g_ops_file.close()
     print "Saving ops: ", blocks.g_ops_filename
 
