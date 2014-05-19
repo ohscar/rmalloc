@@ -72,7 +72,7 @@ peakmem=$(echo "$peakmem*3" | bc)
 
 echo "ops_count (N/F ops) = $OPS_COUNT"
 
-maxmem_killpercent=1000
+maxmem_killpercent=0
 while [[ "$done" != "1" ]]; do
     a=$(echo $ALLOCATOR --allocstats $opsfile $RESULTFILE $maxmem_killpercent $fullcount $peakmem $theory_peakmem)
     #echo -n "* Calculating maxmem for peakmem $peakmem bytes..."

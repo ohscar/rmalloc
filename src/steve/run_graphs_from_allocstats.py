@@ -77,6 +77,7 @@ def plot_allocstats_multiple(app, allocstats_multiple):
 
     #ax = subplot_multiple(title, "Time (op)", pretty)
     accumulated_times = []
+    accumulated_times_nonlog = []
     #ax = subplot_multiple("Time per operation (nanoseconds), logarithmic scale", "Op number", "")
     ax = subplot_multiple("Speed", "Operation number", "")
     plots = []
@@ -159,6 +160,7 @@ def plot_allocstats_multiple(app, allocstats_multiple):
 
         if len(accumulated_time) < longest_length:
             accumulated_time.extend([0] * (longest_length - len(accumulated_time)))
+            accumulated_time_nonlog.extend([0] * (longest_length - len(accumulated_time_nonlog)))
 
 
         #p1a, = ax.plot(map(lambda x: x/1024, free), 'g-', label='Theoretical usable space')
@@ -180,6 +182,7 @@ def plot_allocstats_multiple(app, allocstats_multiple):
         #plot_time, = ax2.plot(accumulated_time, plot_color, label='Time: %s %s' % (driver, opsfile))
         plot_time, = ax.plot(accumulated_time, plot_color, label='%s' % (driver))
         accumulated_times.append(accumulated_time)
+        accumulated_times_nonlog.append(accumulated_time_nonlog)
 
         plots.append(plot_time)
 
@@ -306,7 +309,7 @@ def plot_allocstats_multiple(app, allocstats_multiple):
     if i > 0:
         tablelabelbase = tablelabelbase[:i]
 
-    def dostuffwith(foos, title, rev=False):
+    def dostuffwith(foos, title, rev=False, avgstats=False):
         if rev:
             bestfunc, worstfunc = operator.gt, operator.lt
         else:
@@ -355,32 +358,51 @@ def plot_allocstats_multiple(app, allocstats_multiple):
                 penalty[index] += j # quick = less penalty
                 goodness[index] += (j*diff) # j*diff
 
+        headings = ["Driver", "Penalty (\\textit{c}/\\textit{w})", "Best", "Worst"]
+        if avgstats:
+            headings += ["Average", "Median"]
 
+        headings_str = " & ".join(map(lambda x: "{\\bf %s}" % x, headings)) + " \\\\"
         print
         print ".. raw:: latex\n"
         print "   \\begin{table}"
-        print "   \\begin{tabular}{r | l c c c}"
+        if avgstats:
+            print "   \\begin{tabular}{r | l c c r r}"
+        else:
+            print "   \\begin{tabular}{r | l c c}"
         print "   \\hline"
-        print "   \\multicolumn{5}{c}{\\bf %s} \\\\" % title
+        print "   \\multicolumn{%d}{c}{\\bf %s} \\\\" % (len(headings), title)
         print "   \\hline"
-        print "   {\\bf Driver} & {\\bf Penalty (count)} & {\\bf Penalty (weighted)} & {\\bf Best} & {\\bf Worst} \\\\"
+        print "  ",headings_str
+        #print "   {\\bf Driver} & {\\bf Penalty (count)} & {\\bf Penalty (weighted)} & {\\bf Best} & {\\bf Worst} \\\\"
         print "   \\hline"
         stats = []
         for i in range(len(allocstats_multiple)):
             pen = float(penalty[i])/maxpen * 100.0
             good = float(goodness[i])/maxpen * 100.0
-            b = float(bestest[i])*100.0/float(len(foos[0]))
-            w = float(worstest[i])*100.0/float(len(foos[0]))  #float(worstest[i])/float(len(foos))))
-            stats.append((pen,
+            b = float(bestest[i])*100.0/float(len(foos[i]))
+            w = float(worstest[i])*100.0/float(len(foos[i]))  #float(worstest[i])/float(len(foos))))
+            stat = [pen,
                           allocstats_multiple[i]['driver'],
                           good,
                           b,
-                          w))
+                          w]
+            if avgstats:
+                average = sum(foos[i])/len(foos[i])
+                median = sorted(foos[i])[len(foos[i])/2]
+                stat += [average, median]
+
+            stats.append(tuple(stat))
 
         stats.sort()
         for stat in stats:
             goodness = stat[2] - stat[3]
-            print "   %s & %d\\%% & %.2f\\%% & %.2f\\%% & %.2f\\%% \\\\" % (stat[1], int(stat[0]), (stat[2]), (stat[3]), (stat[4]))
+            if avgstats:
+                print "   %s & %d\\%% / %.2f\\%% & %.2f\\%% & %.2f\\%% & %d ns & %d ns \\\\" % (stat[1], int(stat[0]),
+                                                                                          (stat[2]), (stat[3]),
+                                                                                          (stat[4]), stat[5], stat[6])
+            else:
+                print "   %s & %d\\%% / %.2f\\%% & %.2f\\%% & %.2f\\%% \\\\" % (stat[1], int(stat[0]), (stat[2]), (stat[3]), (stat[4]))
             #print "%s % 15d % 15d % 15d" % (stat[1].ljust(32), stat[0], stat[2], stat[3])
         print "   \\hline"
         print "   \\end{tabular}"
@@ -397,7 +419,7 @@ def plot_allocstats_multiple(app, allocstats_multiple):
 
     #ts = [time for times in accumulated_times for time in times]
     #median = sorted(ts)[len(ts)/2]
-    dostuffwith(accumulated_times, "Speed")
+    dostuffwith(accumulated_times_nonlog, "Speed", avgstats=True)
 
     #################################################
     # S P A C E 

@@ -16,7 +16,25 @@ Measuring an allocator must be done in conjunction with input data. These are th
 * ls 8.20 - ubuntu 13.04 - displaying a directory
 * cfrac 3.5.1 (3.51?) - just running it
 
-TODO: Presented in tables. Explain headings.
+.. TODO: Presented in tables. Explain headings.
+
+The results are presented in charts and tables. I'll describe what they mean first, then give the resuts.
+
+Speed chart.
+
+* 
+
+Size chart.
+
+* 
+
+Speed table.
+
+*
+
+Size table. In addition to the fields in speed table (applied to size, instead of speed), these fields are defined:
+
+* 
 
 .. [#] http://www.phpbb.com - a bulletin-board system
 
@@ -36,15 +54,15 @@ See Figure :ref:`resultsopera`.
 .. raw:: latex
 
    \begin{table}
-   \begin{tabular}{r | l c c c}
+   \begin{tabular}{r | l c c r r}
    \hline
-   \multicolumn{5}{c}{\bf Speed} \\
+   \multicolumn{6}{c}{\bf Speed} \\
    \hline
-   {\bf Driver} & {\bf Penalty (count)} & {\bf Penalty (weighted)} & {\bf Best} & {\bf Worst} \\
+   {\bf Driver} & {\bf Penalty (\textit{c}/\textit{w})} & {\bf Best} & {\bf Worst} & {\bf Average} & {\bf Median} \\
    \hline
-   rmmalloc & 16\% & 0.80\% & 0.00\% & 9.37\% \\
-   dlmalloc & 29\% & 1.67\% & 100.00\% & 22.26\% \\
-   jemalloc & 54\% & 5.35\% & 0.00\% & 68.37\% \\
+   rmmalloc & 16\% / 7.28\% & 0.00\% & 9.37\% & 755 ns & 710 ns \\
+   dlmalloc & 29\% / 14.29\% & 100.00\% & 22.26\% & 841 ns & 819 ns \\
+   jemalloc & 54\% / 136.56\% & 0.00\% & 68.37\% & 2607 ns & 1116 ns \\
    \hline
    \end{tabular}
    \caption{Speed measurements for result-opera-google}
@@ -55,20 +73,21 @@ See Figure :ref:`resultsopera`.
 .. raw:: latex
 
    \begin{table}
-   \begin{tabular}{r | l c c c}
+   \begin{tabular}{r | l c c}
    \hline
-   \multicolumn{5}{c}{\bf Space} \\
+   \multicolumn{4}{c}{\bf Space} \\
    \hline
-   {\bf Driver} & {\bf Penalty (count)} & {\bf Penalty (weighted)} & {\bf Best} & {\bf Worst} \\
+   {\bf Driver} & {\bf Penalty (\textit{c}/\textit{w})} & {\bf Best} & {\bf Worst} \\
    \hline
-   dlmalloc & 12\% & 3.66\% & 62.09\% & 100.00\% \\
-   jemalloc & 29\% & 13.25\% & 37.81\% & 0.00\% \\
-   rmmalloc & 57\% & 24.62\% & 0.10\% & 0.00\% \\
+   dlmalloc & 12\% / 3.66\% & 62.09\% & 100.00\% \\
+   jemalloc & 29\% / 13.25\% & 37.81\% & 0.00\% \\
+   rmmalloc & 57\% / 24.62\% & 0.10\% & 0.00\% \\
    \hline
    \end{tabular}
    \caption{Space measurements for result-opera-google}
    \label{table:result-opera-google-space}
    \end{table}
+
 
 libreoffice
 =============
@@ -77,19 +96,20 @@ libreoffice
    
    :label:`soffice` LibreOffice results. Poor performance of jemalloc.
 
+
 .. raw:: latex
 
    \begin{table}
-   \begin{tabular}{r | l c c c}
+   \begin{tabular}{r | l c c r r}
    \hline
-   \multicolumn{5}{c}{\bf Speed} \\
+   \multicolumn{6}{c}{\bf Speed} \\
    \hline
-   {\bf Driver} & {\bf Penalty (count)} & {\bf Penalty (weighted)} & {\bf Best} & {\bf Worst} \\
+   {\bf Driver} & {\bf Penalty (\textit{c}/\textit{w})} & {\bf Best} & {\bf Worst} & {\bf Average} & {\bf Median} \\
    \hline
-   dlmalloc & 22\% & 0.92\% & 100.00\% & 5.87\% \\
-   rmmalloc & 24\% & 1.08\% & 0.00\% & 6.09\% \\
-   tcmalloc & 38\% & 3.27\% & 0.00\% & 15.43\% \\
-   jemalloc & 65\% & 7.65\% & 0.00\% & 72.61\% \\
+   dlmalloc & 22\% / 8.90\% & 100.00\% & 5.87\% & 885 ns & 782 ns \\
+   rmmalloc & 24\% / 8.92\% & 0.00\% & 6.09\% & 841 ns & 773 ns \\
+   tcmalloc & 38\% / 80.14\% & 0.00\% & 15.43\% & 1559 ns & 859 ns \\
+   jemalloc & 65\% / 282.56\% & 0.00\% & 72.61\% & 5450 ns & 1160 ns \\
    \hline
    \end{tabular}
    \caption{Speed measurements for result-soffice}
@@ -100,16 +120,16 @@ libreoffice
 .. raw:: latex
 
    \begin{table}
-   \begin{tabular}{r | l c c c}
+   \begin{tabular}{r | l c c}
    \hline
-   \multicolumn{5}{c}{\bf Space} \\
+   \multicolumn{4}{c}{\bf Space} \\
    \hline
-   {\bf Driver} & {\bf Penalty (count)} & {\bf Penalty (weighted)} & {\bf Best} & {\bf Worst} \\
+   {\bf Driver} & {\bf Penalty (\textit{c}/\textit{w})} & {\bf Best} & {\bf Worst} \\
    \hline
-   tcmalloc & 0\% & 0.00\% & 100.00\% & 0.00\% \\
-   dlmalloc & 29\% & 1.38\% & 0.00\% & 100.00\% \\
-   rmmalloc & 45\% & 12.61\% & 0.00\% & 0.00\% \\
-   jemalloc & 75\% & 70.87\% & 0.00\% & 0.00\% \\
+   tcmalloc & 0\% / 0.00\% & 100.00\% & 0.00\% \\
+   dlmalloc & 29\% / 1.38\% & 0.00\% & 100.00\% \\
+   rmmalloc & 45\% / 12.61\% & 0.00\% & 0.00\% \\
+   jemalloc & 75\% / 70.87\% & 0.00\% & 0.00\% \\
    \hline
    \end{tabular}
    \caption{Space measurements for result-soffice}
@@ -130,4 +150,8 @@ ls
 
 cfrac
 ===============
+
+latex
+======
+tcmalloc DNF
 

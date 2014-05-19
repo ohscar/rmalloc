@@ -32,7 +32,7 @@ as seen in Figure :ref:`appendixhistogram01000`.
 By removing the short-lived objects, we can get a better understanding of the distribution of the other objects in
 Figure :ref:`appendixhistogram10100`.
 
-.. figure:: graphics/result-soffice-macro-histogram-10-100.png
+.. figure:: graphics/result-soffice-macro-histogram-10-1000.png
    :scale: 50%
 
    :label:`appendixhistogram10100` Limited to blocks with a lifetime between 1% and 100%
