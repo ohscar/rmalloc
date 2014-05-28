@@ -1,0 +1,51 @@
+driver = "jemalloc"
+opsfile = "../memtrace-runs/ls/ls-lockopsfull"
+heap_size = 192888
+theoretical_heap_size = 48222
+opmode = 'allocstats'
+alloc_stats = [
+    {'op_index':      0, 'free': 192536, 'used':    352, 'overhead':      0, 'maxmem':  352.00, 'current_op_time': 3195525, 'oom_time':      0, 'optime_maxmem':   1317, 'op': 'N', 'size':    352}
+,    {'op_index':      1, 'free': 192416, 'used':    472, 'overhead':      0, 'maxmem': 4096.00, 'current_op_time':   3146, 'oom_time':      0, 'optime_maxmem':   3156, 'op': 'N', 'size':    120}
+,    {'op_index':     10, 'free': 192348, 'used':    540, 'overhead':      0, 'maxmem': 4092.00, 'current_op_time':    615, 'oom_time':      0, 'optime_maxmem':   3033, 'op': 'N', 'size':     60}
+,    {'op_index':     11, 'free': 191868, 'used':   1020, 'overhead':      0, 'maxmem': 4092.00, 'current_op_time':   1941, 'oom_time':      0, 'optime_maxmem':   3554, 'op': 'N', 'size':    480}
+,    {'op_index':     12, 'free': 191756, 'used':   1132, 'overhead':      0, 'maxmem': 4092.00, 'current_op_time':   2843, 'oom_time':      0, 'optime_maxmem':   3407, 'op': 'N', 'size':    112}
+,    {'op_index':     13, 'free': 191536, 'used':   1352, 'overhead':      0, 'maxmem': 4096.00, 'current_op_time':   3399, 'oom_time':      0, 'optime_maxmem':   3634, 'op': 'N', 'size':    220}
+,    {'op_index':     14, 'free': 191480, 'used':   1408, 'overhead':      0, 'maxmem': 4096.00, 'current_op_time':   1209, 'oom_time':      0, 'optime_maxmem':   3494, 'op': 'N', 'size':     56}
+,    {'op_index':     15, 'free': 191432, 'used':   1456, 'overhead':      0, 'maxmem': 4096.00, 'current_op_time':   2296, 'oom_time':      0, 'optime_maxmem':   4040, 'op': 'N', 'size':     48}
+,    {'op_index':     16, 'free': 191368, 'used':   1520, 'overhead':      0, 'maxmem': 4096.00, 'current_op_time':    910, 'oom_time':      0, 'optime_maxmem':   3478, 'op': 'N', 'size':     64}
+,    {'op_index':     17, 'free': 191280, 'used':   1608, 'overhead':      0, 'maxmem': 4096.00, 'current_op_time':   2526, 'oom_time':      0, 'optime_maxmem':   4386, 'op': 'N', 'size':     88}
+,    {'op_index':     18, 'free': 191224, 'used':   1664, 'overhead':      0, 'maxmem': 4096.00, 'current_op_time':    959, 'oom_time':      0, 'optime_maxmem':   4114, 'op': 'N', 'size':     56}
+,    {'op_index':     19, 'free': 191180, 'used':   1708, 'overhead':      0, 'maxmem': 4092.00, 'current_op_time':   1088, 'oom_time':      0, 'optime_maxmem':   3671, 'op': 'N', 'size':     44}
+,    {'op_index':      2, 'free': 192536, 'used':    352, 'overhead':      0, 'maxmem': 12288.00, 'current_op_time':   3113, 'oom_time':      0, 'optime_maxmem':   5206, 'op': 'F', 'size':    120}
+,    {'op_index':     20, 'free': 191080, 'used':   1808, 'overhead':      0, 'maxmem': 4096.00, 'current_op_time':    934, 'oom_time':      0, 'optime_maxmem':   4146, 'op': 'N', 'size':    100}
+,    {'op_index':     21, 'free': 191068, 'used':   1820, 'overhead':      0, 'maxmem': 4092.00, 'current_op_time':    664, 'oom_time':      0, 'optime_maxmem':   3567, 'op': 'N', 'size':     12}
+,    {'op_index':     22, 'free': 191056, 'used':   1832, 'overhead':      0, 'maxmem': 4096.00, 'current_op_time':    722, 'oom_time':      0, 'optime_maxmem':   3631, 'op': 'N', 'size':     12}
+,    {'op_index':     23, 'free': 191044, 'used':   1844, 'overhead':      0, 'maxmem': 4092.00, 'current_op_time':    641, 'oom_time':      0, 'optime_maxmem':   3905, 'op': 'N', 'size':     12}
+,    {'op_index':     24, 'free': 191032, 'used':   1856, 'overhead':      0, 'maxmem': 4096.00, 'current_op_time':    856, 'oom_time':      0, 'optime_maxmem':   3702, 'op': 'N', 'size':     12}
+,    {'op_index':     25, 'free': 191020, 'used':   1868, 'overhead':      0, 'maxmem': 4092.00, 'current_op_time':    942, 'oom_time':      0, 'optime_maxmem':   4000, 'op': 'N', 'size':     12}
+,    {'op_index':     26, 'free': 191008, 'used':   1880, 'overhead':      0, 'maxmem': 4096.00, 'current_op_time':   3802, 'oom_time':      0, 'optime_maxmem':   3599, 'op': 'N', 'size':     12}
+,    {'op_index':     27, 'free': 190996, 'used':   1892, 'overhead':      0, 'maxmem': 4092.00, 'current_op_time':    627, 'oom_time':      0, 'optime_maxmem':   4257, 'op': 'N', 'size':     12}
+,    {'op_index':     28, 'free': 190984, 'used':   1904, 'overhead':      0, 'maxmem': 4096.00, 'current_op_time':   1191, 'oom_time':      0, 'optime_maxmem':   3757, 'op': 'N', 'size':     12}
+,    {'op_index':     29, 'free': 190972, 'used':   1916, 'overhead':      0, 'maxmem': 4092.00, 'current_op_time':    635, 'oom_time':      0, 'optime_maxmem':   4410, 'op': 'N', 'size':     12}
+,    {'op_index':      3, 'free': 192888, 'used':      0, 'overhead':      0, 'maxmem': 12288.00, 'current_op_time':   3896, 'oom_time':      0, 'optime_maxmem':   4452, 'op': 'F', 'size':    352}
+,    {'op_index':     30, 'free': 190960, 'used':   1928, 'overhead':      0, 'maxmem': 4096.00, 'current_op_time':    930, 'oom_time':      0, 'optime_maxmem':   4240, 'op': 'N', 'size':     12}
+,    {'op_index':     31, 'free': 190948, 'used':   1940, 'overhead':      0, 'maxmem': 4092.00, 'current_op_time':    607, 'oom_time':      0, 'optime_maxmem':   2801, 'op': 'N', 'size':     12}
+,    {'op_index':     32, 'free': 190936, 'used':   1952, 'overhead':      0, 'maxmem': 4096.00, 'current_op_time':    567, 'oom_time':      0, 'optime_maxmem':   3026, 'op': 'N', 'size':     12}
+,    {'op_index':     33, 'free': 190924, 'used':   1964, 'overhead':      0, 'maxmem': 4092.00, 'current_op_time':   1159, 'oom_time':      0, 'optime_maxmem':   3368, 'op': 'N', 'size':     12}
+,    {'op_index':     34, 'free': 190902, 'used':   1986, 'overhead':      0, 'maxmem': 4094.00, 'current_op_time':   3001, 'oom_time':      0, 'optime_maxmem':   3510, 'op': 'N', 'size':     22}
+,    {'op_index':     35, 'free': 190892, 'used':   1996, 'overhead':      0, 'maxmem': 4092.00, 'current_op_time':    922, 'oom_time':      0, 'optime_maxmem':   3089, 'op': 'N', 'size':     10}
+,    {'op_index':     36, 'free': 190844, 'used':   2044, 'overhead':      0, 'maxmem': 4092.00, 'current_op_time':    610, 'oom_time':      0, 'optime_maxmem':   3204, 'op': 'N', 'size':     48}
+,    {'op_index':     37, 'free': 190796, 'used':   2092, 'overhead':      0, 'maxmem': 4092.00, 'current_op_time':    667, 'oom_time':      0, 'optime_maxmem':   2706, 'op': 'N', 'size':     48}
+,    {'op_index':     38, 'free': 177996, 'used':  14892, 'overhead':      0, 'maxmem': 4092.00, 'current_op_time':   1031, 'oom_time':      0, 'optime_maxmem':   2864, 'op': 'N', 'size':  12800}
+,    {'op_index':     39, 'free': 177980, 'used':  14908, 'overhead':      0, 'maxmem': 4092.00, 'current_op_time':    656, 'oom_time':      0, 'optime_maxmem':   2534, 'op': 'N', 'size':     16}
+,    {'op_index':      4, 'free': 192883, 'used':      5, 'overhead':      0, 'maxmem': 8187.00, 'current_op_time':   2285, 'oom_time':      0, 'optime_maxmem':   3273, 'op': 'N', 'size':      5}
+,    {'op_index':     40, 'free': 177978, 'used':  14910, 'overhead':      0, 'maxmem':  474.00, 'current_op_time':   2772, 'oom_time':      0, 'optime_maxmem':    939, 'op': 'N', 'size':      2}
+,    {'op_index':     41, 'free': 145186, 'used':  47702, 'overhead':      0, 'maxmem':  474.00, 'current_op_time':    864, 'oom_time':      0, 'optime_maxmem':   1028, 'op': 'N', 'size':  32792}
+,    {'op_index':     42, 'free': 145183, 'used':  47705, 'overhead':      0, 'maxmem': 8191.00, 'current_op_time':   3415, 'oom_time':      0, 'optime_maxmem':   3542, 'op': 'N', 'size':      3}
+,    {'op_index':     43, 'free': 145167, 'used':  47721, 'overhead':      0, 'maxmem': 8191.00, 'current_op_time':    635, 'oom_time':      0, 'optime_maxmem':   4054, 'op': 'N', 'size':     16}
+,    {'op_index':      5, 'free': 192888, 'used':      0, 'overhead':      0, 'maxmem': 12288.00, 'current_op_time':   1927, 'oom_time':      0, 'optime_maxmem':   4599, 'op': 'F', 'size':      5}
+,    {'op_index':      6, 'free': 192872, 'used':     16, 'overhead':      0, 'maxmem': 8192.00, 'current_op_time':   2168, 'oom_time':      0, 'optime_maxmem':   3793, 'op': 'N', 'size':     16}
+,    {'op_index':      7, 'free': 192812, 'used':     76, 'overhead':      0, 'maxmem': 4092.00, 'current_op_time':   1735, 'oom_time':      0, 'optime_maxmem':   3762, 'op': 'N', 'size':     60}
+,    {'op_index':      8, 'free': 192800, 'used':     88, 'overhead':      0, 'maxmem': 4096.00, 'current_op_time':   1288, 'oom_time':      0, 'optime_maxmem':   3614, 'op': 'N', 'size':     12}
+,    {'op_index':      9, 'free': 192408, 'used':    480, 'overhead':      0, 'maxmem': 4096.00, 'current_op_time':   3324, 'oom_time':      0, 'optime_maxmem':   4235, 'op': 'N', 'size':    392}
+]

@@ -6,9 +6,10 @@ applications that use the system malloc, without access to source code or recomp
 
 Overview
 =========
-Steve consists of mostly Python code and Cython for tight inner loops such as the memtrace to ops calculation, plus
-some Bash scripts for glueing it all together. The data is plotted in graphs and there is also a tool that creates an
-animation of memory allocations as they happen in memory.
+Steve consists of mostly Python code with Cython [#]_ (a Python framework for interfacing in C and compiling Python into C
+code) for tight inner loops such as the memtrace to ops calculation, plus some Bash scripts for glueing it all together.
+The data is plotted in graphs and there is also a tool that creates an animation of memory allocations as they happen in
+memory.
 
 Measuring Jeff requires a rewrite of the application needing to be tested, to use the new malloc interface. The simple
 solution to do so is to emulate a regular malloc, i.e. directly lock after malloc. But that would make the compact
@@ -16,39 +17,41 @@ operation no-op since no blocks can be moved. On the other hand, adapting existi
 is error-prone, it is not obvious which application would make good candidates, and finally, source code to the applications
 is required, which is not always possible.
 
-Definitions
-===========
-* opsfile: file created by ``translate-memtrace-to-ops.py``, contains one operation per line. See the appendix for full
-  definition.
+.. [#] http://cython.org
 
 Tools
 =====
 For a detailed description of the tools, see the appendix.
 
-* translate-memtrace-to-ops.py
-* translate-ops-to-histogram.py
-* translate-ops-to-locking-lifetime.py
-* run_allocator_stats.sh (+ run_allocator_stats_payload.sh)
-* run_memory_frag_animation.sh
-* run_graphs_from_allocstats.py
-* run_memory_frag_animation_plot_animation.py
+* ``translate-memtrace-to-ops.py``
+* ``translate-ops-to-histogram.py``
+* ``translate-ops-to-locking-lifetime.py``
+* ``run_allocator_stats.sh``, ``run_allocator_stats_payload.sh``
+* ``run_memory_frag_animation.sh``
+* ``run_graphs_from_allocstats.py``
+* ``run_memory_frag_animation_plot_animation.py``
 
 Retrieving memory access data
 ==================================
-Simply getting malloc/free calls is trivially done by writing a malloc wrapper and make use of Linux' ``LD_PRELOAD`` to
-make the applications use our own allocator that can do logging. Unfortunately that is not enough. To get statistics on
-*memory access patterns* one needs to essentially simulate the system the application runs in.  Options considered were
-TEMU from the BitBlazer project, but because it would not build on my Linux system, I looked at Valgrind before trying
-again. Turns out Valgrind has good instrumentation support in their tools. Valgrind was originally a tool for
-detecting memory leaks in applications on the x86 platform via emulation and has since evolved to support more hardware
-platforms and providing tools for doing other instrumentation tasks. Provided with Valgrind an example tool *Lackey*
-does parts of what I was looking for but missing other parts. I instead ended up patching the *memcheck* tool [#]_ to capture load/store/access
-operations and logging them to file, if they were in the boundaries of *lowest address allocated* to *highest address
-allocated*. This will still give false positives when there are holes (lowest is only decreased and highest is only
-increased) but reduces the logging output somewhat. Memory access can then be analyzed offline. Note that it will only
-work for applications that use the system-malloc/free. Any applications using custom allocators must be modified to use
-the system allocator, which generally means changing a setting in the source code and recompiling.
+Simply getting malloc/free calls is trivially done by writing a malloc wrapper and make use of Linux' ``LD_PRELOAD``
+technique for preloading a shared library, to make the applications use our own allocator that can do logging, instead
+of the system allocator. Unfortunately that is not enough. To get statistics on
+memory *access* patterns one needs to essentially simulate the system the application runs in.  Options considered were
+TEMU [#]_ from the BitBlaze [#]_ project, but because it would not build on my Linux system, I looked at Valgrind [#]_
+before trying again. Turns out Valgrind has good instrumentation support in their tools. Valgrind was originally a tool
+for detecting memory leaks in applications on the x86 platform via emulation and has since evolved to support more
+hardware platforms and providing tools for doing other instrumentation tasks. Provided with Valgrind an example tool
+*Lackey* does parts of what I was looking for but missing other parts. I instead ended up patching the *memcheck* tool
+[#]_ to capture load/store/access operations and logging them to file, if they were in the boundaries of lowest address
+allocated to highest address allocated. This will still give false positives when there are holes (lowest is only
+decreased and highest is only increased) but reduces the logging output somewhat. Memory access can then be analyzed
+offline. Note that it will only work for applications that use the system-malloc/free. Any applications using custom
+allocators must be modified to use the system allocator, which generally means changing a setting in the source code and
+recompiling.
 
+.. [#] http://bitblaze.cs.berkeley.edu/temu.html
+.. [#] http://bitblaze.cs.berkeley.edu/ 
+.. [#] http://valgrind.org
 .. [#] https://github.com/mikaelj/rmalloc/commit/a64ab55d9277492a936d7d7acfb0a3416c098e81 (2014-02-09: "valgrind-3.9.0: memcheck patches")
 
 I've written a convenience script for this purpose and then optionally creates locking data::
@@ -69,18 +72,14 @@ I've written a convenience script for this purpose and then optionally creates l
       ${theapp}/${theapp}
 
 Beware that this takes long time for complex applications, about 30 minutes on an Intel Core i3-based system to load
-Opera with http://www.google.com
+http://www.google.com in the web browser Opera [#]_.
+
+.. [#] http://www.opera.com
 
 Simulating locking behaviour based on heuristics
 ==================================================
 As noted above, it is not a practical solution to rewrite applications. If there is a possible of creating an automated
-method for finding approximate locking behaivour of applications, it should be investigated. To begin with, let's define
-the terms used in the coming algorithm:
-
-* Op: Any memory operation: new, free, load, store, modify. Generally, load, store and modify is generalized to Access
-  (A).
-* Lifetime: The number of total operations, thus indirectly the time, between a New and a Free op for a specific block.
-* Block: A chunk of allocated memory.
+method for finding approximate locking behaivour of applications, it should be investigated. 
 
 A block with a lifetime close to the total number of operations has a long lifetime and therefore created in the
 beginning of the application's lifetime.  The *macro* lifetime of a block is the relation between all ops within its
@@ -91,7 +90,8 @@ a large value for macro lifetime means it's a global object and can be modelled 
 Depnding on the relation between ops accessing the block in question and ops accessing other objects the access pattern
 of the object can be modeled.  For example, if an object has 100 ops within its lifetime and 10 of them are its own
 and 90 are others', the object would probably be locked at each access, whereas if it was the other way around, it is
-more likely that the object is locked throughout its entire lifetime.
+more likely that the object is locked throughout its entire lifetime. Calculating lifetime requires a full opsfile,
+including all access ops.
 
 Allocator driver usage
 ===================================
@@ -146,7 +146,7 @@ All alloc drivers are linked to the same main program and have the same command 
     - resultfile: Statistics output file, convention is to use file stem of opsfile (without "-ops") and append
       "-allocstats"
     - killpercent: Optionally rewind and randomly free *killpercent* (0-100) of all headers at EOF, to simulate an application that destroys and creates new documents. The value 100'000 means no rewinding or killing takes place, i.e. just one round of the data gathered by running the application to be benchmarked.
-    - oplimit: Which operation ID (0 .. *total ops count*) to write alloctaion stats for. The special value 0 is for writing the original header.
+    - oplimit: Which operation ID (*0..total ops count*) to write alloctaion stats for. The special value 0 is for writing the original header.
       Typically the driver application is called in a for loop from 0 to the number of operations, i.e. number of lines
       in the opsfile.
 
@@ -225,12 +225,12 @@ order to retrieve the physical memory address they are locked (throuh ``user_loc
 
 Colormap is 25% of the heap size, such that each 4-byte word maps onto a byte. The colormap is initially filled with
 white (for overhead), with a new operation painted as red and free painted as green. The heap is corresondingly filled
-with HEAP_INITIAL (``0xDEADBEEF``) initially, and newly created blocks are filled with HEAP_ALLOC (``0xBEEFBABE``) and
-blocks that are just about to be freed are filled with HEAP_FREE (``0xDEADBABE``).
+with ``HEAP_INITIAL`` (``0xDEADBEEF``) initially, and newly created blocks are filled with ``HEAP_ALLOC`` (``0xBEEFBABE``) and
+blocks that are just about to be freed are filled with ``HEAP_FREE`` (``0xDEADBABE``).
 
-Now, by scanning the heap for values that are not in the set HEAP_INITIAL, HEAP_ALLOC nor HEAP_FREE, it can be concluded
-that this is overhead (i.e. allocator-internal structures). Paint the corresponding memory location in the colormap with
-white (for overhead).
+Now, by scanning the heap for values that are not in the set ``HEAP_INITIAL``, ``HEAP_ALLOC`` nor ``HEAP_FREE``, it can
+be concluded that this is overhead (i.e. allocator-internal structures). Paint the corresponding memory location in the
+colormap with white (for overhead).
 
 Tested Allocators
 =================================
@@ -252,7 +252,7 @@ The workings of Jeff is described earlier in this paper.
 
 jemalloc (v1.162 2008/02/06)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-jemalloc is an allocator written by Jason Evans, originally written for a custom development environment circa 2005, later
+*jemalloc* is an allocator written by Jason Evans, originally written for a custom development environment circa 2005, later
 integrated into FreeBSD for its multi-threading capabilities and later further adapted in 2007 for use by the Firefox
 project to deal with fragmentation issues. It's since been adapted for heavy-duty use in the Facebook servers [#]_.
 As of 2010, it still performs better than the system-provided allocators in MacOS, Windows and Linux. [#]_ 
@@ -260,21 +260,21 @@ As of 2010, it still performs better than the system-provided allocators in MacO
 .. [#] https://github.com/jemalloc/jemalloc/wiki/History
 .. [#] http://www.quora.com/Who-wrote-jemalloc-and-what-motivated-its-creation-and-implementation
 
-TODO: fill in more information about jemalloc: goal, design
+.. TODO: fill in more information about *jemalloc*: goal, design
 
 Alloc and free calls mapped to the corresponding function call. Handle OOM is a no-op. Configured to use sbrk (``opt_dss
 = true``), but not mmap (``opt_mmap = false``).
 
 dlmalloc v2.8.6
 ~~~~~~~~~~~~~~~~~~~~~~
-dlmalloc is an allocator written by Doug Lea and is used by the GNU standard C library, glibc.  The source code states
+*dlmalloc* is an allocator written by Doug Lea and is used by the GNU standard C library, glibc.  The source code states
 the following about its goal:
     
     This is not the fastest, most space-conserving, most portable, or most tunable malloc ever written. However it is
     among the fastest while also being among the most space-conserving, portable and tunable.  Consistent balance across
     these factors results in a good general-purpose allocator for malloc-intensive programs.
 
-TODO: fill in more information about dlmalloc: goal, design
+.. TODO: fill in more information about *dlmalloc*: goal, design
 
 Alloc and free calls mapped to the corresponding function call. Handle OOM is a no-op. Configured to use sbrk but not
 mmap.
@@ -283,11 +283,11 @@ tcmalloc (gperftools-2.1)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 gperftools [#]_ is written by Google and includes a profiling/benchmark framework/tools. It is used by, among others,
 Google Chrome, MySQL and WebKit (W. Fang, 2012), which in turn is used by many other projects such
-as Apple's Safari.
+as Apple's Safari. It includes the allocator *tcmalloc*.
 
 .. [#] http://code.google.com/p/gperftools/
 
-TODO: fill in more information about tcmalloc: goal, design
+.. TODO: fill in more information about tcmalloc: goal, design
 
 Alloc and free calls mapped to the corresponding function call. Handle OOM is a no-op. Configured to use sbrk but not
 mmap.

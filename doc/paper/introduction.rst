@@ -11,10 +11,10 @@ pointer to a chunk of memory guaranteed to be at least *size* bytes. The operati
 gives the memory back to the system.
 
 The allocator in turn calls out to the operating system-provided memory mapping function, providing the allocator with
-one or more  *pages* of memory, often 4 KB each. A very simple allocator would do little more than returning the pages
-as malloc() and have free() be a no-op. Obviously this is wasteful causing large internal fragmentation and if the
-application code using the allocator wanted to release memory back to the system and then allocate more again, the
-system would quickly run out of memory.
+one or more pages of memory, often 4 KB each on PC systems. A very simple allocator would do little more than returning the pages
+as *malloc()* and have *free()* be a no-op. Obviously this is wasteful causing large amount of memory wasted and if the
+application code using the allocator wanted to release memory back to the system and then allocate again, system memory
+would eventually run out.
 
 Therefore, an allocator needs to be more clever about managing memory. Things most efficient allocators have in common:
 
@@ -40,7 +40,21 @@ The purpose of the lock/unlock operations is to introduce an indirection for mem
 move data blocks around when not in used (*unlocked* state), specifically to cope with fragmentation problems by
 compacting the heap. 
 
-Can such an allocator be efficient in space and time?
+Can such an allocator be efficient in space and time? That is the question I aim to answer in this paper.
+
+Definitions
+============
+* **Internal fragmentation**: The amount of memory wasted inside a block.
+* **External fragmentation**: The amount of memory wasted by allocator metadata.
+* **Op**: Any memory operation: new, free, load, store, modify, lock, unlock. Generally, load, store and modify is generalized to
+  access. These are sometimes abbreviated to N for new, F for free, A for access, L for load, U for unlock.
+* **Memtrace**: File created by *Lackey* that contains triplets of *(op, address, size)*. See the appendix for full
+  definition.
+* **Opsfile**: File created by ``translate-memtrace-to-ops.py``, contains one operation per line. See the appendix for full
+  definition.
+* **Lifetime**: The number of total operations, thus indirectly the time, between a New and a Free op for a specific block.
+* **Block**: A chunk of allocated memory.
+* **EOF**: End of file.
 
 Allocator Types
 =========================
@@ -48,16 +62,18 @@ I'll describe the most common style of allocator implementation strategies.
 
 Buddy Allocator
 ~~~~~~~~~~~~~~~~~~~~~
-The most common allocator type is the buddy allocator, and many allocators are built on its principles, or at least
+The most common allocator type is the buddy allocator [#]_, and many allocators are built on its principles, or at least
 incorporate them in some way: start with a single block and see if the requested chunk fits in half of the block. If it
 does, split the block into two and repeat, until there no smaller block size would fit the request.
 
-- TODO: <illustration of 2^k list>
+.. [#] http://en.wikipedia.org/wiki/Buddy_memory_allocation
 
-Over time, there will be more and more items of size 2^n, that are stored on a free list for that block size. Each pair
+.. - TODO: <illustration of 2^k list>
+
+Over time, there will be more and more items of size *2^n*, that are stored on a free list for that block size. Each pair
 of split-up blocks is said to be two buddies. When two buddy blocks are free, they can be joined. A block of the next
-larger size (n+1) can be created from these two blocks. This is repeated until the largest block, i.e. 2^k. In the worst
-case, this causes 2^(n) - 1 bytes of overhead per block, also known as *internal fragmentation.* Still, this commonly
+larger size (n+1) can be created from these two blocks. This is repeated until the largest block, i.e. *2^k*. In the worst
+case, this causes *2^n - 1* bytes of overhead per block, also known as *internal fragmentation.* Still, this commonly
 used algorithm has shown to be good enough and is often incorporated as one strategy of an allocator.
 
 As touched upon before, all blocks must have metadata associated with them. For convenience, this is often stored in
@@ -65,8 +81,8 @@ memory just before the block itself. The minimum amount of information is the le
 to know where the block ends. The metadata could also be stored elsewhere, e.g. a lookup table *S(addr)* that gives the
 size of the block starting with *addr*. This gives a penalty on free, however, which is not desirable, and therefore,
 direct information about the block is usually stored with the block. The metadata associated with the block is normally
-not accessible by user code (unless queried using specific debugging code), and is called *external fragmentation*. It
-is the fragmentation between the user blocks (hence *external*), i.e. any overhead caused by information required by the
+not accessible by user code (unless queried using specific debugging code) and adds to the external fragmentation.
+It is the fragmentation between the user blocks (hence *external*), i.e. any overhead caused by information required by the
 allocator, but not the user code.
 
 Conceptually, the buddy allocator is a very simple allocator to use and implement, but not the most efficient because of
@@ -96,7 +112,8 @@ explicitly ask for memory from the allocator, nor to free it when done. Instead,
 checks for which objects are still in use by the application (*alive*). An object is is anything that uses heap memory: a number,
 a string, a collection, a class instance, and so on. There are several techniques for finding alive objects and
 categorizing objects depending on their lifetime in order to more efficiently find alive objects at next pass, which I
-will not cover in this paper. I recommend (BIB: Garbage Collectors) if you are interested in finding out more.
+will not cover in this paper. I recommend the book *Garbage Collection* by R. Jones and R. Lins if you are interested in
+finding out more.
 
 At any point in time, a garbage collector can move around the object if necessary, therefore any object access is done
 indirectly via a translation. User code does not keep a pointer to the block of memory that the object is located in,
@@ -135,15 +152,16 @@ Some of the most common allocators are tested and discussed in Section :ref:`tes
 
 Efficiency, revisited
 ======================================
-Is fragmentation a problem?  At Opera, that was indeed the case. Large web pages loading many small resources,
-specifically images, created holes in memory when freed, such that after a few page loads, it was no longer possible to
-load any more pages. On a small-memory device, such as early smart phones/feature phones, with 4-8M RAM, this was indeed
-an issue. The out-of-memory situation happens despite there theoretically being enough memory available, but because of
-fragmentation large enough chunks could not be allocated. This goes against the findings in
-(M. S. Johnstone, P. R. Wilson, 1998), where in the average case, fragmentation level is good
-enough. However, for Opera, that was insufficient.  By making a custom allocator with the signature outlined in the
-hypothesis, they hoped to solve the fragmentation problem in the specific situations that occur in a web
-browser.
+The question *Is fragmentation a problem?* is asked by (M. S. Johnstone, P. R. Wilson, 1998). At Opera circa 1997, that
+was indeed the case. Large web pages loading many small resources, specifically images, created holes in memory when
+freed, such that after a few page loads, it was no longer possible to load any more pages. On a small-memory device,
+such as early smart phones/feature phones, with 4-8 MB RAM, this was indeed an issue. The out-of-memory situation happens
+despite there theoretically being enough memory available, but because of fragmentation large enough chunks could not be
+allocated. This goes against the the authors findings, where in the average case,
+fragmentation level is good enough. However, for Opera, that was insufficient.  By making a custom allocator with the
+signature outlined in the hypothesis, they hoped to solve the fragmentation problem in the specific situations that
+occur in a web browser. It was also to be used as the allocator in an in-house virtual machine running a custom
+language.
 
-- TODO: Possibly for use in a virtual machine
+.. - TODO: Possibly for use in a virtual machine
 

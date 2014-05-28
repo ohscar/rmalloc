@@ -89,7 +89,7 @@ uint8_t g_operation_mode;
 uint32_t g_oplimit = 0; // ./plot_foo --allocstats result.app-ops <n> # oplimit, 0 initial, then 1..N.
 
 
-#define HEAP_SIZE (256 * 1024*1024) // 1 GB should be enough.
+#define HEAP_SIZE (1024 * 1024*1024) // 1 GB should be enough.
 
 
 uint32_t g_heap_size = HEAP_SIZE;

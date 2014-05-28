@@ -20,6 +20,8 @@ import matplotlib.mlab as mlab
 import matplotlib.pyplot as plt
 import os.path
 
+LEGEND_SIZE = 10
+
 # reference value color first
 COLORS = ["b-", "r-", "g-", "k-", "m-", "y-", "c-"]
 #COLORS = ["k-", "k:", "k--", "k_", "k", "k", "k-."]
@@ -186,7 +188,8 @@ def plot_allocstats_multiple(app, allocstats_multiple):
 
         plots.append(plot_time)
 
-    plt.legend(plots, [plot.get_label() for plot in plots], loc=2) # loc= 2=upper left, 4=lower right, 3=lower left
+    #plt.legend(plots, [plot.get_label() for plot in plots], loc=2) # loc= 2=upper left, 4=lower right, 3=lower left
+    plt.legend(plots, [plot.get_label() for plot in plots], loc=0, prop={'size': LEGEND_SIZE}) # loc= 2=upper left, 4=lower right, 3=lower left
 
     accumulated_spaces = []
     foo = []
@@ -227,13 +230,20 @@ def plot_allocstats_multiple(app, allocstats_multiple):
 
         freediff = [ratio(op) for op in opstats]
         freediffpercent = [ratiopercent(op) for op in opstats]
-        maxmem = [op['maxmem'] for op in opstats]
+
+        #maxmem = [op['maxmem'] for op in opstats]
+
+        # XXX: (maxmem / heap_size) to get efficiency, no?
+        hs = float(heap_size)
+        maxmem = [float(op['maxmem'])/hs for op in opstats]
+
         free = [op['free'] for op in opstats]
         used = [op['used'] for op in opstats]
         overhead = [op['overhead'] for op in opstats]
 
 
         # Correct label
+        """
         maxmem_to_kb = 0
         maxmem_to_mb = 0
         maxmem_to_gb = 0
@@ -254,6 +264,9 @@ def plot_allocstats_multiple(app, allocstats_multiple):
         else:
             l = "Bytes"
             d = 1
+        """
+        d = 0.01
+        l = "Percent of maximum heap size"
 
         #print "maxmem: l =", l, "d =", d, "data =", maxmem
 
@@ -286,7 +299,9 @@ def plot_allocstats_multiple(app, allocstats_multiple):
 
         plots.append(p1b)
 
-    plt.legend(plots, [plot.get_label() for plot in plots], loc=1) # loc= 2=upper left, 4=lower right, 3=lower left
+    #plt.legend(plots, [plot.get_label() for plot in plots], loc=1) # loc: 1=upper right,2=upper left, 4=lower right, 3=lower left
+    #plt.legend(plots, [plot.get_label() for plot in plots], loc=4) # loc= 2=upper left, 4=lower right, 3=lower left
+    plt.legend(plots, [plot.get_label() for plot in plots], loc=0, prop={'size': LEGEND_SIZE}) # loc= 2=upper left, 4=lower right, 3=lower left
 
 
 
@@ -309,6 +324,10 @@ def plot_allocstats_multiple(app, allocstats_multiple):
     if i > 0:
         tablelabelbase = tablelabelbase[:i]
 
+    if False:
+        for i in range(len(allocstats_multiple)):
+            print "driver", i, "=", allocstats_multiple[i]['driver']
+
     def dostuffwith(foos, title, rev=False, avgstats=False):
         if rev:
             bestfunc, worstfunc = operator.gt, operator.lt
@@ -323,18 +342,29 @@ def plot_allocstats_multiple(app, allocstats_multiple):
         maxpen = float(len(foos[0]) * len(foos))
         for i in range(len(foos[0])): # for each point
             best_j = 0
-            best = 0
             worst_j = 0
-            worst = 0
+            if rev:
+                best = 0
+                worst = 1000000
+            else:
+                best = 10000000
+                worst = 0
             times = []
             for j in range(len(foos)): # for each allocator
                 times.append(foos[j][i])
+
                 if bestfunc(foos[j][i], best):
                     best = foos[j][i]
                     best_j = j
+
                 if worstfunc(foos[j][i], worst):
                     worst = foos[j][i]
                     worst_j = j
+
+            if False and rev == False:
+                print "best_%d = %d, worst_%d = %d" % (best_j, best, worst_j, worst)
+                print times
+                print
 
             bestest[best_j] += 1
             worstest[worst_j] += 1
@@ -347,6 +377,8 @@ def plot_allocstats_multiple(app, allocstats_multiple):
             best_goodness = timesindex[0][0]
             for j in range(len(timesindex)):
                 foo, index = timesindex[j] # note, foo unused
+                if best_goodness == 0:
+                    best_goodness = 1
                 diff = float(abs(foo - best_goodness)) / float(best_goodness)
 
                 #penalty[timesindex[j][1]] += j # quick = less penalty
@@ -365,7 +397,7 @@ def plot_allocstats_multiple(app, allocstats_multiple):
         headings_str = " & ".join(map(lambda x: "{\\bf %s}" % x, headings)) + " \\\\"
         print
         print ".. raw:: latex\n"
-        print "   \\begin{table}"
+        print "   \\begin{table}[!ht]"
         if avgstats:
             print "   \\begin{tabular}{r | l c c r r}"
         else:
@@ -501,7 +533,7 @@ def plot_allocstats(allocstats):
         ax.yaxis.set_label_position('right')
 
         lines=[p1, p2, p3, p4]
-        plt.legend(lines, [l.get_label() for l in lines], loc=2) # upper left
+        plt.legend(lines, [l.get_label() for l in lines], loc=2, prop={'size': 6}) # upper left
 
     elif opmode == 'allocstats':
         max_size = 0
@@ -646,7 +678,11 @@ def plot_init_multiple():
     #g_multiple_figure = plt.figure(figsize=(12,19.2), dpi=300)
     #g_multiple_figure = plt.figure(figsize=(12,16), dpi=300)
     #g_multiple_figure = plt.figure(figsize=(12,28.8), dpi=300)
-    g_multiple_figure = plt.figure(figsize=(8,3.5), dpi=600)
+
+    #g_multiple_figure = plt.figure(figsize=(8,3.5), dpi=600)
+    #g_multiple_figure = plt.figure(figsize=(16, 7), dpi=600)
+    #g_multiple_figure = plt.figure(figsize=(15, 7), dpi=600)
+    g_multiple_figure = plt.figure(figsize=(14, 7), dpi=600)
     #plt.axis('tight')
     #plt.grid(True)
 

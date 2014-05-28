@@ -3,7 +3,11 @@ Jeff and Steve: A Relocatable Memory Allocator and its Benchmarking Friend
 ===========================================================================
 :author: Mikael Jansson
 :abstract:
-  Foo bar abstract bazquux.
+    Memory fragmentation can be a problem in systems with limited amounts of memory. This report describes the work and
+    result conducted by the author on designing and implementing a memory allocation system with compacting support,
+    along a set of tools for visualizing characteristis and benchmarking the performance of user-provided allocators on
+    arbitrary applications without requiring access to source code. The resulting allocator performed similar or better
+    in speed but worse or similar in memory measurements.
 
 .. role:: ref
 
@@ -79,8 +83,8 @@ A request that fits is associated with a new handle and returned. If there is no
 searched for a block that fits.
 
 Freeing a block marks it as unused and adds it to the free list, for malloc to find later as needed.  The free list is
-an index array of 2^3..k-sized blocks with a linked list at each slot. All free blocks are guaranteed to be at least
-2^n, but smaller than 2^(n-^1), bytes in size. Unlike the buddy allocator, blocks are not merged on free. (See
+an index array of *2^3..k*-sized blocks with a linked list at each slot. All free blocks are guaranteed to be at least
+*2^n*, but smaller than *2^(n-^1)*, bytes in size. Unlike the buddy allocator, blocks are not merged on free. (See
 :ref:`future-work-in-jeff` for a brief discusson.)
 
 .. figure:: graphics/jeff-free-blockslots.png
@@ -105,7 +109,7 @@ directly following the last free block found. The process is continued until the
 reached.
 
 Implementation
-=============
+==============
 Described in detail in Chapter :ref:`chapter-jeff` and Chapter :ref:`chapter-steve`.
 
 .. raw:: latex
@@ -150,9 +154,11 @@ Described in detail in Chapter :ref:`chapter-jeff` and Chapter :ref:`chapter-ste
 
 .. include:: appendix.rst
 
-.. raw:: latex
+.. raw:: foo
 
-    \chapter{T O D O - X X X - CHECKLIST}
+    .. raw:: latex
 
-.. include:: todo-checklist.rst
+        \chapter{T O D O - X X X - CHECKLIST}
+
+    .. include:: todo-checklist.rst
 

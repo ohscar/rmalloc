@@ -14,7 +14,7 @@ In order to achieve compacting, memory must be accessed indirectly. This is the 
 
     void compact(uint32_t compact_time_max_ms);
 
-`handle_t` is an opaque type. To get the actual memory pointed to at by the handle, call `lock()` to obtain a regular
+``handle_t`` is an opaque type. To get the actual memory pointed to at by the handle, call `lock()` to obtain a regular
 pointer to memory. During the time a block pointed out by a handle is locked, the compact operation is not allowed to
 move it. If it could be moved, the pointer obtained by the client code would no longer be invalid. This also puts
 certain limitations on the compactor, since it needs to deal with possibly locked blocks.  More on `compact()` later.
@@ -52,7 +52,7 @@ Free Block
 ~~~~~~~~~~~~~~~~~~~~
 #. Mark the header as free
 #. Overwrite the block with a free memory block structure pointing to the header location, with the struct's memory
-   member pointing to NULL.
+   member pointing to ``NULL``.
 #. Insert the block into the appropriate location in the free block slots list.
 
 Compact Heap
@@ -91,9 +91,9 @@ additional storage except for stack space.
 
 Internal structures are initialized:
 
-* Boundaries (g_memory_bottom/g_memory_top)
-* Header blocks (g_header_root and g_unused_header_root)
-* Free block slots (g_free_block_slots)
+* Boundaries (``g_memory_bottom``, ``g_memory_top``)
+* Header blocks (``g_header_root``, ``g_unused_header_root``)
+* Free block slots (``g_free_block_slots``)
 
 I'll go through each one of them below, and their uses will be clarified as I touch upon them later in the other parts
 of the allocator.
@@ -119,7 +119,7 @@ The opaque type ``handle_t`` is a pointer to a ``header_t`` structure::
     };
 
 This is the minimum amount of memory used by a block. Assuming a 32-bit system, ``memory`` is 4 bytes, ``size`` is 4
-bytes and ´`flags`` is 1 byte. The header itself is a linked list (``next``) that can be sorted in memory order in the
+bytes and ``flags`` is 1 byte. The header itself is a linked list (``next``) that can be sorted in memory order in the
 compact step, since the handles themselves cannot be moved as they're used (in disguise) by the client code. Flags can have one of the following values:
 
 * Free (0)
@@ -135,8 +135,8 @@ The array of header items grows down from the top of the client-supplied heap. N
 between existing memory (including the newly requested size in case of a malloc), ``g_memory_bottom`` is decreased and a
 fresh handle is returned. 
 
-The optional member ``next_unused`` is a compile-time optimization for speeding up the O(n) find header operation to
-O(1) at the expense of an extra memory. ``g_unused_header_root`` is set to header newly marked unused and the next
+The optional member ``next_unused`` is a compile-time optimization for speeding up the *O(n)* find header operation to
+*O(1)* at the expense of an extra memory. ``g_unused_header_root`` is set to header newly marked unused and the next
 pointer is set to the old unused header root.  Setting ``memory`` to ``NULL`` indicates an unused header. 
 
 ``g_header_root`` points to the latest used header. At compact time, it's sorted in memory order.
@@ -156,7 +156,7 @@ When a block is freed, a ``free_memory_block_t`` is stored in the first bytes. T
 header->memory against the block, we know it's a valid free memory block. The next field points to the next block in the
 same size range (explained next).
 
-There are log2(heap_size) (rounded up) slots. Freeing a block of size 472 bytes means placing it at the start of the
+There are *log2(heap_size)* (rounded up) slots. Freeing a block of size 472 bytes means placing it at the start of the
 linked list at index 9 and hanging the previous list off the new block's next pointer, i.e. a stack.
 
 It's rebuilt at compact time.
@@ -194,11 +194,11 @@ and the free block list again is checked until a block is found.  Finally, if th
 *log2(size)* is searched for a block that will fit. Remember that the blocks in a specific slot can be *2^k <= n < 2^k*
 and therefore there could be free blocks in slot *k* that are large enough for the request. When a block is found, it's
 shrunk into two smaller blocks if large enough, one of the requested size and the remainder. Minimum size for a block to
-be shrunk is having one extra header available and that the found block is *sizeof(free_memory_block_t)* bytes larger
+be shrunk is having one extra header available and that the found block is ``sizeof(free_memory_block_t)`` bytes larger
 than the requested size. Otherwise, the block is used as-is causing a small amount of internal fragmentation. The
 remainder of the shrunk block is then inserted into the tree at the proper location.
 
-Returns NULL if no block was found.
+Returns ``NULL`` if no block was found.
 
 Shrink block
 ------------
@@ -214,8 +214,8 @@ rmcompact
 The compacting operation consists of setup, compacting and finish.
 
 Start with sorting all memory headers by pointer address, such that ``g_root_header`` points to the lowest address in
-memory and by following the ``next`` pointer until NULL all blocks can be iterated. All blocks have a header associated
-with them, regardless of flags.  This step only has to be done once each call to ``rmcompact()``.
+memory and by following the ``next`` pointer until ``NULL`` all blocks can be iterated. All blocks have a header associated
+with them, regardless of flags.  This step only has to be done once each call to *rmcompact()*.
 
 Actual compacting is done in passes so it can be optionally time limited, with a granularity of the time it takes to
 perform a single pass.
@@ -244,25 +244,25 @@ One pass of moving blocks around
     // B * Extend LU
     //   * Link LU to C
 
-* Get closest range of free headers (or stop if no headers found)
+#. Get closest range of free headers (or stop if no headers found)
 
-   +  If block directly after free header is locked, set a max size on unlocked blocks.
+   #.  If block directly after free header is locked, set a max size on unlocked blocks.
 
-* Get closest range of unlocked headers (respecting max size if set)
+#. Get closest range of unlocked headers (respecting max size if set)
 
-   + No blocks found and limitation set on max size: if free blocks were passed searching for unlocked blocks, try
-     again from the block directly after the free headers, else stop.
-   + Set adjacent flag if last free's next is first unlocked
+   #. No blocks found and limitation set on max size: if free blocks were passed searching for unlocked blocks, try
+      again from the block directly after the free headers, else stop.
+   #. Set adjacent flag if last free's next is first unlocked
 
-* Calculate offset from free area to unlocked area
-* Squish free headers into one header and associate memory with the header
-* Move unlocked blocks too free area
+#. Calculate offset from free area to unlocked area
+#. Squish free headers into one header and associate memory with the header
+#. Move unlocked blocks too free area
 
-  - Memmove data
-  - Adjust used header pointers
+  #. Memmove data
+  #. Adjust used header pointers
 
-* Adjacent: relink blocks so unlocked headers is placed before what's left of free area, and free area pointing to header
-  directly following previous position of last unlocked header's next header, see Figure :ref:`jeffcompactadj0`, :ref:`jeffcompactadj1` and :ref:`jeffcompactadj2`.
+#. Adjacent: relink blocks so unlocked headers is placed before what's left of free area, and free area pointing to header
+   directly following previous position of last unlocked header's next header, see Figure :ref:`jeffcompactadj0`, :ref:`jeffcompactadj1` and :ref:`jeffcompactadj2`.
 
 .. figure:: graphics/compact-adjacent-relink-0.png
    :scale: 50%
@@ -279,8 +279,8 @@ One pass of moving blocks around
 
    :label:`jeffcompactadj2` Squish free block.
 
-* Non-adjacent: similar to adjacent, except blocks can't just be simply memmov'ed because of the locked blocks. Instead,
-  only the blocks that fit in the free space can be moved. See Figure :ref:`jeffcompactnonadj0`, :ref:`jeffcompactnonadj1`, :ref:`jeffcompactnonadj2a`, :ref:`jeffcompactnonadj2b`, :ref:`jeffcompactnonadj3a` and :ref:`jeffcompactnonadj3b`.
+#. Non-adjacent: similar to adjacent, except blocks can't just be simply memmov'ed because of the locked blocks. Instead,
+   only the blocks that fit in the free space can be moved. See Figure :ref:`jeffcompactnonadj0`, :ref:`jeffcompactnonadj1`, :ref:`jeffcompactnonadj2a`, :ref:`jeffcompactnonadj2b`, :ref:`jeffcompactnonadj3a` and :ref:`jeffcompactnonadj3b`.
 
 .. figure:: graphics/compact-nonadjacent-relink-0.png
    :scale: 50%
@@ -313,7 +313,7 @@ One pass of moving blocks around
    :label:`jeffcompactnonadj3b` b): Unlocked 3 fits, but not enough size to create a full block F5 -- instead extend size of Unlocked 3 with
    0 < n < sizeof(free_memory_block_t) bytes.
 
-* Continue to next round, repeating until time limit reached or done (if no time limit set)
+#. Continue to next round, repeating until time limit reached or done (if no time limit set)
 
 Finishing
 -----------
@@ -334,11 +334,11 @@ allocator has a small interface for which tests can be easily written. In partic
 although not guaranteed to catch all bugs gives a good coverage.
 
 I decided to use googletest since it was easy to setup, use and the results are easy to read. It's
-similar in style to the original SUnit [#]_ that is popular to use.  During the development of the allocator I
-wrote tests and code in parallell, similar to test-driven development in order to verify that each change did not
-introduce a regression. Of the approximately 2500 lines of code in the allocator and tests, about half are tests. In
-addition to randomized unit testing there are consistency checks and asserts that can be turned on with at compile-time,
-to make sure that e.g. (especially) the compact operation is non-destructive.
+similar in style to the original Smalltalk testing framework SUnit [#]_ (later popularized by Java's JUnit [#]_).  During the
+development of the allocator I wrote tests and code in parallell, similar to test-driven development in order to verify
+that each change did not introduce a regression. Of the approximately 2500 lines of code in the allocator and tests,
+about half are tests. In addition to randomized unit testing there are consistency checks and asserts that can be turned
+on at compile-time, to make sure that e.g. (especially) the compact operation is non-destructive.
 
 In the unit tests, the basic style of testing was to initialize the allocator with a randomly selected heap size and
 then run several tens of thousands of allocations/frees and make sure no other data was touched.  This is done by
@@ -347,6 +347,7 @@ bugs were found this way, many of them not happening until thousands of allocati
 large volume is a useful technique for finding problems in complex data structures, such as an allocator.
 
 .. [#] http://en.wikipedia.org/wiki/SUnit
+.. [#] http://en.wikipedia.org/wiki/JUnit
 
 Real-world testing
 ~~~~~~~~~~~~~~~~~~~~
@@ -361,15 +362,15 @@ Profiling
 ==========
 The GNU profiling tool *gprof* [#]_ was used to find code hotspots, where the two biggest finds were:
 
-* *log2()*
-* *header_find_free()*
+* ``log2()``
+* ``header_find_free()``
 
-In the spirit of first getting things to work, then optimize, the original *log2* implementation was a naive bitsift
-loop. Fortunately, there's a GCC extension *__builtin_clz()* (Count Leading Zeroes) that is efficiently translated into
-efficient machine code that can be used to write a fast *log2(n)*: ``sizeof(n)*8 - 1 - clz(n)``. The hotspots in the
-rest of the code were evenly distributed and no single point was more CPU-intense than another, except for
-*header_find_free()*. As described above, there's a compile-time optimization that cuts down time from *O(n)* to *O(1)*,
-which helped cut down execution time yet some more at the expense of higher memory usage per block.
+In the spirit of first getting things to work, then optimize, the original ``log2()`` implementation was a naive bitsift
+loop. Fortunately, there's a GCC extension ``__builtin_clz()`` (Count Leading Zeroes) that is translated into
+efficient machine code on at least x86 that can be used to write a fast ``log2(n)`` as ``sizeof(n)*8 - 1 - clz(n)``. The
+hotspots in the rest of the code were evenly distributed and no single point was more CPU-intense than another, except
+for ``header_find_free()``. As described above, there's a compile-time optimization that cuts down time from *O(n)* to
+*O(1)*, which helped cut down execution time yet some more at the expense of higher memory usage per block.
 
 More details and benchmarks in Chapter :ref:`chapter-steve`.
 

@@ -243,13 +243,13 @@ user_malloc(size, handle, op_time, memaddress)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ``void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddress)``
 
-Perform a memory allocation and return it or NULL on error. ``op_time`` is the same as above.
+Perform a memory allocation and return it or ``NULL`` on error. ``op_time`` is the same as above.
 ``handle`` is an identifier for this allocation request as translated from the memtrace, unique for this block for the
 lifetime of the application being benchmarked. It can be used as an index to a map in case the driver wants to store
 information associated with this particular block. Finally, ``*memaddress`` can be used to store the memory address at
 the time of the allocation, in case the allocation function is using indirect accessing via a handle (e.g. Jeff). In
 that case, the handle is returned by *user_malloc()* and the memory address stored in ``*memaddress``. 
-If *memaddress* is NULL no data should be written to it, but if it is not NULL, either the address or NULL should be
+If *memaddress* is ``NULL`` no data should be written to it, but if it is not ``NULL``, either the address or ``NULL`` should be
 stored in ``*memaddress``.
 
 user_free(ptr, handle, op_time)
@@ -276,6 +276,6 @@ to move this block around in memory.. Its input value is the return value of ``u
 user_highest_address(fullcalc)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ``void *user_highest_address(bool full_calculation)``
-What is the highest address allocated at this time? NULL if not available.
+What is the highest address allocated at this time? ``NULL`` if not available.
 If ``full_calculation`` is false a less exakt calculation is acceptable if it's quicker.
 

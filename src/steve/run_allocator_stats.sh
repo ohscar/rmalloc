@@ -27,7 +27,6 @@ export DATAPOINTS=3000 # requested -- will be adjusted down if neccessary.
 export opsfile=$1
 export RESULTFILE=$(basename $opsfile)-$(basename $ALLOCATOR)-kill${KILLPERCENT}-allocstats
 
-set -x
 
 echo -n "* Calculating theoretical peak mem used by the allocator ($ALLOCATOR --peakmem $opsfile)... "
 export peakmem=$($ALLOCATOR --peakmem $opsfile 2> /dev/null)
@@ -66,14 +65,22 @@ export OPS_COUNT=$(echo "$OPS_COUNT*2" | bc)
 
 
 
-set -x
 
-peakmem=$(echo "$peakmem*3" | bc)
+peakmem=$(echo "$peakmem*4" | bc)
+peakmem_start=$peakmem
+peakmem_max=$(echo "$peakmem*10" | bc)
 
 echo "ops_count (N/F ops) = $OPS_COUNT"
 
 maxmem_killpercent=0
+#maxmem_killpercent=0
 while [[ "$done" != "1" ]]; do
+
+    if [[ $peakmem -gt $peakmem_max ]]; then
+        echo "-------- $ALLOCATOR DID NOT FINISH at $peakmem (start $peakmem_start, max $peakmem_max)" | tee -a DID-NOT-FINISH.$(basename $ALLOCATOR)
+        exit
+    fi
+
     a=$(echo $ALLOCATOR --allocstats $opsfile $RESULTFILE $maxmem_killpercent $fullcount $peakmem $theory_peakmem)
     #echo -n "* Calculating maxmem for peakmem $peakmem bytes..."
     echo  "* Calculating maxmem for peakmem $peakmem bytes..."
