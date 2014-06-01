@@ -1,4 +1,4 @@
-driver = "rmmalloc"
+driver = "rmmalloc-c"
 opsfile = "../memtrace/opera-blank2/opera-blank2-ops-only-NF"
 heap_size = 395935164
 theoretical_heap_size = 98983791
