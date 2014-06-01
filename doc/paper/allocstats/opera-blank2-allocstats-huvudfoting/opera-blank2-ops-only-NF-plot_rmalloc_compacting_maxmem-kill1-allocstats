@@ -2144,7 +2144,7 @@ alloc_stats = [
 ,    {'op_index': 694754, 'free': 393807940, 'used': 2127224, 'overhead':      0, 'maxmem': 285414240.00, 'current_op_time': 896268, 'oom_time':      0, 'optime_maxmem': 1115933, 'op': 'N', 'size':     14}
 ,    {'op_index': 695143, 'free': 393807959, 'used': 2127205, 'overhead':      0, 'maxmem': 285408800.00, 'current_op_time':   1069, 'oom_time':      0, 'optime_maxmem': 962607, 'op': 'F', 'size':     16}
 ,    {'op_index': 695532, 'free': 393807970, 'used': 2127194, 'overhead':      0, 'maxmem': 285403360.00, 'current_op_time':    430, 'oom_time':      0, 'optime_maxmem': 799695, 'op': 'F', 'size':     14}
-,    {'op_index': 695921, 'free': 393807954, 'used': 2127210, 'overhead':      0, 'maxmem': 285397888.00, 'current_op_time': 1174840, 'oom_time':      0, 'optime_maxmem': -999158974, 'op': 'N', 'size':     16}
+,    {'op_index': 695921, 'free': 393807954, 'used': 2127210, 'overhead':      0, 'maxmem': 285397888.00, 'current_op_time': 1174840, 'oom_time':      0, 'optime_maxmem': 799695, 'op': 'N', 'size':     16}
 ,    {'op_index':  69631, 'free': 393593937, 'used': 2341227, 'overhead':      0, 'maxmem': 389098144.00, 'current_op_time':  56116, 'oom_time':      0, 'optime_maxmem':  64893, 'op': 'N', 'size':     28}
 ,    {'op_index': 696310, 'free': 393807942, 'used': 2127222, 'overhead':      0, 'maxmem': 285392416.00, 'current_op_time': 1242903, 'oom_time':      0, 'optime_maxmem': 880200, 'op': 'N', 'size':     14}
 ,    {'op_index': 696699, 'free': 393807961, 'used': 2127203, 'overhead':      0, 'maxmem': 285386976.00, 'current_op_time':   1972, 'oom_time':      0, 'optime_maxmem': 1354004, 'op': 'F', 'size':     16}
@@ -2239,7 +2239,7 @@ alloc_stats = [
 ,    {'op_index': 727819, 'free': 392613909, 'used': 3321255, 'overhead':      0, 'maxmem': 283150240.00, 'current_op_time':   1769, 'oom_time':      0, 'optime_maxmem': 1062137, 'op': 'F', 'size':     16}
 ,    {'op_index': 728208, 'free': 392572310, 'used': 3362854, 'overhead':      0, 'maxmem': 283099296.00, 'current_op_time': 1296960, 'oom_time':      0, 'optime_maxmem': 1306592, 'op': 'N', 'size':     16}
 ,    {'op_index': 728597, 'free': 392528078, 'used': 3407086, 'overhead':      0, 'maxmem': 283045376.00, 'current_op_time': 1273865, 'oom_time':      0, 'optime_maxmem': 1177311, 'op': 'N', 'size':     32}
-,    {'op_index': 728986, 'free': 392494387, 'used': 3440777, 'overhead':      0, 'maxmem': 283002592.00, 'current_op_time': -998748396, 'oom_time':      0, 'optime_maxmem': 1401080, 'op': 'N', 'size':     16}
+,    {'op_index': 728986, 'free': 392494387, 'used': 3440777, 'overhead':      0, 'maxmem': 283002592.00, 'current_op_time': 1273865, 'oom_time':      0, 'optime_maxmem': 1401080, 'op': 'N', 'size':     16}
 ,    {'op_index': 729375, 'free': 392460376, 'used': 3474788, 'overhead':      0, 'maxmem': 282953088.00, 'current_op_time': 1150398, 'oom_time':      0, 'optime_maxmem': 1525852, 'op': 'N', 'size':     16}
 ,    {'op_index': 729764, 'free': 392419331, 'used': 3515833, 'overhead':      0, 'maxmem': 282901696.00, 'current_op_time': 1246859, 'oom_time':      0, 'optime_maxmem': 1264420, 'op': 'N', 'size':     16}
 ,    {'op_index': 730153, 'free': 392377772, 'used': 3557392, 'overhead':      0, 'maxmem': 282851200.00, 'current_op_time': 1272855, 'oom_time':      0, 'optime_maxmem': 1376984, 'op': 'N', 'size':     64}
@@ -2700,7 +2700,7 @@ alloc_stats = [
 ,    {'op_index': 889254, 'free': 387626991, 'used': 8308173, 'overhead':      0, 'maxmem': 262524592.00, 'current_op_time': 1582261, 'oom_time':      0, 'optime_maxmem': 1500225, 'op': 'N', 'size':     10}
 ,    {'op_index': 889643, 'free': 387626067, 'used': 8309097, 'overhead':      0, 'maxmem': 262494048.00, 'current_op_time': 1590985, 'oom_time':      0, 'optime_maxmem': 1898703, 'op': 'N', 'size':     16}
 ,    {'op_index': 890032, 'free': 387616793, 'used': 8318371, 'overhead':      0, 'maxmem': 262479664.00, 'current_op_time': 1366556, 'oom_time':      0, 'optime_maxmem': 1356667, 'op': 'N', 'size':     16}
-,    {'op_index': 890421, 'free': 387599563, 'used': 8335601, 'overhead':      0, 'maxmem': 262440992.00, 'current_op_time': -998091039, 'oom_time':      0, 'optime_maxmem': 1796576, 'op': 'N', 'size':     32}
+,    {'op_index': 890421, 'free': 387599563, 'used': 8335601, 'overhead':      0, 'maxmem': 262440992.00, 'current_op_time': 1366556, 'oom_time':      0, 'optime_maxmem': 1796576, 'op': 'N', 'size':     32}
 ,    {'op_index':  89081, 'free': 394688260, 'used': 1246904, 'overhead':      0, 'maxmem': 388716000.00, 'current_op_time':    237, 'oom_time':      0, 'optime_maxmem':  72200, 'op': 'F', 'size':     28}
 ,    {'op_index': 890810, 'free': 387590307, 'used': 8344857, 'overhead':      0, 'maxmem': 262426672.00, 'current_op_time': 1017308, 'oom_time':      0, 'optime_maxmem': 1405744, 'op': 'N', 'size':      8}
 ,    {'op_index': 891199, 'free': 387581055, 'used': 8354109, 'overhead':      0, 'maxmem': 262387680.00, 'current_op_time': 1202001, 'oom_time':      0, 'optime_maxmem': 847142, 'op': 'N', 'size':     10}
@@ -2994,7 +2994,7 @@ alloc_stats = [
 ,    {'op_index': 991950, 'free': 386164835, 'used': 9770329, 'overhead':      0, 'maxmem': 257301888.00, 'current_op_time': 1753022, 'oom_time':      0, 'optime_maxmem': 1925747, 'op': 'N', 'size':     19}
 ,    {'op_index': 992339, 'free': 386164856, 'used': 9770308, 'overhead':      0, 'maxmem': 257295296.00, 'current_op_time': 1659791, 'oom_time':      0, 'optime_maxmem': 1353317, 'op': 'N', 'size':     33}
 ,    {'op_index': 992728, 'free': 386164890, 'used': 9770274, 'overhead':      0, 'maxmem': 257288672.00, 'current_op_time': 1372722, 'oom_time':      0, 'optime_maxmem': 2065682, 'op': 'N', 'size':      4}
-,    {'op_index': 993117, 'free': 386164894, 'used': 9770270, 'overhead':      0, 'maxmem': 257282064.00, 'current_op_time':    223, 'oom_time':      0, 'optime_maxmem': -998030691, 'op': 'F', 'size':     28}
+,    {'op_index': 993117, 'free': 386164894, 'used': 9770270, 'overhead':      0, 'maxmem': 257282064.00, 'current_op_time':    223, 'oom_time':      0, 'optime_maxmem':  2065682, 'op': 'F', 'size':     28}
 ,    {'op_index': 993506, 'free': 386164866, 'used': 9770298, 'overhead':      0, 'maxmem': 257275424.00, 'current_op_time':    399, 'oom_time':      0, 'optime_maxmem': 1959796, 'op': 'F', 'size':     16}
 ,    {'op_index': 993895, 'free': 386164850, 'used': 9770314, 'overhead':      0, 'maxmem': 257268800.00, 'current_op_time':    325, 'oom_time':      0, 'optime_maxmem': 2120189, 'op': 'F', 'size':     19}
 ,    {'op_index': 994284, 'free': 386164831, 'used': 9770333, 'overhead':      0, 'maxmem': 257262128.00, 'current_op_time':    522, 'oom_time':      0, 'optime_maxmem': 1153960, 'op': 'F', 'size':     36}
