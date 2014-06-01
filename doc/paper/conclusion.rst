@@ -1,8 +1,10 @@
 Speed
 ==========
 Calculate the penalty for the fields *penalty*, *best*, *worst* and *average* per application gives each allocator a sum
-of penalties for each field.  By taking the avage of these penalties, we can tell the position of each allocator. This
-is summarized in Table :ref:`table:speed-positions` below, and we can make a final scoring of the allocators:
+of penalties for each field.  By taking the avage of these penalties, we can tell the position of each allocator.
+Allocators that did not finish is given the maximum penalty 5.
+
+This is summarized in Table :ref:`table:speed-positions` below, and we can make a final scoring of the allocators:
 
 #. rmalloc (compacting)
 #. rmalloc
@@ -14,18 +16,18 @@ is summarized in Table :ref:`table:speed-positions` below, and we can make a fin
 .. raw:: latex
 
    \begin{table}[!ht]
-   \begin{tabular}{r | c c c c c | c}
+   \begin{tabular}{r | c c c c | c}
    \hline
    \multicolumn{6}{c}{\bf Speed} \\
    \hline
-   {\bf Driver} & {\bf Penalty} & {\bf Best} & {\bf Worst} & {\bf Average} & {\bf Average penalty} & {\bf Position} \\
+   {\bf Driver} & {\bf Penalty} & {\bf Best} & {\bf Worst} & {\bf Average} & {\bf Average penalty} \\
    \hline
-   rmalloc     & 9   & 11  & 2   & 5   & 6.75    & 2 \\
-   rmalloc-c   & 6   & 7   & 2   & 4   & 4.75    & 1 \\
-   rmalloc-c-m & 23  & 23  & 18  & 18  & 20.5    & 6 \\
-   dlmalloc    & 12  & 11  & 6   & 8   & 9.25    & 3 \\
-   jemalloc    & 7   & 8   & 10  & 20  & 11.25   & 4 \\
-   tcmalloc    & 18  & 17  & 19  & 18  & 18      & 5 \\
+   rmalloc     & 12  & 14  & 2   & 7   & 8.8 \\
+   rmalloc-c   & 8   & 9   & 2   & 5   & 6.0 \\
+   rmalloc-c-m & 27  & 27  & 20  & 22  & 24.0 \\
+   dlmalloc    & 12  & 11  & 6   & 8   & 9.3 \\
+   jemalloc    & 8   & 9   & 11  & 23  & 12.8 \\
+   tcmalloc    & 23  & 22  & 24  & 23  & 23.0 \\
    \hline
    \end{tabular}
    \caption{Positions of allocators for speed}
@@ -48,18 +50,18 @@ allocated block. Summary in Table :ref:`table:memory-positions` below with scori
 .. raw:: latex
 
    \begin{table}[!ht]
-   \begin{tabular}{r | c c c c | c}
+   \begin{tabular}{r | c c c | c}
    \hline
-   \multicolumn{6}{c}{\bf Memory} \\
+   \multicolumn{5}{c}{\bf Memory} \\
    \hline
-   {\bf Driver} & {\bf Penalty} & {\bf Best} & {\bf Worst} & {\bf Average penalty} & {\bf Position} \\
+   {\bf Driver} & {\bf Penalty} & {\bf Best} & {\bf Worst} & {\bf Average penalty} \\
    \hline
-   rmalloc     & 11  & 7   & 0   & 6       & 3 \\
-   rmalloc-c   & 18  & 6   & 0   & 8       & 4 \\
-   rmalloc-c-m & 6   & 5   & 0   & 3,67    & 2 \\
-   dlmalloc    & 7   & 3   & 0   & 3,33    & 1 \\
-   jemalloc    & 23  & 6   & 5   & 11,33   & 6 \\
-   tcmalloc    & 10  & 8   & 10  & 9,33    & 5 \\
+   rmalloc     & 13  & 10  & 0   & 7.6 \\
+   rmalloc-c   & 21  & 7   & 0   & 9.3 \\
+   rmalloc-c-m & 7   & 7   & 0   & 4.6 \\
+   dlmalloc    & 7   & 3   & 0   & 3.3 \\
+   jemalloc    & 27  & 9   & 6   & 14.0 \\
+   tcmalloc    & 15  & 13  & 10  & 12.6 \\
    \hline
    \end{tabular}
    \caption{Positions of allocators for memory}

@@ -6,7 +6,7 @@
 GR=../../src/steve/run_graphs_from_allocstats.py 
 
 i=1
-for app in ls latex soffice sqlite tar opera-blank2 opera-google; do
+for app in opera-blank2 ls latex soffice sqlite tar opera-google; do
     thedir=
     testdir=allocstats/${app}-allocstats-huvudfoting
     [[ -d $testdir ]] && thedir=$testdir 

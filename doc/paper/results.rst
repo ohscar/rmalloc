@@ -3,7 +3,7 @@
 Limitations
 =======================================================
 Both tcmalloc and jemalloc perform poorly without ``mmap()`` enabled, and in some cases they did not manage to finish allocation
-simulation. The first thing Steve does is to calculate the maximum heap size used by the application and allocator
+simulation. In those cases the allocators are omitted from the results table. The first thing Steve does is to calculate the maximum heap size used by the application and allocator
 combination, by starting from the theoretical heap size for an ideal allocator and increasing that value until no OOMs
 occur. If the limit on that increase is reached, the allocator is marked as not finishing.
 
@@ -356,56 +356,59 @@ Results in Figure :ref:`result-latex`, Table :ref:`table:result-latex-speed` and
 
 
 
-.. raw:: foo
 
-    opera
-    =========
-    Command line: ``opera``
+opera
+=========
+Command line: ``opera``
 
-    Due to memory/CPU constraints, I was not able to perform a locking data calculation. The results are therefore without
-    any locking/unlocking, which means that any compacting operations are optimal (no locked blocks).
+Due to memory/CPU constraints, I was not able to perform a locking data calculation. The results are therefore without
+any locking/unlocking, which means that any compacting operations are optimal (no locked blocks).
 
-    Results in Figure :ref:`result-opera`, Table :ref:`table:result-opera-google-speed` and Table :ref:`table:result-opera-google-space`.
+Results in Figure :ref:`result-opera`, Table :ref:`table:result-opera-blank2-speed` and Table :ref:`table:result-opera-blank2-space`.
 
-    .. figure:: allocstats/result-opera-google.png
-       :scale: 60%
+.. figure:: allocstats/result-opera-blank2.png
+   :scale: 60%
 
-       :label:`result-opera` Opera results. tcmalloc DNF.
+   :label:`result-opera` Opera results.
 
-    .. raw:: latex
+.. raw:: latex
 
-       \begin{table}[!ht]
-       \begin{tabular}{r | l c c r r}
-       \hline
-       \multicolumn{6}{c}{\bf Speed} \\
-       \hline
-       {\bf Driver} & {\bf Penalty (\textit{c}/\textit{w})} & {\bf Best} & {\bf Worst} & {\bf Average} & {\bf Median} \\
-       \hline
-       rmmalloc & 16\% / 7.28\% & 0.00\% & 9.37\% & 755 ns & 710 ns \\
-       dlmalloc & 29\% / 14.29\% & 100.00\% & 22.26\% & 841 ns & 819 ns \\
-       jemalloc & 54\% / 136.56\% & 0.00\% & 68.37\% & 2607 ns & 1116 ns \\
-       \hline
-       \end{tabular}
-       \caption{Speed measurements for result-opera-google}
-       \label{table:result-opera-google-speed}
-       \end{table}
+   \begin{table}[!ht]
+   \begin{tabular}{r | l c c r r}
+   \hline
+   \multicolumn{6}{c}{\bf Speed} \\
+   \hline
+   {\bf Driver} & {\bf Penalty (\textit{c}/\textit{w})} & {\bf Best} & {\bf Worst} & {\bf Average} & {\bf Median} \\
+   \hline
+   dlmalloc & 4\% / 1.75\% & 83.19\% & 0.00\% & 239 ns & 233 ns \\
+   jemalloc & 26\% / 125.39\% & 9.37\% & 0.03\% & 1000 ns & 372 ns \\
+   rmmalloc-c & 44\% / 124.86\% & 2.82\% & 0.00\% & 752 ns & 632 ns \\
+   rmmalloc & 44\% / 132.46\% & 4.62\% & 0.00\% & 779 ns & 704 ns \\
+   rmmalloc-c-m & 79\% / 310598.14\% & 0.00\% & 99.97\% & 861988 ns & 687897 ns \\
+   \hline
+   \end{tabular}
+   \caption{Speed measurements for result-opera-blank2}
+   \label{table:result-opera-blank2-speed}
+   \end{table}
 
 
-    .. raw:: latex
+.. raw:: latex
 
-       \begin{table}[!ht]
-       \begin{tabular}{r | l c c}
-       \hline
-       \multicolumn{4}{c}{\bf Space} \\
-       \hline
-       {\bf Driver} & {\bf Penalty (\textit{c}/\textit{w})} & {\bf Best} & {\bf Worst} \\
-       \hline
-       dlmalloc & 12\% / 3.66\% & 62.09\% & 100.00\% \\
-       jemalloc & 29\% / 13.25\% & 37.81\% & 0.00\% \\
-       rmmalloc & 57\% / 24.62\% & 0.10\% & 0.00\% \\
-       \hline
-       \end{tabular}
-       \caption{Space measurements for result-opera-google}
-       \label{table:result-opera-google-space}
-       \end{table}
+   \begin{table}[!ht]
+   \begin{tabular}{r | l c c}
+   \hline
+   \multicolumn{4}{c}{\bf Space} \\
+   \hline
+   {\bf Driver} & {\bf Penalty (\textit{c}/\textit{w})} & {\bf Best} & {\bf Worst} \\
+   \hline
+   dlmalloc & 6\% / 0.36\% & 89.20\% & 0.00\% \\
+   rmmalloc-c-m & 19\% / 2.88\% & 0.03\% & 0.00\% \\
+   rmmalloc & 35\% / 5.88\% & 0.00\% & 0.00\% \\
+   rmmalloc-c & 57\% / 8.82\% & 10.76\% & 0.00\% \\
+   jemalloc & 80\% / 78.51\% & 0.00\% & 100.00\% \\
+   \hline
+   \end{tabular}
+   \caption{Space measurements for result-opera-blank2}
+   \label{table:result-opera-blank2-space}
+   \end{table}
 

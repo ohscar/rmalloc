@@ -4,6 +4,11 @@
 ... is a benchmark tool for collecting and visualizing runtime memory access and allocation patterns in arbitrary binary
 applications that use the system malloc, without access to source code or recompilation.
 
+.. figure:: graphics/steve.png
+   :scale: 50%
+
+   :label:`steve-overview` Architectural diagram of Steve
+
 Overview
 =========
 Steve consists of mostly Python code with Cython [#]_ (a Python framework for interfacing in C and compiling Python into C
