@@ -27,9 +27,9 @@ all e.g. 8-byte chunks into one or more pages, it will be easier to return the p
 Lookup can also be more efficient, since the allocator can use offsets to find a suitable free block, instead of
 iterating through a list of free blocks.
 
-Hypothesis
+Objectives
 ===================
-Given an allocator with the following interface::
+Design and implement an allocator with the following interface::
 
     handle_t malloc(size_t n);
     void *lock(handle_t h);
@@ -38,9 +38,13 @@ Given an allocator with the following interface::
 
 The purpose of the lock/unlock operations is to introduce an indirection for memory access that gives the ability to
 move data blocks around when not in used (*unlocked* state), specifically to cope with fragmentation problems by
-compacting the heap. 
+compacting the heap.  This is done in Chapter :ref:`chapter-jeff`.
 
-Can such an allocator be efficient in space and time? That is the question I aim to answer in this paper.
+Collect a variety of applications that can be modified to use the different allocation interface for benchmarking
+purposes. This is done Chapter :ref:`chapter-steve`.
+
+In order to compare my allocator against others, I test some of the most common allocators and discuss the results in
+Section :ref:`tested-allocators`.
 
 Definitions
 ============
@@ -55,86 +59,17 @@ Definitions
 * **Lifetime**: The number of total operations, thus indirectly the time, between a New and a Free op for a specific block.
 * **Block**: A chunk of allocated memory.
 * **EOF**: End of file.
-
-Allocator Types
-=========================
-I'll describe the most common style of allocator implementation strategies.
-
-Buddy Allocator
-~~~~~~~~~~~~~~~~~~~~~
-The most common allocator type is the buddy allocator [#]_, and many allocators are built on its principles, or at least
-incorporate them in some way: start with a single block and see if the requested chunk fits in half of the block. If it
-does, split the block into two and repeat, until there no smaller block size would fit the request.
-
-.. [#] http://en.wikipedia.org/wiki/Buddy_memory_allocation
-
-.. - TODO: <illustration of 2^k list>
-
-Over time, there will be more and more items of size *2^n*, that are stored on a free list for that block size. Each pair
-of split-up blocks is said to be two buddies. When two buddy blocks are free, they can be joined. A block of the next
-larger size (n+1) can be created from these two blocks. This is repeated until the largest block, i.e. *2^k*. In the worst
-case, this causes *2^n - 1* bytes of overhead per block, also known as *internal fragmentation.* Still, this commonly
-used algorithm has shown to be good enough and is often incorporated as one strategy of an allocator.
-
-As touched upon before, all blocks must have metadata associated with them. For convenience, this is often stored in
-memory just before the block itself. The minimum amount of information is the length of the block, in order for *free()*
-to know where the block ends. The metadata could also be stored elsewhere, e.g. a lookup table *S(addr)* that gives the
-size of the block starting with *addr*. This gives a penalty on free, however, which is not desirable, and therefore,
-direct information about the block is usually stored with the block. The metadata associated with the block is normally
-not accessible by user code (unless queried using specific debugging code) and adds to the external fragmentation.
-It is the fragmentation between the user blocks (hence *external*), i.e. any overhead caused by information required by the
-allocator, but not the user code.
-
-Conceptually, the buddy allocator is a very simple allocator to use and implement, but not the most efficient because of
-internal fragmentation.
-
-Pool Allocator
-~~~~~~~~~~~~~~~~~~~~~~~~~
-Certain applications use a large amount of objects of the same size that are allocated and freed continuously. This
-information can be used to create specialized pool allocators for different object sizes, where each pool can be easily
-stored in an array of *N \* sizeof(object)* bytes, allowing for fast lookup by alloc and free.
-
-Arena Alocator
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Code with data structures that are related to each other can be allocated from the same arena, or region, of memory, for
-example a document in a word processor. Instead of allocating memory from the system, the allocator requests data from a
-pre-allocated larger chunk of data (possibly allocated from the system). The main point of this type of allocator is
-quick destruction of all memory related to the working data (i.e. the document), without having to traverse each
-individual structure associated with the document to avoid memory leaks from not properly freeing all memory. In
-applications where a document/task has a well-defined set of objects associated with it, with relatively short lifetime
-but of the document, but many documents created/destroyed over the total application lifetime, there is a large speed
-benefit to be had from making the free operation faster.
-
-Garbage Collector
-~~~~~~~~~~~~~~~~~~~~~~~
-A garbage collector is an allocator that automatically provides memory for data as-needed. There is no need to
-explicitly ask for memory from the allocator, nor to free it when done. Instead, the garbage collector periodically
-checks for which objects are still in use by the application (*alive*). An object is is anything that uses heap memory: a number,
-a string, a collection, a class instance, and so on. There are several techniques for finding alive objects and
-categorizing objects depending on their lifetime in order to more efficiently find alive objects at next pass, which I
-will not cover in this paper. I recommend the book *Garbage Collection* by R. Jones and R. Lins if you are interested in
-finding out more.
-
-At any point in time, a garbage collector can move around the object if necessary, therefore any object access is done
-indirectly via a translation. User code does not keep a pointer to the block of memory that the object is located in,
-but instead this is done with support in the programming language runtime.
-
-A garbage collector, because of the indirect access to memory, can also move objects around in a way that increases
-performance in different ways. One way is to move objects closer together that are often accessed together, another way
-is to move all objects closer to each other to get rid of fragmentation, which would decrease the maximum allocatable
-object size.  A normal allocator couldn't do a memory defragmentation, or any other memory layout optimization, beacuse
-memory is accessed directly, which would invalidate the pointer used by the application code.
-
-Implementation Challenges
+* **Opaque type**: A way of hiding the contents of an object (data structure) from application code, by only providing a
+  pointer to the object without giving its definition. Commonly used where the object is only meant to be modified from
+  the library.
+  
+Challenges
 ============================================
+There are many trade-offs.
+
 I've touched upon internal and external fragmentation. In addition, multi-threaded applications that allocate memory
 need to work without the allocator crashing or currupting data. As in all concurrency situations, care needs to be taken
 to do proper locking of sensitive data structures, while not being too coarse such that performance suffers.
-
-.. Fast or Efficient?
-.. ~~~~~~~~~~~~~~~~~~~~
-
-There are many trade-offs.
 
 Allocators are often written to solve a specific goal, while still performing well in the average case. Some allocator
 are designed with the explicit goal of being best on average.  Furthermore, speed often hinders efficiency and vice
@@ -148,9 +83,8 @@ information about freed blocks in a list, there would be little wasting of memor
 efficiency requirement, pages would only be requested when there were no blocks of the correct size and therefore the
 entire free list must be searched for a suiting block before giving up and requesting a page.
 
-Some of the most common allocators are tested and discussed in Section :ref:`tested-allocators`.
 
-Efficiency, revisited
+Efficiency
 ======================================
 The question *Is fragmentation a problem?* is asked by (M. S. Johnstone, P. R. Wilson, 1998). At Opera circa 1997, that
 was indeed the case. Large web pages loading many small resources, specifically images, created holes in memory when

@@ -1,7 +1,5 @@
 .. vim:tw=120
 
-... is a compacting allocator.
-
 Overview
 ========
 In order to achieve compacting, memory must be accessed indirectly. This is the signature::
@@ -21,57 +19,6 @@ certain limitations on the compactor, since it needs to deal with possibly locke
 This forces client code needs to be adapted to this allocator, such that memory is always appropriately locked/unlocked
 as needd.
 
-
-Algorithm
-==========
-An overview of the algorithm.
-
-Initialization
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-#. We're passed a a heap of a given size from the client
-#. Set boundaries of the header list growing down from top of heap
-#. Initialize the free block slot list
-
-Allocation Request
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-#. Request a new header to associate with the block
-
-   #. If built with unused header list, grab the first one in list and relink root
-   #. Else, scan the header list for unused header. If not available, move bottom down one header.
-   #. If bottom clashes with space occupied by a block, fail.
-
-#. If there is available space for the allocation request, use it and associate with the block.
-#. Else, find a free block within the free block slot list:
-
-   #. Search in the slot associated with the *log2*-size of the request for a free block.
-   #. Else, repeat the previous step in higher slots until top is reached. If there are still no blocks found, fail.
-
-#. Split the block as needed, insert the rest into the free block slots and return the rest.
-
-Free Block
-~~~~~~~~~~~~~~~~~~~~
-#. Mark the header as free
-#. Overwrite the block with a free memory block structure pointing to the header location, with the struct's memory
-   member pointing to ``NULL``.
-#. Insert the block into the appropriate location in the free block slots list.
-
-Compact Heap
-~~~~~~~~~~~~~~~~~
-#. Sort the header list items' next pointers in memory order.
-#. Starting from start of the heap: while there are unoccupied spaces in the rest of the heap or compacting has reached
-   its time limit, do the following.
-#. Scan for the first unlocked [#]_ memory block.
-#. If there are no locked blocks between the unoccupied space and the first unlocked memory block, move the memory by
-   the offset betwen locked and unused memory.
-#. If there are any locked inbetween, move only as much memory as will fit into the unlocked space. Create a free block
-   of the rest of the memory inside the unoccupied space.
-#. Restart from point 2.
-#. Merge all adjacent free blocks and mark the headers not in used as unused.
-#. Rebuild the free block slots by scanning the free header blocks and inserting them at the appropriate locations in
-   the list.
-
-.. [#] Only unlocked memory blocks can be moved. Clients have references to locked blocks and therefore cannot be
-   changed.
 
 Implementation
 ==============
@@ -327,36 +274,14 @@ Doesn't do anything - client code owns the heap passed on to rminit.
 
 Testing
 ===========
-Unit testing
-~~~~~~~~~~~~~
-All applications should be bug-free, but for an allocator it is extra important that there are no bugs. Luckily, an
-allocator has a small interface for which tests can be easily written. In particular, randomized testing is easy, which
-although not guaranteed to catch all bugs gives a good coverage.
+As described in Chapter :ref:`chapter-method`, unit testing is utilized where applicable.
 
-I decided to use googletest since it was easy to setup, use and the results are easy to read. It's
-similar in style to the original Smalltalk testing framework SUnit [#]_ (later popularized by Java's JUnit [#]_).  During the
-development of the allocator I wrote tests and code in parallell, similar to test-driven development in order to verify
-that each change did not introduce a regression. Of the approximately 2500 lines of code in the allocator and tests,
-about half are tests. In addition to randomized unit testing there are consistency checks and asserts that can be turned
-on at compile-time, to make sure that e.g. (especially) the compact operation is non-destructive.
-
-In the unit tests, the basic style of testing was to initialize the allocator with a randomly selected heap size and
-then run several tens of thousands of allocations/frees and make sure no other data was touched.  This is done by
-filling the allocated data with a constant byte value determined by the address of the returned handle.  Quite a few
-bugs were found this way, many of them not happening until thousands of allocations.  That shows randomized testing in
-large volume is a useful technique for finding problems in complex data structures, such as an allocator.
-
-.. [#] http://en.wikipedia.org/wiki/SUnit
-.. [#] http://en.wikipedia.org/wiki/JUnit
-
-Real-world testing
+Real-World Testing
 ~~~~~~~~~~~~~~~~~~~~
 Since the allocator does have the interface of standard allocators client code needs to be rewritten. In order to do
 testing and benchmarking of real-world applications, applications need to be rewritten. The two major problems with this
-is that it requires access to source code, and rewriting much of the source code. Instead, I've developed heuristics for
-calculating locking/unlocking based on runtime data of unmodified applicaions. The tool for doing so grew from a
-small script into a larger collection of tools related to data collection, analysis and benchmarking. This is described
-in greater detail in chapter :ref:`chapter-steve`.
+is that it requires access to source code, and rewriting much of the source code.  This is where Steve is useful.
+
 
 Profiling
 ==========

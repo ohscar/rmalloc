@@ -13,23 +13,29 @@ for file in frontpage.aux main.aux paper.aux main.aux main.dvi main.latex main.l
     rm -rf $file
 done
 
-rst2latex $options main.rst > main.latex
+rst2latex.py $options main.rst > main.latex
 
 #latex main.latex 
 #latex main.latex 
 #dvips main.dvi
 
-pdflatex main.latex
-pdflatex main.latex
-pdflatex main.latex
+echo -n "Pass 1/3 "
+pdflatex -interaction=nonstopmode main.latex 2> /tmp/errors.txt >/dev/null
+if [[ "$?" == "0" ]]; then
+    echo -ne "\rPass 2/3 "
+    pdflatex -interaction=nonstopmode main.latex 2>&1 > /dev/null
+    echo -ne "\rPass 3/3 "
+    pdflatex -interaction=nonstopmode main.latex 2>&1 > /dev/null
+    echo
+    echo "------------------------------------------------------------"
+    grep '\(<[A-Z]\+\|TODO\|XXX\)' *rst | grep -v '\(todo-checklist\|conclusion\)'
+    echo "------------------------------------------------------------"
+else
+    echo
+    echo "Erorrs in /tmp/errors.txt"
+fi
 
 #rst2xetex main.rst > main-xetex.xetex
 #xetex main-xetex.xetex
 
-echo "--------------------"
-echo
-echo "TODO's and similar:"
-echo
-grep '\(<[A-Z]\+\|TODO\|XXX\)' *rst | grep -v '\(todo-checklist\|conclusion\)'
-echo
 

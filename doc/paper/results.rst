@@ -9,7 +9,7 @@ occur. If the limit on that increase is reached, the allocator is marked as not 
 
 .. XXX: Wht is the _real_ purpose of the maximum heap size? Is there a point at all?
 
-Input data
+Input Data
 =============
 Measuring an allocator must be done in conjunction with input data. These are the applications I've used.
 
@@ -21,6 +21,9 @@ Measuring an allocator must be done in conjunction with input data. These are th
 * cfrac 3.5.1 - just running it.
 * latex 3.1415926-2.4-1.40.13 - paper.tex (96 lines, 2.6 KB).
 
+
+XXX: Add URLs.
+
 The results are presented in charts and tables. I'll describe what they mean first, then give the resuts.
 
 Keys to drivers:
@@ -29,13 +32,13 @@ Keys to drivers:
 * rmmalloc-c - Jeff with compacting
 * rmmalloc-c-m - Jeff with compacting and maximum memory tweak
 
-Speed chart
+Speed Chart
 ~~~~~~~~~~~~~
 
 * **X axis**: shows a counter that is increased by one at each operation of types new, free, unlock and unlock.
 * **Y axis**: shows the execution time of the operation, in a *log10*-scale.
 
-Size chart
+Size Chart
 ~~~~~~~~~~~~~
 
 * **X axis**: same as above.
@@ -43,7 +46,7 @@ Size chart
   running the application to that point, trying a maximum allocation and then restarting the app, continuoing to to the
   next point.
 
-Space table
+Space Table
 ~~~~~~~~~~~~
 Sorted in descending order with best first.
 
@@ -56,7 +59,7 @@ Sorted in descending order with best first.
 * **Best**: share of the total amount of times the allocator performed best
 * **Worst**: share of the total amount of times the allocator performed worst
 
-Speed table
+Speed Table
 ~~~~~~~~~~~
 Sorting the same as space table. In addition to the fields in speed table (applied to size, instead of speed), these fields are defined:
 
@@ -178,7 +181,7 @@ Results in Figure :ref:`result-sqlite`, Table :ref:`table:result-sqlite-speed` a
    \label{table:result-sqlite-space}
    \end{table}
 
-tar with bzip2
+tar-bzip2
 ================
 ``$ tar cjf /tmp/valgrind-3.9.0.tar.bz2 /tmp/valgrind-3.9.0``
 

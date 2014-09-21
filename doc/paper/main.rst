@@ -18,113 +18,128 @@ Jeff and Steve: A Relocatable Memory Allocator and its Benchmarking Friend
    \newcommand*{\docutilsroleref}{\ref}
    \newcommand*{\docutilsrolelabel}{\label}
 
+.. raw:: foo
+
+    \chapter{Ethical Considerations
+        \label{chapter-ethitical-considerations}}
+
 .. raw:: latex
 
     \chapter{Introduction}
 
 .. include:: introduction.rst
 
+
 .. raw:: latex
 
     \chapter{Method
         \label{chapter-method}}
 
-Experimentally design and draw algorithms in parallel with testing them out using actual code, while continously running
-unit tests to ensure correct functionality.
+The method used when designind and implementing the allocator (Jeff) is an iterative design process based on experimental designs
+and verification thereof, along with theoretical calculations. Experimental designs were either discarded or validated depending
+on the results from the testing framework that performed continuous testing to validate correctness. Limitations of testing is
+that it can never prove correctness, only absence of the bugs the testing framework was designed to find. This enabled me to
+perform drastic changes in the code. The testing framework is described in more detail in Chapter :ref:`chapter-jeff` .
 
-Actual work started with writing a simple buddy allocator as a quick way of better understanding the challenges and what
-aspects of an allocator needs special care. Based on that experience, design the final allocator bottom-to-top in
-parallel with unit tests to make sure each part works as intended. Benchmarking is done with a separate tool that allows
-the use of arbitrary applications for simulating real-world performance, and also does visualization of execution time,
-space efficiency and distribution of allocation requests.
+The benchmark tool (Jeff) that I designed to test algorithms for Jeff and comparing Jeff to other allocators. . In Steve, I've
+developed heuristics for calculating locking/unlocking based on runtime data of unmodified applicaions. The tool for doing so grew
+from a small script into a larger collection of tools related to data collection, analysis and benchmarking. This is described in
+greater detail in chapter :ref:`chapter-steve`.
 
-.. raw:: latex
-
-    \chapter{Design and implementation
-        \label{chapter-design-and-implementation}}
-
-Design
-========
-Buddy allocator
-~~~~~~~~~~~~~~~
-To get started with my allocator, I started implementing a buddy allocator. Along with it, I developed tests using
-Google's C++ testing framework, googletest [#]_, to make sure no regressions were introduced during development.  More
-on that in Section :ref:`unit-testing`.
+Development Environment
+=========================
+Parallel with allocator development, I wrote tests using Google's C++ testing framework, googletest [#]_, to make sure no
+regressions were introduced during development.  More on that in Section :ref:`unit-testing`.
 
 .. [#] http://code.google.com/p/googletest/
 
-During the development, it quickly became apparent that the internal data structures of the allocator must match the
-buddy allocator memory layout closely.  Picking the wrong data structure for storing the block list made the merge-block
-operation slow and error-prone, instead of being easy to implement if proper care is taken to align code and structures
-with physical memory layout. Indeed, I made the incorrect decision which made the compacting operationg difficult to
-implement. The buddy allocator prototype was discarded and work started with the actual allocator that was to be the end
-result, with the lessons about taking care in the design phase learned.
+Main development system is a Linux-based system. The allocator is written in C, and the benchmark tool (Steve) consists of mostly
+Python code with Cython [#]_ (a Python framework for interfacing in C and compiling Python into C code) for tight inner loops such
+as the memtrace to ops calculation, plus some Bash scripts for glueing it all together.  The data is plotted in graphs and there
+is also a tool that creates an animation of memory allocations as they happen in memory.
 
-Quick malloc, quick free, slow compact
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-My original idea was to have a quick malloc, a quick free and a quick compact. Compact could then be run at times when
-the client application was waiting for user input or otherwise not doing computations, such that the malloc would be
-very cheap. I had originally envisioned this as a malloc that would basically grow the top pointer of the
-malloc-associated heap: store information about the requested chunk size, increase the top pointer and return the chunk.
-The free operation would mark the block as not in use anymore. Eventually, the top pointer would reach the end of the
-eap, at which point the compact operation would go through the heap and reclaim previously freed memory and reset the
-top pointer to end of allocated memory leaving the freed memory as a large chunk of memory ranging to the end.
+.. [#] http://cython.org
 
-However, chunks can be locked. Remember that locking a chunk gives the client code the actual pointer to memory, and
-unlocking the chunks invalidates the pointer. Therefore, the worst-case scenario is that a block at the very top of the
-heap is locked when the compact occurs: even though all unlocked free blocks would be coerced into a single free block,
-a locked block at or close to the top would make subsequent malloc calls to fails. Therefore, a free list needs to be
-maintained even though it might be the case for real-world applications that the worst case occurs seldom.
+Testing
+========
+All applications should be bug-free, but for an allocator it is extra important that there are no bugs. Luckily, an
+allocator has a small interface for which tests can be easily written. In particular, randomized unit testing is easy, which
+although not guaranteed to catch all bugs gives a good coverage.
 
-Free in more detail
-~~~~~~~~~~~~~~~~~~~~~~~~~
-When an allocation request comes in, the size of the request is checked against the top pointer and the end of the heap.
-A request that fits is associated with a new handle and returned. If there is no space left at the top, the free list is
-searched for a block that fits.
+I decided to use googletest since it was easy to setup, use and the results are easy to read. It's
+similar in style to the original Smalltalk testing framework SUnit [#]_ (later popularized by Java's JUnit [#]_).  During the
+development of the allocator I wrote tests and code in parallell, similar to test-driven development in order to verify
+that each change did not introduce a regression. Of the approximately 2500 lines of code in the allocator and tests,
+about half are tests. In addition to randomized unit testing there are consistency checks and asserts that can be turned
+on at compile-time, to make sure that e.g. (especially) the compact operation is non-destructive.
 
-Freeing a block marks it as unused and adds it to the free list, for malloc to find later as needed.  The free list is
-an index array of *2^3..k*-sized blocks with a linked list at each slot. All free blocks are guaranteed to be at least
-*2^n*, but smaller than *2^(n-^1)*, bytes in size. Unlike the buddy allocator, blocks are not merged on free. (See
-:ref:`future-work-in-jeff` for a brief discusson.)
+In the unit tests, the basic style of testing was to initialize the allocator with a randomly selected heap size and
+then run several tens of thousands of allocations/frees and make sure no other data was touched.  This is done by
+filling the allocated data with a constant byte value determined by the address of the returned handle.  Quite a few
+bugs were found this way, many of them not happening until thousands of allocations.  That shows randomized testing in
+large volume is a useful technique for finding problems in complex data structures, such as an allocator.
 
-.. figure:: graphics/jeff-free-blockslots.png
-   :scale: 50%
+.. [#] http://en.wikipedia.org/wiki/SUnit
+.. [#] http://en.wikipedia.org/wiki/JUnit
 
-   :label:`jeffexampleblockslots` Example slots in free list.
+.. XXX: Describe in-depth what the benchmark tool does, see commented-out paragraph below.
 
-An example free blockslots list is given in Figure :ref:`jeffexampleblockslots`.
+..
+  parallel with unit tests to make sure each part works as intended. Benchmarking is done with a separate tool that allows
+  the use of arbitrary applications for simulating real-world performance, and also does visualization of execution time,
+  space efficiency and distribution of allocation requests.
 
-Compacting
-~~~~~~~~~~~~
-Compacting uses a greedy Lisp-2-style compacting algorithm (R. Jones, R. Lins, 1997), where blocks are moved
-closer to bottom of the heap (if possible),
-otherwise the first block (or blocks) to fit in the unused space is moved there. The first case happens if there are no
-locked blocks between the unused space and next used (but not locked) block. Simply performing a memmove and updating
-pointers is enough. A quick operation that leaves no remainding holes. If however there are any locked blocks between
-the unused space and the next used block, obviously only blocks with a total length of less than or equal the size of
-the unused space can be moved there. The algorithm is greedy and takes the first block that fits. More than
-one adjacent block that fits within the unused space will be moved together. In the case that there are no blocks that
-fit the unused space (and there is a locked block directly after), scanning is restarted beginning with the block
-directly following the last free block found. The process is continued until there are no unused blocks left or top is
-reached.
+Hypothesis
+==========
+.. Can an allocator, such as described in Objectives, be efficient in space and time? That is the question I aim to answer in this paper.
 
-Implementation
-==============
-Described in detail in Chapter :ref:`chapter-jeff` and Chapter :ref:`chapter-steve`.
+An allocator with little extra increase in memory usage compared to the requested memory by the client application is efficient in
+space. An allocator that has a low and constant execution time is efficient in time.
+
+My hypothesis is that an allocator that performs heap compaction can be efficient in both time and space, compared to other
+commonly used alloctaors, by making the malloc and free operations fast and the compact operation relatively slow and and calling
+it when the system is idle.
+
+Questions
+~~~~~~~~~
+What are the space and time requirements of Jeff compared to other popular allocators?
+
+I aim to answer these questions in the report.
 
 .. raw:: latex
 
-    \chapter{Jeff
+    \chapter{Design
+        \label{chapter-design}}
+
+.. include:: design.rst
+
+.. raw:: latex
+
+    \chapter{Allocator Types
+        \label{chapter-allocator-types}}
+
+.. include:: allocator-types.rst
+
+.. raw:: latex
+
+    \chapter{Jeff: The Compacting Allocator
         \label{chapter-jeff}}
 
 .. include:: jeff.rst
 
 .. raw:: latex
 
-    \chapter{Steve
+    \chapter{Steve: The Benchmark Tool
         \label{chapter-steve}}
 
 .. include:: steve.rst
+
+.. raw:: latex
+
+    \chapter{Simulating locking
+        \label{chapter-simulating-locking}}
+
+.. include:: simulating-locking.rst
 
 .. raw:: latex
 
@@ -135,7 +150,7 @@ Described in detail in Chapter :ref:`chapter-jeff` and Chapter :ref:`chapter-ste
 
 .. raw:: latex
 
-    \chapter{Conclusion
+    \chapter{Conclusions
         \label{chapter-conclusion}}
 
 .. include:: conclusion.rst

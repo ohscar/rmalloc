@@ -84,9 +84,9 @@ constraints, larger applications that are more similar to real-life situations c
 calculation took too long time.  Speed and memory characteristics could very well differ for such an application,
 esecially if it was running for a longer time.
 
-Future work
-===========
-Limitations in Jeff
+Limitations and Future Work 
+================================
+Jeff: Limitations
 ~~~~~~~~~~~~~~~~~~~~~~~
 In order to keep the code simple, I made two decisions in the beginning:
 
@@ -95,11 +95,7 @@ In order to keep the code simple, I made two decisions in the beginning:
 * No thread-safety. This means that the behaviour of calling any functions exposed by the allocator from different
   threads at the same time is undefined, and will likely cause data corruption.
 
-Limitations in Steve
-~~~~~~~~~~~~~~~~~~~~~~~
-As noted in the discussion, the only mechanism for retrieving data from the system for the tested allocators is using `sbrk()``.
-
-Future work in Jeff
+Jeff: Future Work
 ~~~~~~~~~~~~~~~~~~~~~~
 Features
 -------------------------
@@ -111,17 +107,23 @@ Features
   likely work with less than the full 32 bits. (For example, limiting to max 1 GB heap gives two extra bits for flags.)
 * Weak locking
 
-Implementation optimizations
+Implementation Optimizations
 --------------------------------------------
 * Similar to the earlier point, reduce next_unused store offset into heap array. This would limit the maximum number of
   live blocks to *2^sizeof(next_unused_offset)*, which might not be an issue. It could be a compile-time setting.
 * Automatic merge with adjacent prev/next block in free/new. This would cause the free list slots contain too large
   blocks for its index.
 
+XXX: Fix bug of free block list.
+
 .. + discarded: notification on low memory for user compact (spent much time trying to work out algorithm before there was working
     code, premature optimization) <FUTURE-WORK>
 
-Future work in Steve
+Steve: Limitations
+~~~~~~~~~~~~~~~~~~~~~~~
+As noted in the discussion, the only mechanism for retrieving data from the system for the tested allocators is using `sbrk()``.
+
+Steve: Future Work
 ~~~~~~~~~~~~~~~~~~~~~
 Simplification
 -----------------
@@ -130,7 +132,7 @@ Simplification
 * Restart simulation
 * Don't use part files, if possible.
 
-Possible features
+Possible Features
 --------------------
 Reintroduce colormap for calculating theoretical free size from overhead marked in the colormap.
 

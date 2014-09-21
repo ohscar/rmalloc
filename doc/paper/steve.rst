@@ -1,7 +1,7 @@
 .. vim:tw=120
 
 
-... is a benchmark tool for collecting and visualizing runtime memory access and allocation patterns in arbitrary binary
+Steve is a benchmark tool for collecting and visualizing runtime memory access and allocation patterns in arbitrary binary
 applications that use the system malloc, without access to source code or recompilation.
 
 .. figure:: graphics/steve.png
@@ -11,18 +11,11 @@ applications that use the system malloc, without access to source code or recomp
 
 Overview
 =========
-Steve consists of mostly Python code with Cython [#]_ (a Python framework for interfacing in C and compiling Python into C
-code) for tight inner loops such as the memtrace to ops calculation, plus some Bash scripts for glueing it all together.
-The data is plotted in graphs and there is also a tool that creates an animation of memory allocations as they happen in
-memory.
-
 Measuring Jeff requires a rewrite of the application needing to be tested, to use the new malloc interface. The simple
 solution to do so is to emulate a regular malloc, i.e. directly lock after malloc. But that would make the compact
 operation no-op since no blocks can be moved. On the other hand, adapting existing code to benefit from Jeff's interface
 is error-prone, it is not obvious which application would make good candidates, and finally, source code to the applications
 is required, which is not always possible.
-
-.. [#] http://cython.org
 
 Tools
 =====
@@ -36,7 +29,7 @@ For a detailed description of the tools, see the appendix.
 * ``run_graphs_from_allocstats.py``
 * ``run_memory_frag_animation_plot_animation.py``
 
-Retrieving memory access data
+Retrieving Memory Access Data
 ==================================
 Simply getting malloc/free calls is trivially done by writing a malloc wrapper and make use of Linux' ``LD_PRELOAD``
 technique for preloading a shared library, to make the applications use our own allocator that can do logging, instead
@@ -81,24 +74,8 @@ http://www.google.com in the web browser Opera [#]_.
 
 .. [#] http://www.opera.com
 
-Simulating locking behaviour based on heuristics
-==================================================
-As noted above, it is not a practical solution to rewrite applications. If there is a possible of creating an automated
-method for finding approximate locking behaivour of applications, it should be investigated. 
 
-A block with a lifetime close to the total number of operations has a long lifetime and therefore created in the
-beginning of the application's lifetime.  The *macro* lifetime of a block is the relation between all ops within its
-lifetime through the total ops count of the application.  A block with a small macro lifetime therefore is an object
-that has a short life span, whereas a block with a large macro lifetime is an object with a large life span. Typically
-a large value for macro lifetime means it's a global object and can be modelled thereafter.
-
-Depnding on the relation between ops accessing the block in question and ops accessing other objects the access pattern
-of the object can be modeled.  For example, if an object has 100 ops within its lifetime and 10 of them are its own
-and 90 are others', the object would probably be locked at each access, whereas if it was the other way around, it is
-more likely that the object is locked throughout its entire lifetime. Calculating lifetime requires a full opsfile,
-including all access ops.
-
-Allocator driver usage
+Allocator Driver Usage
 ===================================
 Steve does, in essense, two tasks: visualize memory and plot benchmark data. The framework allows for fairly easy
 extension with more tools.
@@ -203,7 +180,7 @@ The main loop follows the same basic structure:
 
 Next, I'll describe the specifics on the three main loops (peakmem, allocstats, memplot) and then the tools that use them.
 
-Driver modes
+Driver Modes
 =============
 peakmem
 ~~~~~~~~~~~~~
