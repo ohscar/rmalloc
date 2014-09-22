@@ -1,3 +1,9 @@
+.. raw:: latex
+
+    \chapter{Conclusions
+        \label{chapter-conclusion}}
+
+
 Speed
 ==========
 Calculate the penalty for the fields *penalty*, *best*, *worst* and *average* per application gives each allocator a sum

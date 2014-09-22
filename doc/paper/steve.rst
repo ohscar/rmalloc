@@ -1,25 +1,22 @@
 .. vim:tw=120
 
+.. raw:: latex
+
+    \chapter{Steve: The Benchmark Tool
+        \label{chapter-steve}}
 
 Steve is a benchmark tool for collecting and visualizing runtime memory access and allocation patterns in arbitrary binary
-applications that use the system malloc, without access to source code or recompilation.
+applications that use the system malloc, without access to source code or recompilation, and performing tests without
+running the actual application.
 
 .. figure:: graphics/steve.png
    :scale: 50%
 
    :label:`steve-overview` Architectural diagram of Steve
 
-Overview
-=========
-Measuring Jeff requires a rewrite of the application needing to be tested, to use the new malloc interface. The simple
-solution to do so is to emulate a regular malloc, i.e. directly lock after malloc. But that would make the compact
-operation no-op since no blocks can be moved. On the other hand, adapting existing code to benefit from Jeff's interface
-is error-prone, it is not obvious which application would make good candidates, and finally, source code to the applications
-is required, which is not always possible.
-
 Tools
 =====
-For a detailed description of the tools, see the appendix.
+Steve is a collection of tools:
 
 * ``translate-memtrace-to-ops.py``
 * ``translate-ops-to-histogram.py``
@@ -29,50 +26,7 @@ For a detailed description of the tools, see the appendix.
 * ``run_graphs_from_allocstats.py``
 * ``run_memory_frag_animation_plot_animation.py``
 
-Retrieving Memory Access Data
-==================================
-Simply getting malloc/free calls is trivially done by writing a malloc wrapper and make use of Linux' ``LD_PRELOAD``
-technique for preloading a shared library, to make the applications use our own allocator that can do logging, instead
-of the system allocator. Unfortunately that is not enough. To get statistics on
-memory *access* patterns one needs to essentially simulate the system the application runs in.  Options considered were
-TEMU [#]_ from the BitBlaze [#]_ project, but because it would not build on my Linux system, I looked at Valgrind [#]_
-before trying again. Turns out Valgrind has good instrumentation support in their tools. Valgrind was originally a tool
-for detecting memory leaks in applications on the x86 platform via emulation and has since evolved to support more
-hardware platforms and providing tools for doing other instrumentation tasks. Provided with Valgrind an example tool
-*Lackey* does parts of what I was looking for but missing other parts. I instead ended up patching the *memcheck* tool
-[#]_ to capture load/store/access operations and logging them to file, if they were in the boundaries of lowest address
-allocated to highest address allocated. This will still give false positives when there are holes (lowest is only
-decreased and highest is only increased) but reduces the logging output somewhat. Memory access can then be analyzed
-offline. Note that it will only work for applications that use the system-malloc/free. Any applications using custom
-allocators must be modified to use the system allocator, which generally means changing a setting in the source code and
-recompiling.
-
-.. [#] http://bitblaze.cs.berkeley.edu/temu.html
-.. [#] http://bitblaze.cs.berkeley.edu/ 
-.. [#] http://valgrind.org
-.. [#] https://github.com/mikaelj/rmalloc/commit/a64ab55d9277492a936d7d7acfb0a3416c098e81 (2014-02-09: "valgrind-3.9.0: memcheck patches")
-
-I've written a convenience script for this purpose and then optionally creates locking data::
-
-    #!/bin/bash
-
-    if [[ ! -d "$theapp" ]]; then
-        mkdir $theapp
-    fi
-    echo "$*" >> ${theapp}/${theapp}-commandline
-    ../../valgrind/vg-in-place --tool=memcheck $* 2>&1 > \
-        /dev/null | grep '^>>>' > ${theapp}/${theapp}
-
-    python -u ../steve/memtrace-to-ops/translate-memtrace-to-ops.py \
-        ${theapp}/${theapp}
-
-    python -u ../steve/memtrace-to-ops/translate-ops-to-locking-lifetime.py \
-      ${theapp}/${theapp}
-
-Beware that this takes long time for complex applications, about 30 minutes on an Intel Core i3-based system to load
-http://www.google.com in the web browser Opera [#]_.
-
-.. [#] http://www.opera.com
+For a detailed description, see the appendix.
 
 
 Allocator Driver Usage

@@ -1,5 +1,10 @@
 .. DOC: nifty table layout: http://tex.stackexchange.com/questions/102512/remove-vertical-line-in-tabular-head
 
+.. raw:: latex
+
+    \chapter{Results
+        \label{chapter-results}}
+
 Limitations
 =======================================================
 Both tcmalloc and jemalloc perform poorly without ``mmap()`` enabled, and in some cases they did not manage to finish allocation

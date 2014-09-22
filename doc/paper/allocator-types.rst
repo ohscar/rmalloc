@@ -1,3 +1,8 @@
+.. raw:: latex
+
+    \chapter{Allocator Types
+        \label{chapter-allocator-types}}
+
 In this chapter I'll describe the most common style of allocator implementation strategies.
 
 Buddy Allocator

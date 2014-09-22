@@ -1,3 +1,8 @@
+.. raw:: latex
+
+    \chapter{Design
+        \label{chapter-design}}
+
 The implementation of the allocator (Jeff) is described in detail in Chapter :ref:`chapter-jeff`, and the implementation of the
 benchmark tool (Steve) is described in detail in Chapter :ref:`chapter-steve`.
 
@@ -113,6 +118,13 @@ Benchmark Tool Design
 ======================
 Manually modifying applications to adhere to Jeff's allocation interface is error-prone and time consuming, and moreover it is not certain
 that the chosen application is a good candidate for demonstrating performance since it might not stress the allocator. The number
-of requests could be small and the total memory usage could be low. Automating the modifications, if possible, would save much
-time. This is described in chapters :ref:`chapter-steve` and :ref:`chapter-simulating-locking`.
+of requests could be small and the total memory usage could be low. 
+
+Measuring Jeff requires a rewrite of the application needing to be tested, to use the new malloc interface. The simple
+solution to do so is to emulate a regular malloc, i.e. directly lock after malloc. But that would make the compact
+operation no-op since no blocks can be moved. On the other hand, adapting existing code to benefit from Jeff's interface
+is error-prone, it is not obvious which application would make good candidates. Automating the modifications, if possible, would
+save much time.  Finally, source code to the applications would be required for manual adaptions, which is not always accessible.
+
+The specifics of how data is gathered can be found in chapters :ref:`chapter-simulating-application-runtime` and :ref:`chapter-steve`.
 

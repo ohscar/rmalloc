@@ -1,5 +1,10 @@
 .. vim:tw=120
 
+.. raw:: latex
+
+    \chapter{Jeff: The Compacting Allocator
+        \label{chapter-jeff}}
+
 Overview
 ========
 In order to achieve compacting, memory must be accessed indirectly. This is the signature::

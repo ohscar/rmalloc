@@ -1,3 +1,8 @@
+.. raw:: latex
+
+    \chapter{Appendix
+        \label{chapter-appendix}}
+
 Tools
 ======
 memtrace-run.sh and translate-memtrace-to-ops.py

@@ -3,6 +3,10 @@
 .. Allocators
 .. ===========
 
+.. raw:: latex
+
+    \chapter{Introduction}
+
 Computer systems can be generalized to be composed of two things: data, and code operating on said data.  In order to
 perform useful calculations, real-world applications accept user data which often varies in size.  To accomodate the
 differences, memory is requested dynamically, at runtime, using a memory allocator.  The basic interface to the
