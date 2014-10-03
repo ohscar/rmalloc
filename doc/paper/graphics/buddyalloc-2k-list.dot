@@ -1,0 +1,20 @@
+digraph before {
+    node [shape=record];
+
+    rankdir=TB;
+    
+    free [label="...|<s4> k=4|<s5> k=5|<s6> k=6)|<sdot>...|<s12> k=12"];
+    s4s [label="{<s40> 16|<s41> 16|<s42> 16|...}"];
+    s5s [label="{<s50> 32|<s51> 32|<s52> 32|...}"];
+    s6s [label="{<s60> 64|<s61> 64|<s62> 64|...}"];
+    s12s [label="{<s120> 4096|<s121> 4096|<s122> 4096|...}"];
+    sdot_11s [label="{<sdot0>...}"];
+
+    free:s4:s -> s4s:s40:n;
+    free:s5:s -> s5s:s50:n;
+    free:s6:s -> s6s:s60:n;
+    free:s12:s -> s12s:s120:n;
+    free:sdot:s -> sdot_11s:sdot0:n;
+    
+    {rank=same; s4s s5s s6s s12s sdot_11s}
+}
