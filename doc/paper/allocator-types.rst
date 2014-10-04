@@ -9,13 +9,16 @@ Buddy Allocator
 ================
 The most common allocator type is the buddy allocator [#]_, and many allocators are built on its principles, or at least
 incorporate them in some way: start with a single block and see if the requested chunk fits in half of the block. If it
-does, split the block into two and repeat, until there no smaller block size would fit the request.
+does, split the block into two and repeat, until there no smaller block size would fit the request. See Figure :ref:`buddyalloc2klist`.
+
+.. figure:: graphics/buddyalloc-2k-list.png
+   :scale: 50%
+
+   :label:`buddyalloc2klist` The free list in a buddy allocator
 
 .. [#] http://en.wikipedia.org/wiki/Buddy_memory_allocation
 
-.. - TODO: <illustration of 2^k list>
-
-Over time, there will be more and more items of size *2^n*, that are stored on a free list for that block size. Each pair
+Over time, there will be more and more items of size *2^n*, stored on a free list for that block size. Each pair
 of split-up blocks is said to be two buddies. When two buddy blocks are free, they can be joined. A block of the next
 larger size (n+1) can be created from these two blocks. This is repeated until the largest block, i.e. *2^k*. In the worst
 case, this causes *2^n - 1* bytes of overhead per block, also known as *internal fragmentation.* Still, this commonly
@@ -37,7 +40,14 @@ Pool Allocator
 ==================
 Certain applications use a large amount of objects of the same size that are allocated and freed continuously. This
 information can be used to create specialized pool allocators for different object sizes, where each pool can be easily
-stored in an array of *N \* sizeof(object)* bytes, allowing for fast lookup by alloc and free.
+stored in an array of *N \* sizeof(object)* bytes, allowing for fast lookup by alloc and free. For example, in an action
+computer game where both the player and the enemies shoot bullets with arms, said bullets must be kept track of by means
+of a object in memory. In a game where there could potentially exist a very large amount of bullets in action at the
+same time, an equal amount of allocation and freeing is done, often randomly. In order to optimize usage of system
+memory, all allocation of bullet objects would be contained to the same  *pool* of memory.  A very simple such allocator
+would be a simple list of objects and the allocator would more or less just rutern the index to the next unused block,
+leading to malloc and free that both have *O(1)* in time complexity with very little overhead and fragmentation.  The
+usual strategies for growing the list apply, i.e. double the size of the list when all items in the list are used.
 
 Arena Alocator
 ==================
@@ -57,8 +67,7 @@ explicitly ask for memory from the allocator, nor to free it when done. Instead,
 checks for which objects are still in use by the application (*alive*). An object is is anything that uses heap memory: a number,
 a string, a collection, a class instance, and so on. There are several techniques for finding alive objects and
 categorizing objects depending on their lifetime in order to more efficiently find alive objects at next pass, which I
-will not cover in this paper. I recommend the book *Garbage Collection* by R. Jones and R. Lins if you are interested in
-finding out more.
+will not cover in this paper. Refer to (R. Jones, R. Lins, 1987) for more infonmation.
 
 At any point in time, a garbage collector can move around the object if necessary, therefore any object access is done
 indirectly via a translation. User code does not keep a pointer to the block of memory that the object is located in,

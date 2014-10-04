@@ -16,18 +16,32 @@ occur. If the limit on that increase is reached, the allocator is marked as not 
 
 Input Data
 =============
-Measuring an allocator must be done in conjunction with input data. These are the applications I've used.
+.. raw:: comment-gres-done
 
-* Opera v12.0 loading http://www.google.com and exit.
-* StarOffice (LibreOffice) 4.0.2.2 to a blank word processor document and exit.
-* sqlite 2.8.17 - ubuntu 13.04 - loading 17 MB phpBB3 [#]_ SQL data.
-* zip 3.0 - ubuntu 13.04 - compressing the contents of the gperftools distribution version 2.1 (6.2 MB).
-* ls 8.20 - ubuntu 13.04 - displaying the ``/bin`` directory.
+    X X X (gres)
+    ~~~~~~~~~~
+    misstänker att php-bb-databasen inte går att dela med sig, men övriga testdata? ett problem inom software engineering
+    är att data är hemligt, och ju mer öppet data som går att få tag i, desto enklare är det att göra jämförande forskning
+    eller replikeringar. (lägg till URL:er -micke)
+
+Measuring an allocator must be done in conjunction with input data. These are the applications I've used:
+
+* Opera v12.0 [#]_: loading http://www.google.com and exit.
+* StarOffice (LibreOffice) 4.0.2.2 [#]_: open a blank word processor document and exit.
+* sqlite 2.8.17 (Ubuntu 13.04's default version) [#]_: loading 17 MB phpBB3 [#]_ SQL data.
+* zip 3.0 (Ubuntu 13.04's default version) [#]_: compressing the contents of gperftools-2.1 [#]_ (6.2 MB).
+* ls 8.20 (Ubuntu 13.04's default version) [#]_: displaying the ``/bin`` directory.
 * cfrac 3.5.1 - just running it.
-* latex 3.1415926-2.4-1.40.13 - paper.tex (96 lines, 2.6 KB).
+* latex 3.1415926-2.4-1.40.13 [#]_: paper.tex (96 lines, 2.6 KB).
 
-
-XXX: Add URLs.
+.. [#] http://www.opera.com
+.. [#] http://www.libreoffice.org
+.. [#] http://www.sqlite.org
+.. [#] http://www.info-zip.org
+.. [#] http://gperftools
+.. [#] http://www.gnu.org/software/coreutils/
+.. [#] http://www.latex-project.org
+.. [#] http://www.phpbb.com - a bulletin-board system
 
 The results are presented in charts and tables. I'll describe what they mean first, then give the resuts.
 
@@ -71,7 +85,6 @@ Sorting the same as space table. In addition to the fields in speed table (appli
 * **Average**: average speed of an operation
 * **Median**: median speed of an operation
 
-.. [#] http://www.phpbb.com - a bulletin-board system
 
 
 StarOffice

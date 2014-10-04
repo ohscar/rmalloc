@@ -3,108 +3,27 @@
     \chapter{Appendix
         \label{chapter-appendix}}
 
+
+The report and the source code in its entity can be found on GitHub, http://github.com/mikaelj/rmalloc
+
 Tools
 ======
 memtrace-run.sh and translate-memtrace-to-ops.py
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-The basis of all further data analysis is a *memtrace*, a file with the output produced my the patched memcheck tool in
-the following format::
-
-    >>> op address size
-
-where op is one of N, F, L, S, M for New, Free, Load, Store and Modify, respectively and size is the how many bytes are
-affected by the operation (always 0 for F).  The operation New has an address and size associated, and it's therefore
-possible to map memory access (L, S, M) to a specific pointer. This is done by creating a unique integer and mapping all
-keys from *address* to *address+size* to that identifier. On free, conversely, all mappings in that address range are
-removed. At each access a list of (id, access type, address, size) is recorded. 
-
-The output file (*opsfile*) has the following format::
-
-    <handle> <op> <address> <size>
+Generates memtrace data from an application run, and translate memtrace data to ops file, respectively, as described in
+section :ref:`translating-memory-access-data-to-ops`.
 
 translate-ops-to-histogram.py
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 To visualize and experiment with different ways of calculating lifetime I have a small application that takes as input
 an ops file (created by ``translate-memtrace-to-ops.py``), in particular to look at macro lifetimes in different
-intervals. It turns out that for some (larger) applications, lifetimes are highly clustered for the short-lived objects,
-as seen in Figure :ref:`appendixhistogram01000`.
-
-.. figure:: graphics/result-soffice-macro-histogram-0-1000.png
-   :scale: 50%
-
-   :label:`appendixhistogram01000` This shows the number of objects within a specific lifetime. Short-lived objects dominates.
-
-By removing the short-lived objects, we can get a better understanding of the distribution of the other objects in
-Figure :ref:`appendixhistogram10100`.
-
-.. figure:: graphics/result-soffice-macro-histogram-10-1000.png
-   :scale: 50%
-
-   :label:`appendixhistogram10100` Limited to blocks with a lifetime between 1% and 100%
-
-And conversely, if we want to see the distribution of the short-lived objects only, as in :ref:`appendixhistogram020`.
-
-.. figure:: graphics/result-soffice-macro-histogram-0-20.png
-   :scale: 50%
-
-   :label:`appendixhistogram020` Limited to blocks with a lifetime between 0% and 2%
+intervals. This is described in section :ref:`lifetime-visualization`.
 
 translate-ops-to-locking-lifetime.py
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-translate-memtrace-to-ops.py produces coarse locking that is quick to calculate, since it simply looks at the macro
-lifetime of an object and keeps it locked during its entire lifetime.  It's an either-or situation.
-
-This method more refined but takes more time to calculate. The script takes an ops file, i.e. a list of (block handle,
-operation type, address, size) tuples.
-
-When a block is initially created a threshold value, life, is set to zero and will either increase or decrease depending
-on the operations that come between the new operation and the free operation. A memory access op for the current block
-increases life by 1, and conversely, another block's operation (regardless of type) decreases life by 0.5. Life is not
-capped in the upper range but has a lower limit of 0. When life is higher than 0, the current operation's lock status is
-set, otherwise reset. 
-
-The value was chosen by testing different input parameters against random data, and the graphs that looked best was verified
-against the smaller application memtraces. This is the algorithm used, with different values for percent, float speed
-and sink speed::
-
-    let life = 0
-    let lifetime = empty array
-    let number of points = 1000
-    for i from 0 to number of points:
-        let operation belongs to current handle = random() < percent
-        if operation belongs to current handle:
-            life = life + float_speed
-        else:
-            if life >= sink_speed:
-                life = life - sink_speed
-
-        lifetime.append(life)
-
-The results are shown in Figure :ref:`appendixlockinglifetime`.
-
-.. figure:: graphics/locking-lifetime-explanation
-   :scale: 40%
-
-   :label:`appendixlockinglifetime` Simulated lifetime calculations by varying the values of input parameters.
-
-Clockwise from upper left corner, we see that lock status (i.e. lifetime > 0) varies if the current handle is less than
-30% of the ops, and if it's less than 50%, it'll diverge towards always being locked -- which is sound, since any object
-that is accessed so often is likely to be locked during its lifetime.  With sink equal to or larger than float, a very
-jagged graph is produced where the current object is locked/unlocked continously. A real-world application would want to
-lock the object once per tight loop and keep it locked until done, instead of continuously locking/unlocking the handle
-inside the loop. A loop is the time under the graph where lifetime is non-zero.
-
-When all ops have been processed they are written out to a new file that in addition to the regular ops also contained
-detailed locking information. Since the number of objects is large and the calculation is independent of other objects,
-the process can be broken down into smaller tasks. This is done using the Python ``multiprocessing`` module, and by
-recording start and stop indices (based on the New or Free ops, respectively) into the input list, the list of start
-indices can be broken down into smaller parts to maximize usage of multi-core systems making processing the entire input
-file faster by the order of the number of available cores.  In the case of no corresponding Free operation for the
-block, no lifetime calculation is done.
-
-The fine grained calculation of this method is slower (*O(m\*n)*, where *m* is the number of handles and *n* is the
-total number of operations), but intersperses lock/unlock instructions throughout the lifetime of an object, instead of forcing
-the object to be locked its entire lifetime.
+``translate-memtrace-to-ops.py`` produces coarse locking that is quick to calculate, since it simply looks at the macro
+lifetime of an object and keeps it locked during its entire lifetime.  It's an either-or situation, instead of locking
+and unlocking throughout the object lifetime. 
 
 run_memory_frag_animation.sh
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -141,9 +60,11 @@ Heap size in allocstats mode is set te this value, increased by 5% until there i
 operation, to make sure that the entire program can be run in full at least once.
 
 
-run_allocator_stats_payload.sh
--------------------------------
-TODO: document me!
+.. raw:: comment-na
+
+    run_allocator_stats_payload.sh
+    -------------------------------
+    T O D O: document me!
 
 
 run_graphs_from_allocstats.py
@@ -203,8 +124,6 @@ All functions to be implemented by the driver has a ``user_`` prefix and the dri
 user_init(heap_size, heap, name)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ``bool user_init(uint32_t heap_size, void *heap, char *name)``
-
-TODO: remove colormap from API (plot.h, plot.cpp, drivers)
 
 Initialize the allocator with the given parameters.  Since the heap is passed onto the driver, any *mmap* functionality
 must beO disabled and only *sbrk*-style allocation is possible. The driver must fill ``name`` with a name that can be

@@ -28,7 +28,7 @@ if [[ "$?" == "0" ]]; then
     pdflatex -interaction=nonstopmode main.latex 2>&1 > /dev/null
     echo
     echo "------------------------------------------------------------"
-    grep '\(<[A-Z]\+\|TODO\|XXX\)' *rst | grep -v '\(todo-checklist\|conclusion\)'
+    grep '\(<[A-Z]\+\|TODO\|XXX\)' *rst | grep -v '\(todo-checklist\|conclusion\)' | grep -v "\.\."
     echo "------------------------------------------------------------"
 else
     echo

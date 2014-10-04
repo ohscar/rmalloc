@@ -15,15 +15,47 @@ pointer to a chunk of memory guaranteed to be at least *size* bytes. The operati
 gives the memory back to the system.
 
 The allocator in turn calls out to the operating system-provided memory mapping function, providing the allocator with
-one or more pages of memory, often 4 KB each on PC systems. A very simple allocator would do little more than returning the pages
-as *malloc()* and have *free()* be a no-op. Obviously this is wasteful causing large amount of memory wasted and if the
-application code using the allocator wanted to release memory back to the system and then allocate again, system memory
-would eventually run out.
+one or more *pages* of memory. The page is the smallest unit of memory available to the operating system from the
+processor and its memory mapping unit (MMU), and in the architectures widely used today (x86, x86_64, ARMv7, PPC)
+the default size is 4 KB, and can on some architectures be increased. <REF: list of page sizes>.
 
-Therefore, an allocator needs to be more clever about managing memory. Things most efficient allocators have in common:
+On operating systems where programs' memory are protected from each other, meaning no application can overwrite any
+other application's memory, the page addresses are virtual and therefore a look-up table mapping virtual (page) address
+to physical memory is required, such that each process receives its own look-up table.  Since the processor needs to
+keep track of each page and to whuch part of memory it is mapped, the resulting look-up table will be very large if a
+small page size is used. These can then be written to disk (*swapped out*) when system memory becomes full and the pages
+are not in used by the application owning the page, based on a recent-used algorithm.  These types of algorithms vary
+depeding on operating system and use case.  Keeping the page size small decreases fragmentation, though, since the last
+page requested from a series of pages is essentially unused in the worst case. Therefore, increasing the page size can
+be tempting to reduce the look-up table, but this comes at the cost of fragmentation.  In some architectures, the
+operating system can increase the page size (so-called "huge pages" in Linux terminology, other operating systems use
+different names).
 
-* metadata about each allocated block
-* pool(s) of common allocation sizes
+
+.. raw:: comment-reference
+
+    http://unix.stackexchange.com/questions/128213/how-is-page-size-determined-in-virtual-address-space
+
+
+    the page size is a compromise between memory usage, memory usage and speed.
+
+    A larger page size means more waste when a page is partially used, so the system runs out of memory sooner.
+    A deeper MMU descriptor level means more kernel memory for page tables.
+    A deeper MMU descriptor level means more time spent in page table traversal.
+
+    The gains of larger page sizes are tiny for most applications, whereas the cost is substantial. This is why most systems use only normal-sized pages.
+
+
+
+A very simple allocator would do little more than returning the pages as *malloc()* and have *free()* be a no-op.
+Obviously this is wasteful causing large amount of memory wasted and if the application code using the allocator wanted
+to release memory back to the system and then allocate again, system memory would eventually run out.
+
+Therefore, an allocator needs to be more clever about managing memory. At the very minimum they need to associate
+metadata with each allocated block in order to later free the blocks.  Moreover, the allocators I'vve tested keep one or
+more pools of memory split up in different size ranges, such as "small blocks", "medium-sized blocks" and "large
+blocks". By analyzing the runtime requirements of various applications, the most common case (i.e., block size) can be
+optimized for speed, space or both.
 
 The metadata is there in order for *free(pointer)* to know where from the memory chunk was allocated from. The pool(s)
 are used because of the fact that applications often allocate data in common sizes. If the allocator can group together
@@ -69,7 +101,7 @@ Definitions
   
 Challenges
 ============================================
-There are many trade-offs.
+There are many trade-offs when writing an allocator, which I'll describe in the following section.
 
 I've touched upon internal and external fragmentation. In addition, multi-threaded applications that allocate memory
 need to work without the allocator crashing or currupting data. As in all concurrency situations, care needs to be taken
@@ -100,6 +132,4 @@ fragmentation level is good enough. However, for Opera, that was insufficient.  
 signature outlined in the hypothesis, they hoped to solve the fragmentation problem in the specific situations that
 occur in a web browser. It was also to be used as the allocator in an in-house virtual machine running a custom
 language.
-
-.. - TODO: Possibly for use in a virtual machine
 

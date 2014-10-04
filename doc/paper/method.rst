@@ -3,16 +3,47 @@
     \chapter{Method
         \label{chapter-method}}
 
-The method used when designind and implementing the allocator (Jeff) is an iterative design process based on experimental designs
-and verification thereof, along with theoretical calculations. Experimental designs were either discarded or validated depending
-on the results from the testing framework that performed continuous testing to validate correctness. Limitations of testing is
-that it can never prove correctness, only absence of the bugs the testing framework was designed to find. This enabled me to
-perform drastic changes in the code. The testing framework is described in more detail in Chapter :ref:`chapter-jeff` .
 
-The benchmark tool (Jeff) that I designed to test algorithms for Jeff and comparing Jeff to other allocators. . In Steve, I've
-developed heuristics for calculating locking/unlocking based on runtime data of unmodified applicaions. The tool for doing so grew
-from a small script into a larger collection of tools related to data collection, analysis and benchmarking. This is described in
-greater detail in chapter :ref:`chapter-steve`.
+.. raw:: comment-wip
+
+    X X X (gres - kräver litteratur/mer annan information för att beskriva vad metoden är)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    * DONE: Jag skulle gärna se en tydligare diskussion av metodiken och en formellare beskrivning av den.  
+    * Vilka alternativ till metoder finns det (om det finns flera alternativ), och varför är den metoden du valt den mest lämpade till studien? 
+    * DONE: Hur har insamling av data skett?  
+    * DONE: Hur har analysen gjorts?
+    * DONE: Som jag skrev ovan hade jag personligen lagt hypotes och forskningsfrågor i detta kapitel, och lagt kapitlet direkt efter introduction.
+
+The method I used for designing and implementing the allocator (Jeff) is an iterative design process based on experimental designs
+and verification thereof, along with theoretical calculations using pen and paper. In particular, the compact operation
+went through several iterations in my sketch book before I arrived at the final version. For other parts, I used
+the profiling tools found in *GCC* to measure bottlenecks and gradually improving the code until there were no
+obvious bottlenecks left. A bottleneck in this case is a piece of code that gets called many times and is slow. I've
+aimed to write the code to execute reasonably quick, given the algorithm in use.
+
+Thanks to the rigorous testing framework in place, I could readily modify code without fearing malfunction since the
+tests would pick up any errors. Limitations of testing is that it can never prove correctness, only absence of the bugs
+the testing framework was designed to find.  The testing framework is described in more detail in Chapter
+:ref:`chapter-jeff` .
+
+Steve is the name of the benchmark tool that I designed to test algorithms for Jeff and comparing Jeff to other allocators. In Steve, I've
+developed heuristics for calculating locking/unlocking based on runtime data of unmodified applications. The tool for doing so grew
+from a small script into a larger collection of tools related to data collection, analysis and benchmarking. It does not
+test for correctness.
+
+Data for use by Jeff, and other calculators, is collected by various tools in the benchmark tool. The types of data
+used are:
+
+* raw memtrace, from running unmodified applications
+* ops file, by mapping memory access data to objects
+* locking ops file, as above, with lock/unlock operations in place
+* benchmark output, by running allocators against ops files
+
+The benchmark output is used to both produce graphs of allocator performance and can together produce internal rankings
+between the allocators.
+
+This is described in greater detail in chapters ref:`chapter-simulating-application-runtime`, :ref:`chapter-steve` and
+section :ref:`input-data`.
 
 Development Environment
 =========================
@@ -30,9 +61,14 @@ regressions were introduced during development.  More on that in Section :ref:`t
 
 Testing
 ========
-All applications should be bug-free, but for an allocator it is extra important that there are no bugs. Luckily, an
-allocator has a small interface for which tests can be easily written. In particular, randomized unit testing is easy, which
-although not guaranteed to catch all bugs gives a good coverage.
+All applications should be bug-free, but for an allocator it is extra important that there are no bugs since an
+allocator that does not work properly could cause data corruption. In the best case, this causes the application using
+the allocator to malfunction by crashing on execution. In the worst case, an application doing data processing by
+reading data into buffers allocated on the heap, doing one or more computations and then writing the data back to disk,
+would completely destroy the data without the user knowing an error had occured.
+
+Luckily, an allocator has a small interface for which tests can be easily written. In particular, randomized unit
+testing is easy, which although not guaranteed to catch all bugs gives a good coverage.
 
 I decided to use googletest since it was easy to setup, use and the results are easy to read. It's
 similar in style to the original Smalltalk testing framework SUnit [#]_ (later popularized by Java's JUnit [#]_).  During the
@@ -50,9 +86,10 @@ large volume is a useful technique for finding problems in complex data structur
 .. [#] http://en.wikipedia.org/wiki/SUnit
 .. [#] http://en.wikipedia.org/wiki/JUnit
 
-.. XXX: Describe in-depth what the benchmark tool does, see commented-out paragraph below.
+.. raw:: comment-xxx
 
-..
+  X X X: Describe in-depth what the benchmark tool does, see commented-out paragraph below.
+
   parallel with unit tests to make sure each part works as intended. Benchmarking is done with a separate tool that allows
   the use of arbitrary applications for simulating real-world performance, and also does visualization of execution time,
   space efficiency and distribution of allocation requests.
