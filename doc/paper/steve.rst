@@ -104,9 +104,9 @@ These are not called directly, but instead called from by the tools described be
 At startup the mode of operation of the allocator driver is set to one of these. All modes perform follow the same basic
 flow:
 
-#. Allocate heap according to specified heap size or use predefined size (currently 1 Gb).
+#. Allocate heap according to specified heap size or use predefined size (currently 1 GB).
    If heap allocation fails, decrease by 10% until success.
-#. Allocate and initialize colormap as 1/4 of heap size. (more on colormap later)
+#. Allocate and initialize colormap as :math:`\frac{1}{4}` of heap size. (more on colormap later)
 #. Initialize driver.
 #. Initialize randomness with compile-time set seed.
 #. Open opsfile.
@@ -218,7 +218,7 @@ mmap.
 tcmalloc (gperftools-2.1)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 gperftools [#]_ is written by Google and includes a profiling/benchmark framework/tools. It is used by, among others,
-Google Chrome, MySQL and WebKit (W. Fang, 2012), which in turn is used by many other projects such
+Google Chrome, MySQL and WebKit Fang (2012), which in turn is used by many other projects such
 as Apple's Safari. It includes the allocator *tcmalloc*.
 
 .. [#] http://code.google.com/p/gperftools/

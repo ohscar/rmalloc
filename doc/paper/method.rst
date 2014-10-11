@@ -24,7 +24,7 @@ aimed to write the code to execute reasonably quick, given the algorithm in use.
 Thanks to the rigorous testing framework in place, I could readily modify code without fearing malfunction since the
 tests would pick up any errors. Limitations of testing is that it can never prove correctness, only absence of the bugs
 the testing framework was designed to find.  The testing framework is described in more detail in Chapter
-:ref:`chapter-jeff` .
+:ref:`chapter-jeff`.
 
 Steve is the name of the benchmark tool that I designed to test algorithms for Jeff and comparing Jeff to other allocators. In Steve, I've
 developed heuristics for calculating locking/unlocking based on runtime data of unmodified applications. The tool for doing so grew
@@ -34,7 +34,7 @@ test for correctness.
 Data for use by Jeff, and other calculators, is collected by various tools in the benchmark tool. The types of data
 used are:
 
-* raw memtrace, from running unmodified applications
+* raw memtrace, from running unmodified applications in my modified Valgrind tool
 * ops file, by mapping memory access data to objects
 * locking ops file, as above, with lock/unlock operations in place
 * benchmark output, by running allocators against ops files
@@ -42,15 +42,16 @@ used are:
 The benchmark output is used to both produce graphs of allocator performance and can together produce internal rankings
 between the allocators.
 
-This is described in greater detail in chapters ref:`chapter-simulating-application-runtime`, :ref:`chapter-steve` and
+This is described in greater detail in chapters :ref:`chapter-simulating-application-runtime`, :ref:`chapter-steve` and
 section :ref:`input-data`.
 
 Development Environment
 =========================
-Main development system is a Linux-based system. The allocator is written in C, and the benchmark tool (Steve) consists of mostly
-Python code with Cython [#]_ (a Python framework for interfacing in C and compiling Python into C code) for tight inner loops such
-as the memtrace to ops calculation, plus some Bash scripts for glueing it all together.  The data is plotted in graphs and there
-is also a tool that creates an animation of memory allocations as they happen in memory.
+Main development system is a Linux-based system, but coudl likely be adapted to other UNIX-like systems, such as OS X.
+The allocator is written in C, and the benchmark tool (Steve) consists of mostly Python code with Cython [#]_ (a Python
+framework for interfacing in C and compiling Python into C code) for tight inner loops such as the memtrace to ops
+calculation, plus some Bash scripts for glueing it all together.  The data is plotted in graphs and there is also a tool
+that creates an animation of memory allocations as they happen in memory.
 
 .. [#] http://cython.org
 
@@ -102,7 +103,7 @@ An allocator with little extra increase in memory usage compared to the requeste
 space. An allocator that has a low and constant execution time is efficient in time.
 
 My hypothesis is that an allocator that performs heap compaction can be efficient in both time and space, compared to other
-commonly used alloctaors, by making the malloc and free operations fast and the compact operation relatively slow and and calling
+commonly used allocatorss, by making the malloc and free operations fast and the compact operation relatively slow and and calling
 it when the system is idle.
 
 What are the space and time requirements of Jeff compared to other popular allocators? Is Jeff a viable alternative to other

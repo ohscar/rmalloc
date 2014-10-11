@@ -129,7 +129,7 @@ Initialize the allocator with the given parameters.  Since the heap is passed on
 must beO disabled and only *sbrk*-style allocation is possible. The driver must fill ``name`` with a name that can be
 used as a part of a filename, e.g. an alphanumeric string like "dlmalloc".
 
-A driver would store *heap_size*,initialize its own sbrk-equivalent with *heap* and initialize the allocator itself if
+A driver would store *heap_size*, initialize its own sbrk-equivalent with *heap* and initialize the allocator itself if
 needed. As large amount as possible of the allocator's runtime data structures should be stored in this heap space.
 
 user_destroy()

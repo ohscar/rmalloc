@@ -12,12 +12,12 @@ Allocators that did not finish is given the maximum penalty 5.
 
 This is summarized in Table :ref:`table:speed-positions` below, and we can make a final scoring of the allocators:
 
-#. rmalloc (compacting)
-#. rmalloc
+#. rmalloc-c (Jeff: compacting)
+#. rmalloc (Jeff: plain)
 #. dlmalloc
 #. jemalloc
 #. tcmalloc
-#. rmalloc (compacting, maxmem)
+#. rmalloc-c-m (Jeff: compacting, maxmem)
 
 .. raw:: latex
 
@@ -47,9 +47,9 @@ Calculated the same way as speed. Because of the extra indirection layour, there
 allocated block. Summary in Table :ref:`table:memory-positions` below with scoring of the allocators:
 
 #. dlmalloc
-#. rmalloc (compacting, maxmem)
-#. rmalloc
-#. rmalloc (compacting)
+#. rmalloc-c-m (Jeff: compacting, maxmem)
+#. rmalloc (Jeff: plain)
+#. rmalloc-c (Jeff: compacting)
 #. tcmalloc
 #. jemalloc
 
@@ -120,18 +120,17 @@ Features
 Implementation Optimizations
 --------------------------------------------
 * Similar to the earlier point, reduce next_unused store offset into heap array. This would limit the maximum number of
-  live blocks to *2^sizeof(next_unused_offset)*, which might not be an issue. It could be a compile-time setting.
+  live blocks to :math:`2^{sizeof(next\_unused\_offset)}`, which might not be an issue. It could be a compile-time setting.
 * Automatic merge with adjacent prev/next block in free/new. This would cause the free list slots contain too large
   blocks for its index.
-
-XXX: Fix bug of free block list.
+* Quick free block find overwrites itself, issue #1 in the Github rmalloc issue tracker.
 
 .. + discarded: notification on low memory for user compact (spent much time trying to work out algorithm before there was working
     code, premature optimization) <FUTURE-WORK>
 
 Steve: Limitations
 ~~~~~~~~~~~~~~~~~~~~~~~
-As noted in the discussion, the only mechanism for retrieving data from the system for the tested allocators is using `sbrk()``.
+As noted in the discussion, the only mechanism for retrieving data from the system for the tested allocators is using ``sbrk()``.
 
 Steve: Future Work
 ~~~~~~~~~~~~~~~~~~~~~

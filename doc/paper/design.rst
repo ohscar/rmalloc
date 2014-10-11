@@ -9,9 +9,8 @@ benchmark tool (Steve) is described in detail in Chapter :ref:`chapter-steve`.
 Background
 ============
 To get started with my allocator, I started implementing a buddy allocator since the basics of the buddy allocator is
-used in the allocators <REF> I've included in my comparison.  Since a buddy allocator's two main modes of operation is
-splitting and joining blocks, care needs to be taken that these
-two operations are as quick as possible.
+used in the allocators I've included in my comparison. (Evans 2006) Since a buddy allocator's two main modes of operation is
+splitting and joining blocks, care needs to be taken that these two operations are as quick as possible.
 
 During development, I quickly realized the fact that picking the wrong data structure for storing the block list made
 splitting and joining operations slow and error-prone. 
@@ -45,17 +44,17 @@ a high extent as possible..
 
 From this, we arrive at my original idea of a quick malloc, a quick free and a slow compact, the latter performing any
 batch processing postponed from free and malloc.  I envisioned this as a malloc that would basically grow the top pointer of the
-malloc-associated heap: store information about the requested chunk size, increase the top pointer and return the chunk.
+malloc-associated heap: store information about the requested block size, increase the top pointer and return the block.
 The free operation would mark the block as not in use anymore. Eventually, the top pointer would reach the end of the
 eap, at which point the compact operation would go through the heap and reclaim previously freed memory and reset the
-top pointer to end of allocated memory leaving the freed memory as a large chunk of memory ranging to the end.
+top pointer to end of allocated memory leaving the freed memory as a large block of memory ranging to the end.
 
-However, that idea turned out incorrect because chunks can, of course, be locked at the time of compact. Remember that locking a chunk
-gives the client code the actual pointer to memory, and unlocking the chunks invalidates the pointer. Therefore, the
+However, that idea turned out incorrect because blocks can, of course, be locked at the time of compact. Remember that locking a block
+gives the client code the actual pointer to memory, and unlocking the blocks invalidates the pointer. Therefore, the
 worst-case scenario is that a block at the very top of the heap is locked compact is invoked even though all
 unlocked free blocks are coerced into a single free block, a locked block at or close to the top would make
 subsequent malloc calls to fails.  Therefore, a free list needs to be maintained even though it might be the case for
-real-world applications that the worst case occurs seldom.  I have not studied the frequency of this happening in this
+real-world applications that the worst case seldom occurs.  I have not studied the frequency of this happening in this
 report. It would make for good future work.
 
 Free In More Detail
@@ -65,8 +64,8 @@ A request that fits is associated with a new handle and returned. If there is no
 searched for a block that fits.
 
 Freeing a block marks it as unused and adds it to the free list, for malloc to find later as needed.  The free list is
-an index array of *2^3..k*-sized blocks with a linked list at each slot. All free blocks are guaranteed to be at least
-*2^n*, but smaller than *2^(n-^1)*, bytes in size. Unlike the buddy allocator, blocks are not merged on free. (See
+an index array of :math:`2^{3..k}`-sized blocks with a linked list at each slot. All free blocks are guaranteed to be at least
+:math:`2^n`, but smaller than :math:`2^{n-1}`, bytes in size. Unlike the buddy allocator, blocks are not merged on free. (See
 future work in section :ref:`jeff-future-work` for a brief discusson.)
 
 .. figure:: graphics/jeff-free-blockslots.png
@@ -80,11 +79,11 @@ Compacting
 ~~~~~~~~~~~~
 .. X X X (gres, DONE): jag har ju algoritm-adhd, så det kanske bara är jag, men fundera över om en bild hade varit bra här.
 
-Compacting uses a greedy Lisp-2-style compacting algorithm (R. Jones, R. Lins, 1997), see section :ref:`compact-heap`
+Compacting uses a greedy Lisp-2-style compacting algorithm Jones & Lins (1997), see section :ref:`compact-heap`
 for a step-by-step version and section :ref:`rmcompact` for
 an explanation with figures. In short, blocks are moved closer to bottom of the heap (if possible), otherwise the first
 block (or blocks) to fit in the unused space is moved there. The first case happens if there are no locked blocks
-between the unused space and next used (but not locked) block. Simply moving the memory blocks and updating pointers is
+between the unused space and next used (but not locked) block, simply moving the memory blocks and updating pointers is
 enough. A quick operation that leaves no remainding holes. If however there are any locked blocks between the unused
 space and the next used block, obviously only blocks with a total length of less than or equal the size of the unused
 space can be moved there. The algorithm is greedy and takes the first block that fits. More than one adjacent block that
@@ -111,7 +110,7 @@ Allocation Request
 #. If there is available space for the allocation request, use it and associate with the block.
 #. Else, find a free block within the free block slot list:
 
-   #. Search in the slot associated with the *log2*-size of the request for a free block.
+   #. Search in the slot associated with the math:`log_2´-size of the request for a free block.
    #. Else, repeat the previous step in higher slots until top is reached. If there are still no blocks found, fail.
 
 #. Split the block as needed, insert the rest into the free block slots and return the rest.
@@ -151,7 +150,8 @@ Measuring Jeff requires a rewrite of the application needing to be tested, to us
 solution to do so is to emulate a regular malloc, i.e. directly lock after malloc. But that would make the compact
 operation no-op since no blocks can be moved. On the other hand, adapting existing code to benefit from Jeff's interface
 is error-prone, it is not obvious which application would make good candidates. Automating the modifications, if possible, would
-save much time.  Finally, source code to the applications would be required for manual adaptions, which is not always accessible.
+save much time.  Finally, source code to the applications would be required for manual adaptions, which is not always
+available.
 
-The specifics of how data is gathered can be found in chapters :ref:`chapter-simulating-application-runtime` and :ref:`chapter-steve`.
+The specifics of how data is collected can be found in chapters :ref:`chapter-simulating-application-runtime` and :ref:`chapter-steve`.
 

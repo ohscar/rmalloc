@@ -108,10 +108,9 @@ When a block is freed, a ``free_memory_block_t`` is stored in the first bytes. T
 header->memory against the block, we know it's a valid free memory block. The next field points to the next block in the
 same size range (explained next).
 
-There are *log2(heap_size)* (rounded up) slots. Freeing a block of size 472 bytes means placing it at the start of the
-linked list at index 9 and hanging the previous list off the new block's next pointer, i.e. a stack.
-
-It's rebuilt at compact time.
+There are :math:`log_2(heap_size)` (rounded up) slots. Freeing a block of size 472 bytes means placing it at the start of the
+linked list at index 9 and hanging the previous list off the new block's next pointer, i.e. a stack, and is rebuilt at
+compact time. Adding a free block takes constant time.
 
 rmmalloc
 ~~~~~~~~~
@@ -119,13 +118,13 @@ Minimum allocatable size is ``sizeof(free_memory_block_t)`` for keeping informat
 I'll go through the process of allocation step by step.
 
 There are two cases: either there is space left after top of the memory for a header and the requested memory, in which
-case the easy path is taken where a header is allocated, ``g_memory_top`` is bumped and the header is associated with
+case the fast path is taken where a header is allocated, ``g_memory_top`` is bumped and the header is associated with
 the newly created memory and returned to the client. Allocating a header means searching the header array for an unused
 block, or if the optimization described above, following ``g_unused_header_root``. If none is found, ``g_header_bottom``
 grows downward if there is space, but there is always two headers left for compacting (more on that in the section on
 compacting).
 
-In the other case, there is no space left after ``g_memory_top`` and the free block must be searched for an appropriate
+In the other case, there is no space left after ``g_memory_top`` and the free block list must be scanned for an appropriate
 block. This is the most complex part of alloc/free.
 
 The time complexity of the simple case with the aferementioned optimization is *O(1)*, or *O(n)* (in terms of number of
@@ -135,15 +134,15 @@ specific size) and best case *O(1)*.
 
 Find free block
 ----------------
-Calculate the index *k* into the free block slots list from *log2(size)+1*. As previously explained, the free block
+Calculate the index *k* into the free block slots list from :math:`log_2(size)+1`. As previously explained, the free block
 slot list has a stack (implemented as a singly linked list) hanging off each slot, such that finding a suiting block
 will be a fast operation. The exeption is for requests of blocks in the highest slot have to be searched in full, since
-the first block found is not guaranteed to fit the size request, as the slot *k* stores free blocks *2^(k-1) <= n < 2^k*
-and there is no larger *k+1* slot to search in.
+the first block found is not guaranteed to fit the size request, as the slot *k* stores free blocks :math:`2^{k-1} <= n < 2^k`
+and there is no larger :math:`k+1` slot to search in.
 
-In the normal case the free block list is looked up at  *k* for a suiting block. If the stack is empty, *k* is increased
+In the normal case the free block list is looked up at *k* for a suiting block. If the stack is empty, *k* is increased
 and the free block list again is checked until a block is found.  Finally, if there was no block found, the actual index
-*log2(size)* is searched for a block that will fit. Remember that the blocks in a specific slot can be *2^k <= n < 2^k*
+:math:`log_2(size)` is searched for a block that will fit. Remember that the blocks in a specific slot can be :math:`2^{k-1} <= n < 2^k`
 and therefore there could be free blocks in slot *k* that are large enough for the request. When a block is found, it's
 shrunk into two smaller blocks if large enough, one of the requested size and the remainder. Minimum size for a block to
 be shrunk is having one extra header available and that the found block is ``sizeof(free_memory_block_t)`` bytes larger
@@ -167,10 +166,11 @@ The compacting operation consists of setup, compacting and finish.
 
 Start with sorting all memory headers by pointer address, such that ``g_root_header`` points to the lowest address in
 memory and by following the ``next`` pointer until ``NULL`` all blocks can be iterated. All blocks have a header associated
-with them, regardless of flags.  This step only has to be done once each call to *rmcompact()*.
+with them, regardless of flags.  This step only has to be done once each call to ``rmcompact()``.
 
 Actual compacting is done in passes so it can be optionally time limited, with a granularity of the time it takes to
-perform a single pass.
+perform a single pass, so it is not a hard limit. Also, the sorting in the beginning and the free block list rebuilding
+in the end is not included in the time constraint.
 
 One pass of moving blocks around
 ------------------------------------
@@ -208,13 +208,18 @@ One pass of moving blocks around
 
 #. Calculate offset from free area to unlocked area
 #. Squish free headers into one header and associate memory with the header
-#. Move unlocked blocks too free area
+#. Move unlocked blocks to free area
 
-  #. Memmove data
+  #. Move data
   #. Adjust used header pointers
 
 #. Adjacent: relink blocks so unlocked headers is placed before what's left of free area, and free area pointing to header
    directly following previous position of last unlocked header's next header, see Figure :ref:`jeffcompactadj0`, :ref:`jeffcompactadj1` and :ref:`jeffcompactadj2`.
+
+#. Non-adjacent: similar to adjacent, except blocks can't just be simply memmov'ed because of the locked blocks. Instead,
+   only the blocks that fit in the free space can be moved. See Figure :ref:`jeffcompactnonadj0`, :ref:`jeffcompactnonadj1`, :ref:`jeffcompactnonadj2a`, :ref:`jeffcompactnonadj2b`, :ref:`jeffcompactnonadj3a` and :ref:`jeffcompactnonadj3b`.
+
+#. Continue to next round, repeating until time limit reached or done (if no time limit set)
 
 .. figure:: graphics/compact-adjacent-relink-0.png
    :scale: 50%
@@ -231,8 +236,6 @@ One pass of moving blocks around
 
    :label:`jeffcompactadj2` Squish free block.
 
-#. Non-adjacent: similar to adjacent, except blocks can't just be simply memmov'ed because of the locked blocks. Instead,
-   only the blocks that fit in the free space can be moved. See Figure :ref:`jeffcompactnonadj0`, :ref:`jeffcompactnonadj1`, :ref:`jeffcompactnonadj2a`, :ref:`jeffcompactnonadj2b`, :ref:`jeffcompactnonadj3a` and :ref:`jeffcompactnonadj3b`.
 
 .. figure:: graphics/compact-nonadjacent-relink-0.png
    :scale: 50%
@@ -265,7 +268,6 @@ One pass of moving blocks around
    :label:`jeffcompactnonadj3b` b): Unlocked 3 fits, but not enough size to create a full block F5 -- instead extend size of Unlocked 3 with
    0 < n < sizeof(free_memory_block_t) bytes.
 
-#. Continue to next round, repeating until time limit reached or done (if no time limit set)
 
 Finishing
 -----------
@@ -275,7 +277,7 @@ block slots by iterating through ``g_header_root`` and placing free blocks in th
 
 rmdestroy
 ~~~~~~~~~
-Doesn't do anything - client code owns the heap passed on to rminit.
+Doesn't do anything - client code owns the heap passed to ``rminit()``.
 
 Testing
 ===========
@@ -283,9 +285,9 @@ As described in Chapter :ref:`chapter-method`, unit testing is utilized where ap
 
 Real-World Testing
 ~~~~~~~~~~~~~~~~~~~~
-Since the allocator does have the interface of standard allocators client code needs to be rewritten. In order to do
-testing and benchmarking of real-world applications, applications need to be rewritten. The two major problems with this
-is that it requires access to source code, and rewriting much of the source code.  This is where Steve is useful.
+Since the allocator does have the interface of standard allocators client code needs to be rewritten.  The two major
+problems with this is that it requires access to source code, and rewriting much of the source code.  This is where
+Steve is useful.
 
 
 Profiling
@@ -300,7 +302,7 @@ loop. Fortunately, there's a GCC extension ``__builtin_clz()`` (Count Leading Ze
 efficient machine code on at least x86 that can be used to write a fast ``log2(n)`` as ``sizeof(n)*8 - 1 - clz(n)``. The
 hotspots in the rest of the code were evenly distributed and no single point was more CPU-intense than another, except
 for ``header_find_free()``. As described above, there's a compile-time optimization that cuts down time from *O(n)* to
-*O(1)*, which helped cut down execution time yet some more at the expense of higher memory usage per block.
+*O(1)*, which helped cut down execution time even more at the expense of higher memory usage per block.
 
 More details and benchmarks in Chapter :ref:`chapter-steve`.
 

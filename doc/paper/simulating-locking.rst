@@ -26,11 +26,12 @@ Gathering Memory Access Data
 
 Simply getting malloc/free calls is trivially done by writing a malloc wrapper and make use of Linux' *LD_PRELOAD*
 technique for preloading a shared library, to make the applications use our own allocator that can do logging, instead
-of the system allocator.  By setting a special environment variable (``LD_PRELOAD``) prior to executing the application,
-to point to the location of a shared library, any symbols missing from the main application (which in the normal case
-is, among others, *malloc* and *free*) are searched for in that library, and only after the system libraries are
-searched. This is called *dynamic* linking, where symbols in the application are linked together at runtime, as opposed
-to *static* linking, where all symbols must exist in the application binary. 
+of the system allocator.  By pointing a special environment variable (``LD_PRELOAD``) to the location of a shared
+library prior to executing the application, any symbols missing from the main application (which in the normal case is,
+among others, *malloc* and *free*) are searched for in that library, and only after the system libraries are searched.
+This is called *dynamic* linking, where symbols in the application are linked together at runtime, as opposed to
+*static* linking, where all symbols must exist in the application binary. This requires the application to use the
+system *malloc* and *free* to work, since calls to a custom allocator within the application cannot be captured.
 
 Unfortunately that is not enough. To get statistics on memory *access* patterns one needs to essentially simulate the
 system the application runs in.  Options considered were TEMU [#]_ from the BitBlaze [#]_ project, but because it would
@@ -54,13 +55,17 @@ recompiling.
 .. [#] http://valgrind.org
 .. [#] https://github.com/mikaelj/rmalloc/commit/a64ab55d9277492a936d7d7acfb0a3416c098e81 (2014-02-09: "valgrind-3.9.0: memcheck patches")
 
-I've written a convenience script for this purpose and then optionally creates locking data::
+This is how the modified Valgrind, memtrace translation and locking calculation fits together, example given running
+StarOffice (``soffice /tmp/path/to/document.ods``)::
 
     #!/bin/bash
+
+    theapp=$1
 
     if [[ ! -d "$theapp" ]]; then
         mkdir $theapp
     fi
+    shift
     echo "$*" >> ${theapp}/${theapp}-commandline
     ../../valgrind/vg-in-place --tool=memcheck $* 2>&1 > \
         /dev/null | grep '^>>>' > ${theapp}/${theapp}
@@ -72,8 +77,8 @@ I've written a convenience script for this purpose and then optionally creates l
         ../steve/memtrace-to-ops/translate-ops-to-locking-lifetime.py \
         ${theapp}/${theapp}
 
-Beware that this takes long time for complex applications, about 30 minutes on an Intel Core i3-based system to load
-http://www.google.com in the web browser Opera [#]_.
+Beware that running larger applications through the memory access-logging Valgrind takes very long time, about 30
+minutes on an Intel Core i3-based system to load http://www.google.com in the web browser Opera [#]_.
 
 .. [#] http://www.opera.com
 
@@ -86,23 +91,23 @@ the following format::
 
 where op is one of N, F, L, S, M for New, Free, Load, Store and Modify, respectively and size is how many bytes are
 affected by the operation (always 0 for F).  The operation New has an address and size associated, and it's therefore
-possible to map memory access (L, S, M) to a specific pointer. This is done by creating a unique integer and mapping all
+possible to map memory access <L, S, M> to a specific pointer. This is done by creating a unique integer and mapping all
 keys from *address* to *address+size* to that identifier. On free, conversely, all mappings in that address range are
-removed. At each access a list of (id, access type, address, size) is recorded. 
+removed. At each access a list of tuples <id, access type, address, size> is recorded. 
 
 The output file (*opsfile*) has the following format::
 
     <handle> <op> <address> <size>
 
 This is done by the tools ``memtrace-run.sh`` and ``translate-memtrace-to-ops.py``.  It took some effort to figure out
-the best way to perform the translation, however.
+the best way to perform the translation, however. I'll discuss the effort below.
 
 Linear Scan
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 My initial attempt was to scan through the entire list each time for each operation.  The problem is that Python is very
 slow and uses too much memory, which my laptop with 4 GB of RAM and an intel Core i3 CPU can't handle - this only works
-for small-ish outputs. This because the list of handles is checked for each memory access, i.e. a 2'000 (approximately)
-entries list for each memory access (~500 MB), quickly becomes unusable.   I tried various approaches, such as moving
+for small-ish outputs. This because the list of handles is checked for each memory access, i.e. a :math:`\sim` 2000
+entries list for each memory access (:math:`\sim` 500 MB), quickly becomes unusable.   I tried various approaches, such as moving
 out the code to Cython (formerly known as Pyrex), which translates the Python code into C and builds it as a Python
 extension module (a regular shared library), but only doing that did not markedly speed things up.
 
@@ -110,10 +115,10 @@ Save CPU at the Expense of Memory
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 I eventually tried a mapping on the start and end addresses, where each access address would be decremented towards
 start and incremented towards end. Each address was checked against against a mapping from address to handle. If the
-value (i.e. the memory handle) of the mapping are the same, I knew that memory access belonged to a specific handle.
-That was even slower than iterating through 2'000 elements, because the hash has to be checked on average one lookup per
+value (i.e. the memory handle) of the mapping are the same, I know that memory access belonged to a specific handle.
+That was even slower than iterating through 2000 elements, because the hash has to be checked on average one lookup per
 allocated byte in the memory area, even though the time complexity is similar: *O(n*m + c)* - the constant makes it
-slower, assuming hash lookup is *O(1)* i.e. *c* - the constant makes it slower, assuming hash lookup is *O(1)* i.e. *c*.
+slower, assuming hash lookup is *O(1)* i.e. *c*.
 
 Finally, I came up with a brute-force solution: hash all addresses within the requested memory area - from start to end,
 mapping each address to the corresponding memory handle.  The complexity was *O(m)*, but blew up with a MemoryError at
@@ -156,17 +161,17 @@ each histogram.  I've implemented a simpler version of this, described below in 
 Alas, Lifetime Calculations Too Slow
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Recall from definitions, section :ref:`definitions`, lifetime is defined as number of ops on own handle divided by ops
-for all other handles, the given handle's lifetime.  Each handle is mapped to a tuple (own, others), and for each
+for all other handles, the given handle's lifetime.  Each handle is mapped to a tuple <own, others>, and for each
 operation either own or others is incremented, until the handle is freed, at which point it's moved to the set of
-inactive handles. This means going through all handles for each operation, which for smaller datasets would be OK.
+inactive handles. This means going through all handles for each operation, which for smaller datasets is OK.
 Even removing duplicates (two successive ops on the same handle) this quadratic *O(m\*n)* (m = ops, n = live handles)
 takes too long time.
 
 .. Again, we don't have that luck, and for the Opera data set it's about 8GB data. Even removing duplicates (two successive ops on the same handle) this quadratic *O(m\*n)* (m = ops, n = live handles) takes too long time.
 
-Instead, keep a counter of ops so far (ops_counter) and for each handle, store the tuple (own, value of ops_counter at
+Instead, keep a counter of ops so far (ops_counter) and for each handle, store the tuple <own, value of ops_counter at
 New>, and only increase the *own* value for ops mapping to a handle. Then, at death (free), calculate the "others"
-value by calculating *ops_counter - own - cached_ops_counter*. Example, with ops counter, set of alive, set of dead::
+value: *others_ops = ops_counter - own - cached_ops_counter*. Example, with ops counter, set of alive, set of dead::
 
     20 | {(a 5 0) (b 2 5) (c 10 7) (d 3 17)} | {}, (death b) =>
     20 | {(a 5 0) (c 10 7) (d 3 17)} | {(b 2 20-5-2=13)}, (death a) =>
@@ -195,7 +200,9 @@ object that has a short life span, whereas a block with a large macro lifetime i
 Typically a large value for macro lifetime means it's a global object and can be modelled as such.
 
 A coarse locking lifetime based on the macro lifetime, with a threshold of 50%, is calculated at memtrace-to-ops
-translation time, as described in section :ref:`translating-memory-access-data-to-ops` above.
+translation time, as described in section :ref:`translating-memory-access-data-to-ops` above. The threshold value 50% is
+chosen from the assumption that any object that has more than half of all memory accesses in one iteration of a loop is
+the primary object on which the loop operates.
 
 Depnding on the relation between ops accessing the block in question and ops accessing other objects the access pattern
 of the object can be modeled.  For example, if an object has 100 ops within its lifetime and 10 of them are its own
@@ -270,14 +277,15 @@ Clockwise from upper left corner, we see that lock status (i.e. lifetime > 0) va
 that is accessed so often is likely to be locked during its lifetime.  With sink equal to or larger than float, a very
 jagged graph is produced where the current object is locked/unlocked continously. A real-world application would want to
 lock the object once per tight loop and keep it locked until done, instead of continuously locking/unlocking the handle
-inside the loop. A loop is the time under the graph where lifetime is non-zero.
+inside the loop. The time under the graph where lifetime is non-zero is one iteration of the loop.
 
-When all ops have been processed they are written out to a new file that in addition to the regular ops also contained
+When all ops have been processed they are written out to a new file that in addition to the regular ops also contains
 detailed locking information. Since the number of objects is large and the calculation is independent of other objects,
 the process can be broken down into smaller tasks. This is done using the Python ``multiprocessing`` module, and by
 recording start and stop indices (based on the New or Free ops, respectively) into the input list, the list of start
 indices can be broken down into smaller parts to maximize usage of multi-core systems making processing the entire input
-file faster on the order of the number of available cores. 
+file faster on the order of the number of available cores.  The tools automatically picks the number of cores plus two
+for the number of worker threads to saturate the CPU.
 
 In the case of no corresponding Free operation for the block, no lifetime calculation is done, i.e. it is assumed to
 be unlocked. This is a limitation of the calculation based on the observation of applications that has a large
