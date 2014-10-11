@@ -16,22 +16,23 @@ digraph before {
 
     rankdir = LR;
 
+    simulator -> allocstats [constraint=false];
+    {rank=same; allocator; allocstats; }
+    {rank=same; simulator; valgrind; }
 
     subgraph stats {
         grapher [label="Grapher", shape=box];
         allocstats [label="Statistics"];
         allocstats1 [label="Statistics", style=dotted];
-        allocstats1 -> grapher;
+        allocstats1 -> grapher [style=dotted];
         allocstats -> grapher;
         allocstats2 [label="Statistics", style=dotted];
-        allocstats2 -> grapher;
+        allocstats2 -> grapher [style=dotted];
         grapher -> results;
-        results [label="Graphs and tables"];
+        results [label="Results: graphs/tables"];
     }
 
-    simulator -> allocstats [constraint=false];
-
-    subgraph simulator {
+    subgraph zimulator {
         valgrind [shape=box, label = "Patched Valgrind"];
         simulator [shape=box, label="Simulator"];
         application [label="Application"];
