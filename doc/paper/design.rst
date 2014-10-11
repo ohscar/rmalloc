@@ -35,7 +35,7 @@ Allocator Design
 
     ----
 
-I assume that there wil be idle time when the application is not doing any other processing. Since malloc and free must
+I assume that there willl be idle time when the application is not doing any other processing. Since malloc and free must
 be interactive, i.e. return immediately with a block of memory that the client code can use, anything that can be
 off-loaded to for batch processing at a later point in time when there is idle time in the application. Moreover, since
 I have the freedom to move objects around in memory transparently for client code, any logic in free/malloc that handles
@@ -149,9 +149,9 @@ of requests could be small and the total memory usage could be low.
 Measuring Jeff requires a rewrite of the application needing to be tested, to use the new malloc interface. The simple
 solution to do so is to emulate a regular malloc, i.e. directly lock after malloc. But that would make the compact
 operation no-op since no blocks can be moved. On the other hand, adapting existing code to benefit from Jeff's interface
-is error-prone, it is not obvious which application would make good candidates. Automating the modifications, if possible, would
-save much time.  Finally, source code to the applications would be required for manual adaptions, which is not always
-available.
+is error-prone. It is also not obvious which application would make good candidates. Automating the modifications, if
+possible, would save much time.  Finally, source code to the applications would be required for manual adaptions, which
+is not always available. I have therefore not done any manual adaptions of an application.
 
 The specifics of how data is collected can be found in chapters :ref:`chapter-simulating-application-runtime` and :ref:`chapter-steve`.
 

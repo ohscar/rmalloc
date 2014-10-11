@@ -158,7 +158,7 @@ each histogram.  I've implemented a simpler version of this, described below in 
     used for calculating new lifetimes.  If time allows for it, otherwise left in future work, since I'm not quite sure on
     what to plot to give the most useful information, and how much it would affect real-life lock/unlock patterns.
 
-Alas, Lifetime Calculations Too Slow
+Performance Optimization of Lifetime Calculation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Recall from definitions, section :ref:`definitions`, lifetime is defined as number of ops on own handle divided by ops
 for all other handles, the given handle's lifetime.  Each handle is mapped to a tuple <own, others>, and for each

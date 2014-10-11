@@ -3,7 +3,7 @@ Jeff and Steve: A Relocatable Memory Allocator and its Benchmarking Friend
 ===========================================================================
 :author: Mikael Jansson
 :abstract:
-    Memory fragmentation can be a problem in systems with limited amounts of memory. This report describes the work and
+    Memory fragmentation is a problem in systems with limited amounts of memory. This report describes the work and
     results conducted by the author designing and implementing a memory allocation system with compacting support,
     along a set of tools for visualizing characteristis and benchmarking the performance of user-provided allocators on
     arbitrary applications without requiring access to source code. The resulting allocator performed similar or better

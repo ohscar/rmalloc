@@ -132,10 +132,10 @@ The main loop follows the same basic structure:
 
 #. Exit on EOF.
 
-Next, I'll describe the specifics on the three main loops (peakmem, allocstats, memplot) and then the tools that use them.
-
 Driver Modes
 =============
+In this section, I'll describe the specifics on the three main loops (peakmem, allocstats, memplot) and then the tools that use them.
+
 peakmem
 ~~~~~~~~~~~~~
 Find the largest amount of memory during the driver's lifetime for a specific opsfile, as calculated by the highest

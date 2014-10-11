@@ -20,10 +20,9 @@ In order to achieve compacting, memory must be accessed indirectly. This is the 
 ``handle_t`` is an opaque type. To get the actual memory pointed to at by the handle, call `lock()` to obtain a regular
 pointer to memory. During the time a block pointed out by a handle is locked, the compact operation is not allowed to
 move it. If it could be moved, the pointer obtained by the client code would no longer be invalid. This also puts
-certain limitations on the compactor, since it needs to deal with possibly locked blocks.  More on `compact()` later.
-This forces client code needs to be adapted to this allocator, such that memory is always appropriately locked/unlocked
-as needd.
-
+certain limitations on the compactor, since it needs to deal with possibly locked blocks.  This forces client code needs
+to be adapted to this allocator, such that memory is always appropriately locked/unlocked as needd. The compacting
+operation is discussed in more detail in section :ref:`rmcompact`.
 
 Implementation
 ==============
@@ -105,7 +104,7 @@ by a compact operation::
 
 When a block is freed, a ``free_memory_block_t`` is stored in the first bytes. Therefore, the minimum block size is
 (again, 32-bit system) 8 bytes. The header member stores the actual information about the block. By checking
-header->memory against the block, we know it's a valid free memory block. The next field points to the next block in the
+``header->memory`` against the block, we know it's a valid free memory block. The next field points to the next block in the
 same size range (explained next).
 
 There are :math:`log_2(heap_size)` (rounded up) slots. Freeing a block of size 472 bytes means placing it at the start of the

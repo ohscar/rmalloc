@@ -27,11 +27,11 @@ to physical memory is required, such that each process has its own look-up table
 keep track of each page and to which part of memory it is mapped, the resulting look-up table will be very large if a
 small page size is used. These can then be written to disk (*swapped out*) when system memory becomes full and the pages
 are not in use by the application owning the page, based on a recent-used algorithm.  The algorithm varies
-depeding on operating system and use case.  Keeping the page size small decreases fragmentation, though, since the last
-page requested from a series of pages is essentially unused in the worst case. Therefore, increasing the page size can
-be tempting to reduce the look-up table, but this comes at the cost of fragmentation.  In some architectures, the
-operating system can increase the page size (so-called "huge pages" in Linux terminology, other operating systems use
-different names).
+depeding on operating system and use case.  In the worst case, the last page in a series of requested pages is largely
+unused, causing 4096-1 bytes to go to waste. Keeping the page size small lowers waste and therefore internal
+fragmentation.  Increasing the page size can be tempting to reduce the size of the look-up table, but this comes at the
+cost of fragmentation.  In some architectures, the operating system can increase the page size (so-called "huge pages"
+in Linux terminology, other operating systems use different names).
 
 
 .. raw:: comment-reference
@@ -49,9 +49,9 @@ different names).
 
 
 
-A very simple allocator would do little more than returning the pages as *malloc()* and have *free()* be a no-op.
-Obviously this causeslarge amount of memory to be wasted and if the application code using the allocator wanted
-to release memory back to the system and then allocate again several times, system memory would eventually run out.
+A very simple allocator would do little more than *malloc()* returning the pages and have *free()* do nothing at all.
+Clearly this causes large amount of memory to be wasted, since no memory would actually be released to the system.
+Eventually, the system would run out of memory.
 
 Therefore, an allocator needs to be more clever about managing memory. At the very minimum it needs to associate
 metadata with each allocated block in order to later free the blocks.  The metadata is there in order for
@@ -65,9 +65,10 @@ If the allocator can group together all e.g. 8-byte chunks into one or more page
 to the operating system when done.  Lookup can also be more efficient, since the allocator can use offsets to find a
 suitable free block, instead of iterating through a list of free blocks.
 
-Objectives
-===================
-Design and implement an allocator with the following interface::
+Thesis Statement and Contributions
+=======================================================
+The purpose of this thesis is to design and implement an allocator that can move around allocated blocks of memory, with
+the following interface::
 
     handle_t malloc(size_t n);
     void *lock(handle_t h);
@@ -76,13 +77,35 @@ Design and implement an allocator with the following interface::
 
 The purpose of the lock/unlock operations is to introduce an indirection for memory access that gives the ability to
 move data blocks around when not in use (*unlocked* state), specifically to cope with fragmentation problems by
-compacting the heap.  This is done in Chapter :ref:`chapter-jeff`.
+compacting the heap. 
 
-Collect a variety of applications that can be modified to use the different allocation interface for benchmarking
-purposes. This is done Chapter :ref:`chapter-steve`.
+In Chapter :ref:`chapter-allocator-types` I present an overview of the allocator I compare my work with.  Method and
+Design are in chapters :ref:`method` and :ref:`design`. 
 
-In order to compare my allocator against others, I test some of the most common allocators and discuss the results in
-Section :ref:`tested-allocators`.
+I have developed a method of simulating runtime behaviour of application using heuristics and show that it is possible
+to test performance of locking/unlocking allocators without access to source code. This is done in Chapter
+:ref:`chapter-simulating-application-runtime`.
+
+I show that randomized testing in large volume is a useful technique for finding problems in
+complex data structures, such as an allocator. This is done in Chapter :ref:`chapter-jeff`.
+
+I have collected a variety of applications that can be modified to use the different allocation interface for benchmarking
+purposes. This is done Chapter :ref:`chapter-steve`. The results from benchmarking my, and others', allocators, can be
+found in :ref:`chapter-results` which is finally discussed in Chapter :ref:`chapter-conclusions`. The results from
+benchmarking my, and others', allocators, can be found in :ref:`chapter-results` which is finally discussed in Chapter
+:ref:`chapter-conclusions`.
+
+
+.. raw:: comment-done 
+
+    Thesis Outline (XXX: kanske inte egen rubrik utan löpande)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    http://phdcomics.com/comics/archive/phd071713s.gif
+
+    http://www.butte.edu/library/documents/Research%20Paper%20Outline%20Examples.pdf
+
+    http://www.cs.toronto.edu/~sme/presentations/thesiswriting.pdf
+
 
 Definitions
 ============
@@ -90,8 +113,8 @@ Definitions
 * **External fragmentation**: The amount of memory wasted by allocator metadata.
 * **Op**: Any memory operation: new, free, load, store, modify, lock, unlock. Generally, load, store and modify is generalized to
   access. These are sometimes abbreviated to N for new, F for free, A for access, L for load, U for unlock.
-* **Memtrace**: File created by *memcheck* that contains triplets of *(op, address, size)*. See the appendix for the full
-  definition.
+* **Memtrace**: File created by Valgrind's *memcheck* tool (see Chapter :ref:`chapter-steve`) that contains triplets of *(op, address, size)*.
+  See the appendix for the full definition.
 * **Opsfile**: File created by ``translate-memtrace-to-ops.py``, contains one operation per line. See the appendix for the full
   definition.
 * **Lifetime**: The number of total operations, thus indirectly the time, between a New and a Free op for a specific block.
@@ -104,11 +127,6 @@ Definitions
 Challenges
 ============================================
 There are many trade-offs when writing an allocator, which I'll describe in the following section.
-
-I've touched upon internal and external fragmentation. In addition, multi-threaded applications that allocate memory
-need to work without the allocator crashing or currupting data. As in all concurrency situations, care needs to be taken
-to do proper locking of sensitive data structures, while not being too coarse such that performance suffers. I do not
-address the issue of locking.
 
 Allocators are often written to solve a specific goal, while still performing well in the average case. In fact, some
 allocators are designed with the explicit goal of being best on average. 
@@ -124,17 +142,25 @@ information about freed blocks in a list, there would be little wasting of memor
 efficiency requirement, pages would only be requested when there were no blocks of the correct size and therefore the
 entire free list must be searched for a suiting block before giving up and requesting a page.
 
+Multi-threaded applications that allocate memory need to work without the allocator crashing or currupting
+data. As in all concurrency situations, care needs to be taken to do proper locking of sensitive data structures, while
+not being too coarse such that performance suffers. I do not address the issue of locking.
+
+Another challenge is to make the allocator work efficiently for various memory sizes. I focus on small-memory systems,
+where space-efficiency is important, and I've made the trade-off (where applicable) that slower is better if it saves
+memory. It is currently in use at TLab West Systems AB on a system with a total of 512 KB RAM.
 
 Efficiency
 ======================================
 The question *Is fragmentation a problem?* is asked by Johnstone & Wilson (1998). At Opera circa 1997, that
 was indeed the case after repeatedly loading/unloading web pages. Large web pages loading many small resources,
 specifically images, created holes in memory when freed, such that after a few page loads, it was no longer possible to
-load any more pages. On a small-memory device, such as early smart phones/feature phones, with 4-8 MB RAM, this was
-indeed an issue. The out-of-memory situation happens despite there theoretically being enough memory available, but
-because of fragmentation large enough chunks could not be allocated. This goes against the the authors findings, where
-in the average case, fragmentation level is good enough. However, for Opera, that was insufficient.  By making a custom
-allocator with the signature outlined in the hypothesis, they hoped to solve the fragmentation problem in the specific
-situations that occur in a web browser. It was also to be used as the allocator of an in-house virtual machine. This not
-happen, however, because of delays in writing the thesis.
+load any more pages. It happened frequently on small-memory devices, such as early smart phones/feature phones with 4-8 MB RAM.
+
+Because of fragmentation, large enough blocks can eventually not be allocated, even though the total amount of free
+memory is greater than the requested block size.  This goes against the the authors findings', where in the average case,
+fragmentation level is good enough. However, for Opera, that was insufficient.  By making a custom allocator with the
+signature outlined in the hypothesis, they hoped to solve the fragmentation problem in the specific situations that
+occur in a web browser. It was also to be used as the allocator of an in-house virtual machine. This not happen,
+however, because of delays in writing the thesis.
 
