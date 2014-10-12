@@ -1212,6 +1212,7 @@ TEST_F(AllocTest, WriteCompactData) {
 
     bool done = false;
     int count = 0;
+uint8_t filler;
     while (!done) {
         int size = rand()%maxsize;
         handle_t h = rmmalloc(size);
@@ -1219,11 +1220,21 @@ TEST_F(AllocTest, WriteCompactData) {
         header_t *f = (header_t *)h;
 
         if (h == NULL) {
-            done = true;
-            break;
+/*
+            rmcompact(0);
+
+            h = rmmalloc(size);
+            fprintf(stderr, "COMPACT: trying to allocate %d (allocated %d)...", size, allocated);
+            f = (header_t *)h;
+            if (h == NULL) {
+*/
+                done = true;
+                break;
+ //           } 
         }
 
-        char filler = filling[f->size % maxfill];
+        filler = (uint32_t)f & 0xFF;//filling[f->size % maxfill];
+        //printf("filler: %X\n", filler);
         fprintf(stderr, "allocated %d in block %p (flags %d at %p) filling with %d %c", size, block_from_header(f), f->flags, f->memory, f->size, filler);
 
         uint8_t *foo = (uint8_t *)rmlock(h);
@@ -1235,6 +1246,8 @@ TEST_F(AllocTest, WriteCompactData) {
         allocated += size;
         if (largest < size)
             largest = size;
+
+        //if (rand()%100 == 0) rmcompact(0);
 
         // free by 50% probability
         if (rand()%2 == 0) {
@@ -1256,7 +1269,7 @@ TEST_F(AllocTest, WriteCompactData) {
             if (f2 && f2->memory && f2->flags == HEADER_UNLOCKED) {
                 fputc('.', stderr);
                 uint8_t *foo2 = (uint8_t *)f2->memory;
-                char filler = filling[f2->size % maxfill];
+                filler = (uint32_t)f2 & 0xFF; //filling[f2->size % maxfill];
                 for (int i=0; i<f2->size; i++) {
                     if (foo2[i] != filler) 
                         fprintf(stderr, "\nByte at %d: '%c' != '%c', header %p (offset %d), size %d, block %p\n",
@@ -1271,13 +1284,13 @@ TEST_F(AllocTest, WriteCompactData) {
 
     }
 
-    rmcompact(200);
+    rmcompact(0);
 
     header_t *f = g_header_top;
     while (f >= g_header_bottom) {
         if (f && f->memory && f->flags == HEADER_UNLOCKED) {
             uint8_t *foo = (uint8_t *)f->memory;
-            char filler = filling[f->size % maxfill];
+            filler = (uint32_t)f & 0xFF; //filling[f->size % maxfill];
             for (int i=0; i<f->size; i++) {
                     if (foo[i] != filler) 
                         fprintf(stderr, "\nByte at %d: '%c' != '%c', header %p (offset %d) block %p\n",
