@@ -76,10 +76,6 @@ allocated block. Summary in Table :ref:`table:memory-positions` below with scori
 
 Discussion
 ============
-XXX (gres)
-~~~~~~~~~~
-* finns det annan forskning som har tittat på samma sak?
-
 Important to note is that tcmalloc was not able to finish all runs when making a decision on which allocator to use.
 Also, the tested allocators were designed to use ``mmap()`` for memory allocation along with ``sbrk()`` which very
 likely skewed the results.

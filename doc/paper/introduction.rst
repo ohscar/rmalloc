@@ -80,7 +80,7 @@ move data blocks around when not in use (*unlocked* state), specifically to cope
 compacting the heap. 
 
 In Chapter :ref:`chapter-allocator-types` I present an overview of the allocator I compare my work with.  Method and
-Design are in chapters :ref:`method` and :ref:`design`. 
+Design are in chapters :ref:`chapter-method` and :ref:`chapter-design`. 
 
 I have developed a method of simulating runtime behaviour of application using heuristics and show that it is possible
 to test performance of locking/unlocking allocators without access to source code. This is done in Chapter
@@ -91,14 +91,12 @@ complex data structures, such as an allocator. This is done in Chapter :ref:`cha
 
 I have collected a variety of applications that can be modified to use the different allocation interface for benchmarking
 purposes. This is done Chapter :ref:`chapter-steve`. The results from benchmarking my, and others', allocators, can be
-found in :ref:`chapter-results` which is finally discussed in Chapter :ref:`chapter-conclusions`. The results from
-benchmarking my, and others', allocators, can be found in :ref:`chapter-results` which is finally discussed in Chapter
-:ref:`chapter-conclusions`.
+found in :ref:`chapter-results` which is finally discussed in Chapter :ref:`chapter-conclusion`. 
 
 
 .. raw:: comment-done 
 
-    Thesis Outline (XXX: kanske inte egen rubrik utan löpande)
+    Thesis Outline (X X X: kanske inte egen rubrik utan löpande)
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     http://phdcomics.com/comics/archive/phd071713s.gif
 

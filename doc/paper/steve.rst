@@ -14,6 +14,9 @@ running the actual application.
 
    :label:`steve-overview` Architectural diagram of Steve
 
+Multiple statistics files can be fed to the grapher for doing comparisons between different allocators on the same input
+data set.
+
 Tools
 =====
 Steve is a collection of tools:

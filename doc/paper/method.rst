@@ -45,6 +45,23 @@ between the allocators.
 This is described in greater detail in chapters :ref:`chapter-simulating-application-runtime`, :ref:`chapter-steve` and
 section :ref:`input-data`.
 
+Assumptions
+==============
+* A1: An allocator with little extra increase in memory usage compared to the requested memory by the client application
+  is efficient in space.
+* A2: An allocator that has a low and constant execution time is efficient in time.
+
+Hypothesis
+==========
+* H1: An allocator that performs heap compaction can be efficient in both time and space, compared to other commonly
+  used allocators. By making the malloc and free operations fast and the compact operation relatively slow and and
+  calling it when the system is idle it is possible to achieve this.
+
+What are the space and time requirements of Jeff compared to other popular allocators? Is Jeff a viable alternative to other
+popular allocators in real-world situations?
+
+I aim to answer these questions in the report.
+
 Development Environment
 =========================
 The main development system is a Linux-based system (32-bit Ubuntu 13.04), but could likely be adapted to other
@@ -86,143 +103,6 @@ then run several tens of thousands of allocations/frees and make sure no other d
 filling the allocated data with a constant byte value determined by the address of the returned handle.  Many
 bugs were found this way, many of them not happening until thousands of allocations.  
 
-Fuzzing
-~~~~~~~~
-I've introduced bugs in the functions called from the allocation interface to see if the testing framework would pick them
-up. Focus is to introduce small changes, so-called *off-by-one errors*, where (as the name suggest) a value or code path
-is changed only slightly but causes errors.
-
-|  ``free_memory_block_t *block_from_header(header_t *header)``:
-|
-|     ``return (free_memory_block_t *)((uint8_t *)header->memory + header->size) - 1;``
-
-| Fuzzed
-|    
-|    ``return (free_memory_block_t *)((uint8_t *)header->memory + header->size);``
-
-
-|  ``uint32_t log2_(uint32_t n)``:
-|
-|    ``return sizeof(n)*8 - 1 - __builtin_clz(n);``
-
-| Fuzzed
-| 
-|    ``return sizeof(n)*8 - __builtin_clz(n);``
-
-|  ``inline bool header_is_unused(header_t *header)``:
-|
-|    ``return header && header->memory == NULL;``
-
-| Fuzzed
-|
-|    ``return header && header->memory != NULL;``
-
-|  ``inline void header_clear(header_t *h)``:
-|
-|    ``h->memory = NULL;``
-|    ``h->next = NULL;``
-
-| Fuzzed (1)
-|
-|    ``//h->memory = NULL;``
-|    ``h->next = NULL;``
-
-| Fuzzed (2)
-|
-|    ``h->memory = NULL;``
-|    ``//h->next = NULL;``
-
-|  ``header_t *header_new(bool insert_in_list, bool spare_two_for_compact)``
-|
-|    ``...``
-|    ``header->flags = HEADER_UNLOCKED;``
-|    ``header->memory = NULL;``
-|    ``...``
-|    ``if ((header->next < g_header_bottom || header->next > g_header_top) && header != g_header_root) {``
-|    ``...``
-
-
-| Fuzzed (1)
-|
-|    ``...``
-|    ``//header->flags = HEADER_UNLOCKED;``
-|    ``header->memory = NULL;``
-|    ``...``
-|    ``if ((header->next < g_header_bottom || header->next > g_header_top) && header != g_header_root) {``
-|    ``...``
-
-
-| Fuzzed (2)
-|
-|    ``...``
-|    ``header->flags = HEADER_UNLOCKED;``
-|    ``header->memory = NULL;``
-|    ``...``
-|    ``if ((header->next < g_header_bottom || header->next > g_header_top)) {``
-|    ``...``
-
-
-|  ``header_t *block_free(header_t *header)``
-|
-|    ``block->next = g_free_block_slots[index];``
-|    ``g_free_block_slots[index] = block;``
-
-| Fuzzed
-|
-|    ``g_free_block_slots[index] = block;``
-|    ``block->next = g_free_block_slots[index];``
-
-|  ``free_memory_block_t *freeblock_shrink_with_header(free_memory_block_t, header_t *, uint32_t)``
-|
-|    ``h = header_new(/*insert_in_list*/true, /*force*/false);``
-
-| Fuzzed (1)
-|
-|    ``h = header_new(/*insert_in_list*/false, /*force*/false);``
-
-| Fuzzed (2)
-|
-|    ``h = header_new(/*insert_in_list*/true, /*force*/true);``
-
-|  ``header_t *freeblock_find(uint32_t size)``
-|
-|    ``int target_k = log2_(size)+1;``
-
-| Fuzzed
-|
-|    ``int target_k = log2_(size);``
-
-|  ``rmcompact(int maxtime)``
-|
-|    ``uint32_t used_offset = header_memory_offset(free_first, unlocked_first);``
-|    ``...``
-|    ``header_t *free_memory = header_new(/*insert_in_list*/false, /*force*/true)``
-
-
-| Fuzzed (1)
-|
-|    ``uint32_t used_offset = header_memory_offset(free_first, free_last);``
-
-| Fuzzed (2)
-|
-|    ``header_t *free_memory = header_new(/*insert_in_list*/true, /*force*/true)``
-
-
-
-.. raw:: comment-does-not-break
-
-    | Original ``header_t *header_find_free(bool spare_two_for_compact)``
-    |
-    |    ``...``
-    |    ``if (g_header_bottom - limit > g_memory_top) {``
-    |    ``...``
-
-    | Fuzzed:
-    |
-    |    ``...``
-    |    ``if (g_header_bottom - limit >= g_memory_top) {``
-    |    ``...``
-
 
 
 .. [#] http://en.wikipedia.org/wiki/SUnit
@@ -237,21 +117,4 @@ is changed only slightly but causes errors.
   space efficiency and distribution of allocation requests.
 
 .. Can an allocator, such as described in Objectives, be efficient in space and time? That is the question I aim to answer in this paper.
-
-Assumptions
-==============
-* A1: An allocator with little extra increase in memory usage compared to the requested memory by the client application
-  is efficient in space.
-* A2: An allocator that has a low and constant execution time is efficient in time.
-
-Hypothesis
-==========
-* H1: An allocator that performs heap compaction can be efficient in both time and space, compared to other commonly
-  used allocators. By making the malloc and free operations fast and the compact operation relatively slow and and
-  calling it when the system is idle it is possible to achieve this.
-
-What are the space and time requirements of Jeff compared to other popular allocators? Is Jeff a viable alternative to other
-popular allocators in real-world situations?
-
-I aim to answer these questions in the report.
 
