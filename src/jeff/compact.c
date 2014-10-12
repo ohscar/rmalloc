@@ -546,7 +546,6 @@ inline header_t *header_set_unused(header_t *header) {
     header_clear(header);
 
 #if JEFF_MAX_RAM_VS_SLOWER_MALLOC == 0
-#if 0
     if (g_unused_header_root == NULL)
     {
         g_unused_header_root = header;
@@ -557,10 +556,6 @@ inline header_t *header_set_unused(header_t *header) {
         g_unused_header_root = header;
     }
     g_unused_header_root->next_unused = NULL;
-#endif
-    // see https://github.com/mikaelj/rmalloc/issues/1
-    header->next_unused = g_unused_header_root;
-    g_unused_header_root = header;
 #endif
 
 #ifdef DEBUG
