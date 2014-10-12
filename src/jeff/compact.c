@@ -541,13 +541,11 @@ inline bool header_is_unused(header_t *header) {
     return header && header->memory == NULL;
 }
 inline void header_clear(header_t *h) {
-#if 1
     h->memory = NULL;
     h->size = 0;
     h->next = NULL;
 #if JEFF_MAX_RAM_VS_SLOWER_MALLOC == 0
     h->next_unused = NULL;
-#endif
 #endif
 }
 
