@@ -1,0 +1,9 @@
+http://askubuntu.com/questions/145887/why-no-library-files-installed-for-google-test
+
+
+sudo aptitude install libgtest-dev
+cd /usr/src/gtest
+sudo cmake .
+sudo make
+sudo mv libg* /usr/lib/
+
