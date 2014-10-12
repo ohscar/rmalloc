@@ -1215,27 +1215,40 @@ TEST_F(AllocTest, WriteCompactData) {
 uint8_t filler;
     while (!done) {
         int size = rand()%maxsize;
+        uint32_t used_block_count = rmstat_get_used_block_count();
+        //printf("BEFORE used block count: %u\n", used_block_count);
         handle_t h = rmmalloc(size);
-        fprintf(stderr, "trying to allocate %d (allocated %d)...", size, allocated);
+        uint32_t currcount = rmstat_get_used_block_count();
+        //printf("after rmmalloc %X, used block count before %u after %u\n", h, used_block_count, currcount);
+        //fprintf(stderr, "trying to allocate %d (allocated %d)...", size, allocated);
         header_t *f = (header_t *)h;
 
         if (h == NULL) {
-/*
+            //printf("h == NULL\n");
+            uint32_t before=rmstat_get_used_block_count();
             rmcompact(0);
+            uint32_t after=rmstat_get_used_block_count();
+            ASSERT_EQ(before, after);
 
             h = rmmalloc(size);
-            fprintf(stderr, "COMPACT: trying to allocate %d (allocated %d)...", size, allocated);
+            //fprintf(stderr, "COMPACT: trying to allocate %d (allocated %d)...", size, allocated);
             f = (header_t *)h;
             if (h == NULL) {
-*/
                 done = true;
                 break;
- //           } 
+            } 
+            after=rmstat_get_used_block_count();
+            ASSERT_EQ(before+1, after);
+            //printf("after NULL alloc and compact: before %u after %u\n", before, after);
+        } else {
+            uint32_t curr=rmstat_get_used_block_count();
+            //printf("used block count before %u after %u\n", used_block_count, curr);
+            ASSERT_EQ(used_block_count+1, curr);
         }
 
         filler = (uint32_t)f & 0xFF;//filling[f->size % maxfill];
         //printf("filler: %X\n", filler);
-        fprintf(stderr, "allocated %d in block %p (flags %d at %p) filling with %d %c", size, block_from_header(f), f->flags, f->memory, f->size, filler);
+        //fprintf(stderr, "allocated %d in block %p (flags %d at %p) filling with %d %c", size, block_from_header(f), f->flags, f->memory, f->size, filler);
 
         uint8_t *foo = (uint8_t *)rmlock(h);
         for (int i=0; i<f->size; i++)
@@ -1255,8 +1268,9 @@ uint8_t filler;
 
             //fprintf(stderr, "free %p size %d (slot %d)\n", block_from_header(f), f->size, log2_(f->size));
             //freeblock_print();
-            fprintf(stderr, "....freeing");
+            //fprintf(stderr, "....freeing");
             rmfree(h);
+            ASSERT_EQ(used_block_count, rmstat_get_used_block_count());
         } else {
             //fprintf(stderr, "alloc %p size %d (slot %d)\n", block_from_header(f), f->size, log2_(f->size));
             //freeblock_print();

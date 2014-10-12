@@ -21,7 +21,7 @@ CFLAGS=-std=gnu99
 
 tests: test_*.cpp $(SOURCES)
 	#gcc -o run_tests test_*.cpp $(SOURCES) -g -std=gnu99 -lstdc++ -lgtest -lgtest_main -lpthread -lrt
-	gcc -o run_tests test_*.cpp listsort.c -g -std=gnu99 -lstdc++ -lgtest -lgtest_main -lpthread -lrt
+	gcc -o run_tests -g -O0 -DDEBUG test_*.cpp listsort.c -g -std=gnu99 -lstdc++ -lgtest -lgtest_main -lpthread -lrt
 
 compact: $(SOURCES)
 	gcc -o compact $(SOURCES)

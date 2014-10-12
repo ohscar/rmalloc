@@ -397,6 +397,12 @@ static uint32_t get_block_count(uint32_t *free_count, uint32_t *locked_count, ui
 {
     header_t *node = g_header_root;
     uint32_t count = 0;
+    
+    if (free_count) *free_count = 0;
+    if (locked_count) *locked_count = 0;
+    if (unlocked_count) *unlocked_count = 0;
+    if (weaklocked_count) *weaklocked_count = 0;
+    if (size_unlocked) *size_unlocked = 0;
 
     while (node != NULL) {
         if (node->flags == HEADER_FREE_BLOCK && free_count != NULL)
@@ -422,7 +428,9 @@ static uint32_t get_block_count(uint32_t *free_count, uint32_t *locked_count, ui
 uint32_t rmstat_get_used_block_count(void) {
     uint32_t fc, lc, uc, wc, su;
     get_block_count(&fc, &lc, &uc, &wc, &su);
-    return fc + lc + uc + wc;
+    //printf("rmstat_get_used_block_count: fc %u, lc %u uc %u wc %u\n", fc, lc, uc, wc);
+    //return fc + lc + uc + wc;
+    return lc + uc + wc; // I don't _free_ should be included here.
 }
 
 void rmstat_get_used_blocks(ptr_t *blocks) {
@@ -533,11 +541,13 @@ inline bool header_is_unused(header_t *header) {
     return header && header->memory == NULL;
 }
 inline void header_clear(header_t *h) {
+#if 1
     h->memory = NULL;
     h->size = 0;
     h->next = NULL;
 #if JEFF_MAX_RAM_VS_SLOWER_MALLOC == 0
     h->next_unused = NULL;
+#endif
 #endif
 }
 
@@ -567,6 +577,8 @@ inline header_t *header_set_unused(header_t *header) {
 
 header_t *header_find_free(bool spare_two_for_compact) {
     const int limit = 2; // for compact
+    //const int limit = 0; // BUG: Not caught
+    //const int limit = 1; // BUG: Not caught
     header_t *h = NULL;
 
 #if JEFF_MAX_RAM_VS_SLOWER_MALLOC == 0
