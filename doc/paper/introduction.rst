@@ -65,6 +65,7 @@ If the allocator can group together all e.g. 8-byte chunks into one or more page
 to the operating system when done.  Lookup can also be more efficient, since the allocator can use offsets to find a
 suitable free block, instead of iterating through a list of free blocks.
 
+
 Thesis Statement and Contributions
 =======================================================
 The purpose of this thesis is to design and implement an allocator that can move around allocated blocks of memory, with
@@ -92,7 +93,6 @@ complex data structures, such as an allocator. This is done in Chapter :ref:`cha
 I have collected a variety of applications that can be modified to use the different allocation interface for benchmarking
 purposes. This is done Chapter :ref:`chapter-steve`. The results from benchmarking my, and others', allocators, can be
 found in :ref:`chapter-results` which is finally discussed in Chapter :ref:`chapter-conclusion`. 
-
 
 .. raw:: comment-done 
 
@@ -159,6 +159,49 @@ Because of fragmentation, large enough blocks can eventually not be allocated, e
 memory is greater than the requested block size.  This goes against the the authors findings', where in the average case,
 fragmentation level is good enough. However, for Opera, that was insufficient.  By making a custom allocator with the
 signature outlined in the hypothesis, they hoped to solve the fragmentation problem in the specific situations that
-occur in a web browser. It was also to be used as the allocator of an in-house virtual machine. This not happen,
+occur in a web browser. It was also to be used as the allocator of an in-house virtual machine. This did not happen,
 however, because of delays in writing the thesis.
+
+Related Work 
+==================
+Closely related to a compacting allocator is the garbage collector, which are popular in managed languages that do not
+run directly on hardware. In particular, the Java Virtual Machine (JVM) includes different garbage collector (GC) flavors depending
+on the task at hand. As of version 5, there are four variants (Sun Microsystems, 2006) with different characteristics
+that should be picked depending on the type of application written. Each GC flavor can be configured.
+Configuration settings, including setting GC flavor, can be done at runtime via command line parameters to the JVM.
+
+All JVM GCs use *generations*, in which objects are allocated and later moved if they survive a garbage collection. This
+is mainly done as a optimization to execution time since different collection strategies can be used for "young" objects
+and "old" objects (i.e. the ones that have survived a set number of collections).  A generation is implemented as
+separate memory areas, and therefore, areas that are not full, waste memory.  Also, application code is unaware of when
+collection occurs, generations is also a means of reduce the time the application is paused, if the collection cannot
+happen simultaneously with application execution.  Pausing in general is a problem GCs try to solve.
+
+In my thesis, I give control over pausing to the application that can decide at its own discretion when the most
+appropriate time is for heap compacting. In the optimal case, where a simple *bump-the-pointer* technique can be used,
+i.e. increase the heap pointer for the next chunk of memory, allocation will be very quick, at the expense of compacting
+having to occur frequently. This is a deliberate trade-off, based on the assumption that there will be idle time in the
+application where compacting is more appropriate. Generations would be of no benefit in this scenario.  In the worst
+case, however, blocks on the heap are locked at compacting time. These blocks cannot be moved and therefore a free list
+needs to be maintained, causing allocation to be slower. Being able to move these blocks to a location where they cause
+less harm is left as future work.
+
+.. raw:: comment-todo
+
+    At the time of starting work on the thesis (2008), .Net Micro framework was not available.
+    .Net Micro Framework was first released Aug 26 2010 with .NET MF PK 4.1? http://netmf.codeplex.com/releases/view/133285
+    Source code download at netmf.codeplex.com via link.
+
+    mscorlib: http://referencesource.microsoft.com/#mscorlib/system/gc.cs
+
+    Source code was not available at the time of the start of the work. However, it is now, so I'll go through what they've
+    done.  SimpleHeap implementation in .Net is a Buddy Allocator:
+    http://netmf.codeplex.com/SourceControl/latest#client_v4_1/DeviceCode/pal/SimpleHeap/SimpleHeap.cpp
+
+
+    Mono uses either Boehm or Precise SGen: http://www.mono-project.com/docs/advanced/garbage-collector/sgen/
+    .Net Microframework http://netmf.codeplex.com/SourceControl/latest#client_v4_1/CLR/Core/GarbageCollector.cpp
+
+    Java: http://www.azulsystems.com/sites/default/files/images/Understanding_Java_Garbage_Collection_v3.pdf
+
 

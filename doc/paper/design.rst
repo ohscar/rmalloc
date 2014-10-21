@@ -6,8 +6,8 @@
 The implementation of the allocator (Jeff) is described in detail in Chapter :ref:`chapter-jeff`, and the implementation of the
 benchmark tool (Steve) is described in detail in Chapter :ref:`chapter-steve`.
 
-Background
-============
+Design Background
+===================
 To get started with my allocator, I started implementing a buddy allocator since the basics of the buddy allocator is
 used in the allocators I've included in my comparison. (Evans 2006) Since a buddy allocator's two main modes of operation is
 splitting and joining blocks, care needs to be taken that these two operations are as quick as possible.
@@ -110,7 +110,7 @@ Allocation Request
 #. If there is available space for the allocation request, use it and associate with the block.
 #. Else, find a free block within the free block slot list:
 
-   #. Search in the slot associated with the math:`log_2´-size of the request for a free block.
+   #. Search in the slot associated with the math:`log_2`-size of the request for a free block.
    #. Else, repeat the previous step in higher slots until top is reached. If there are still no blocks found, fail.
 
 #. Split the block as needed, insert the rest into the free block slots and return the rest.

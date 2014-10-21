@@ -112,6 +112,8 @@ Features
 * Use bits of pointer to memory block, if size is limited. In practice, a special-purpose allocator such as Jeff will
   likely work with less than the full 32 bits. (For example, limiting to max 1 GB heap gives two extra bits for flags.)
 * Weak locking
+* Introduce a mature generation for blocks that have been locked for *n* compactions. This would require application
+  co-operation in updating any references to the block.
 
 Implementation Optimizations
 --------------------------------------------
@@ -119,7 +121,7 @@ Implementation Optimizations
   live blocks to :math:`2^{sizeof(next\_unused\_offset)}`, which might not be an issue. It could be a compile-time setting.
 * Automatic merge with adjacent prev/next block in free/new. This would cause the free list slots contain too large
   blocks for its index.
-* Quick free block find overwrites itself, issue #1 in the Github rmalloc issue tracker.
+* Quick free block find overwrites itself, issue #1 in the Github rmalloc issue tracker. 
 
 .. + discarded: notification on low memory for user compact (spent much time trying to work out algorithm before there was working
     code, premature optimization) <FUTURE-WORK>
@@ -141,4 +143,6 @@ Possible Features
 --------------------
 * Reintroduce colormap for calculating theoretical free size from overhead marked in the colormap.
 * Measure how high part of the total number of blocks are locked at compacting time.
+* Investigate stack-based behaviour of computation (and thus allocation) for a possibly more realistic heuristic for
+  calculating locking.
 

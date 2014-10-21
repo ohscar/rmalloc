@@ -8,3 +8,6 @@
 * *The Memory Fragmentation Problem: Solved?* (Mark S. Johnstone, Paul R. Wilson, 1998)
 * *A Scalable Concurrent malloc(3) Implementation for FreeBSD* (Jason Evans, April 2006) -
   http://people.freebsd.org/~jasone/jemalloc/bsdcan2006/jemalloc.pdf
+* *Memory Management in the Java HotSpot Virtual Machine* (Sun Microsystems, April 2006) - 
+  http://www.oracle.com/technetwork/java/javase/memorymanagement-whitepaper-150215.pdf
+
