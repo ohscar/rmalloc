@@ -15,3 +15,13 @@ http://www.quora.com/Is-tcmalloc-stable-enough-for-production-use
 https://www.facebook.com/notes/facebook-engineering/scalable-memory-allocation-using-jemalloc/480222803919
 
 
+Getting Started with the .net micro framework on the STM32F429 discovery kit:
+
+http://www.st.com/st-web-ui/static/active/en/resource/technical/document/user_manual/DM00096190.pdf
+
+
+
+* http://www.azulsystems.com/sites/default/files/images/Understanding_Java_Garbage_Collection_v3.pdf
+* http://www.oracle.com/technetwork/java/javase/memorymanagement-whitepaper-150215.pdf
+*
+
