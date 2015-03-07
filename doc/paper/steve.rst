@@ -183,6 +183,9 @@ level, not blocking other threads trying to use the allocator at the same time.
 In fact, at Opera, *dlmalloc* was used internally to better tune allocator characteristics for memory-constrained
 devices, where all available memory was requested at startup and then used by the internal malloc.
 
+The allocators tested are drop-in replacements for malloc and free. Including garbage collectors in this test is left
+for future work.
+
 rmmalloc (Jeff)
 ~~~~~~~~~~~~~~~~~~~~~
 Maps all ``user_...`` calls to the corresponding calls in Jeff. For the compacting version, ``user_handle_oom`` always performs a full compact, and on the non-compacting version, ``user_handle_oom`` is a no-op.

@@ -10,7 +10,7 @@
 Computer systems can be generalized to be composed of two things: data, and code operating on said data.  In order to
 perform useful calculations, real-world applications accept user data which often varies in size.  To accomodate the
 differences, memory is requested dynamically, at runtime, using a memory allocator.  The basic interface to the
-allocator is the two functions *malloc(size)* and *free(pointer)*: the application gives malloc a size and retrieves a
+allocator consists of the two functions *malloc(size)* and *free(pointer)*: the application gives malloc a size and retrieves a
 pointer to a chunk of memory guaranteed to be at least *size* bytes. The operation *free(pointer)*, on the other hand
 gives the memory back to the system.
 
@@ -22,16 +22,17 @@ the default size is 4 KB, and can on some architectures be increased.
 .. <REF: list of page sizes>.
 
 On operating systems where programs' memory are protected from each other, meaning no application can overwrite any
-other application's memory, the page addresses are virtual and therefore a look-up table mapping virtual (page) address
-to physical memory is required, such that each process has its own look-up table.  Since the processor needs to
-keep track of each page and to which part of memory it is mapped, the resulting look-up table will be very large if a
-small page size is used. These can then be written to disk (*swapped out*) when system memory becomes full and the pages
-are not in use by the application owning the page, based on a recent-used algorithm.  The algorithm varies
-depeding on operating system and use case.  In the worst case, the last page in a series of requested pages is largely
-unused, causing 4096-1 bytes to go to waste. Keeping the page size small lowers waste and therefore internal
-fragmentation.  Increasing the page size can be tempting to reduce the size of the look-up table, but this comes at the
-cost of fragmentation.  In some architectures, the operating system can increase the page size (so-called "huge pages"
-in Linux terminology, other operating systems use different names).
+other application's memory, the page addresses are virtual and therefore a kernel-space -- the operating mode of the
+operating system where the kernel and hardware drivers run -- look-up table mapping virtual (page) address to physical
+memory is required, such that each process has its own look-up table.  Since the processor needs to keep track of each
+page and to which part of memory it is mapped, the resulting look-up table will be very large if a small page size is
+used. These can then be written to disk (*swapped out*) when system memory becomes full and the pages are not in use by
+the application owning the page, based on a recent-used algorithm.  The algorithm varies depeding on operating system
+and use case.  In the worst case, the last page in a series of requested pages is largely unused, causing 4096-1 bytes
+to go to waste. Keeping the page size small lowers waste and therefore internal fragmentation.  Increasing the page size
+can be tempting to reduce the size of the look-up table, but this comes at the cost of fragmentation.  In some
+architectures, the operating system can increase the page size (so-called "huge pages" in Linux terminology, other
+operating systems use different names).  
 
 
 .. raw:: comment-reference
@@ -49,9 +50,10 @@ in Linux terminology, other operating systems use different names).
 
 
 
-A very simple allocator would do little more than *malloc()* returning the pages and have *free()* do nothing at all.
-Clearly this causes large amount of memory to be wasted, since no memory would actually be released to the system.
-Eventually, the system would run out of memory.
+A very simple user-space -- the operating mode of the operating system where normal applications run -- allocator would
+do little more than *malloc()* returning the pages and have *free()* do nothing at all.  Clearly this causes large
+amount of memory to be wasted, since no memory would actually be released to the system.  Eventually, the system would
+run out of memory. 
 
 Therefore, an allocator needs to be more clever about managing memory. At the very minimum it needs to associate
 metadata with each allocated block in order to later free the blocks.  The metadata is there in order for
@@ -59,7 +61,7 @@ metadata with each allocated block in order to later free the blocks.  The metad
 more pools of memory split up in different size ranges, such as "small blocks", "medium-sized blocks" and "large
 blocks". By analyzing the runtime requirements of various applications, the most common case (i.e., block size) can be
 optimized for speed, space or both. The pool(s) are used because of the fact that applications often allocate data in
-common sizes. 
+common sizes.
 
 If the allocator can group together all e.g. 8-byte chunks into one or more pages, it will be easier to return the page
 to the operating system when done.  Lookup can also be more efficient, since the allocator can use offsets to find a
@@ -117,6 +119,8 @@ Definitions
   definition.
 * **Lifetime**: The number of total operations, thus indirectly the time, between a New and a Free op for a specific block.
 * **Block**: A chunk of allocated memory.
+* **Header**: An internal data structure containing the metadata about a block. It is also used as an opaque handle for
+  use by the client code.
 * **EOF**: End of file.
 * **Opaque type**: A way of hiding the contents of an object (data structure) from application code, by only providing a
   pointer to the object without giving its definition. Commonly used where the object is only meant to be modified from

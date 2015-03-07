@@ -9,7 +9,8 @@ Buddy Allocator
 ================
 The most common allocator type is the buddy allocator [#]_, and many allocators are built on its principles, or at least
 incorporate them in some way: start with a single block and see if the requested chunk fits in half of the block. If it
-does, split the block into two and repeat, until no smaller block size would fit the request. 
+does, split the block into two and repeat, until no smaller block size would fit the request. The allocator described in
+this paper does away with merging blocks directly on free, by moving free blocks together and coalescing them.
 
 .. figure:: graphics/buddyalloc-2k-list.png
    :scale: 50%
@@ -49,7 +50,7 @@ computer game where both the player and the enemies shoot projectiles with arms,
 of a object in memory. In a game where there could potentially exist a very large amount of projectiles in action at the
 same time, an equal amount of allocation and freeing is done, often randomly. In order to optimize usage of system
 memory, all allocation of bullet objects would be contained to the same  *pool* of memory.  A very simple such allocator
-would be a simple list of objects and the allocator would more or less just rutern the index to the next unused block,
+would be a simple list of objects and the allocator would more or less just return the index to the next unused block,
 leading to malloc and free that both have :math:`O(1)` in time complexity with very little overhead and fragmentation.  The
 usual strategies for growing the list apply, such as double the size of the list when all items in the list are used.
 

@@ -55,12 +55,15 @@ Hypothesis
 ==========
 * H1: An allocator that performs heap compaction can be efficient in both time and space, compared to other commonly
   used allocators. By making the malloc and free operations fast and the compact operation relatively slow and and
-  calling it when the system is idle it is possible to achieve this.
+  calling it when the system is idle it is possible to achieve this. On memory-restrained and slow computer systems,
+  such as embedded systems with as little as 512 KB RAM and a 50 MHz CPU, it is important to be efficient in both time
+  and space.
 
 What are the space and time requirements of Jeff compared to other popular allocators? Is Jeff a viable alternative to other
 popular allocators in real-world situations?
 
-I aim to answer these questions in the report.
+I aim to answer these questions in the report in chapter :ref:`chapter-results` where I display both graphs and runtime
+numbers, and in chapter :ref:`chapter-conclusions` where I assemble the results from the allocators I've measured.
 
 Development Environment
 =========================

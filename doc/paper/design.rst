@@ -9,7 +9,7 @@ benchmark tool (Steve) is described in detail in Chapter :ref:`chapter-steve`.
 Design Background
 ===================
 To get started with my allocator, I started implementing a buddy allocator since the basics of the buddy allocator is
-used in the allocators I've included in my comparison. (Evans 2006) Since a buddy allocator's two main modes of operation is
+used in the allocators I've included in my comparison, (Evans 2006). Since a buddy allocator's two main modes of operation are
 splitting and joining blocks, care needs to be taken that these two operations are as quick as possible.
 
 During development, I quickly realized the fact that picking the wrong data structure for storing the block list made
@@ -35,7 +35,7 @@ Allocator Design
 
     ----
 
-I assume that there willl be idle time when the application is not doing any other processing. Since malloc and free must
+I assume that there will be idle time when the application is not doing any other processing. Since malloc and free must
 be interactive, i.e. return immediately with a block of memory that the client code can use, anything that can be
 off-loaded to for batch processing at a later point in time when there is idle time in the application. Moreover, since
 I have the freedom to move objects around in memory transparently for client code, any logic in free/malloc that handles
@@ -65,8 +65,9 @@ searched for a block that fits.
 
 Freeing a block marks it as unused and adds it to the free list, for malloc to find later as needed.  The free list is
 an index array of :math:`2^{3..k}`-sized blocks with a linked list at each slot. All free blocks are guaranteed to be at least
-:math:`2^n`, but smaller than :math:`2^{n-1}`, bytes in size. Unlike the buddy allocator, blocks are not merged on free. (See
-future work in section :ref:`jeff-future-work` for a brief discusson.)
+:math:`2^n`, but smaller than :math:`2^{n-1}`, bytes in size. The blocks can then be reused in malloc directly, or
+merged together all at once in the compacting operation. This is unlike the buddy allocator where blocks are merged
+directly on free. (See future work in section :ref:`jeff-future-work` for a brief discusson on merging directly on free.)
 
 .. figure:: graphics/jeff-free-blockslots.png
    :scale: 50%
@@ -110,7 +111,7 @@ Allocation Request
 #. If there is available space for the allocation request, use it and associate with the block.
 #. Else, find a free block within the free block slot list:
 
-   #. Search in the slot associated with the math:`log_2`-size of the request for a free block.
+   #. Search in the slot associated with the :math:`log_2`-size of the request for a free block.
    #. Else, repeat the previous step in higher slots until top is reached. If there are still no blocks found, fail.
 
 #. Split the block as needed, insert the rest into the free block slots and return the rest.

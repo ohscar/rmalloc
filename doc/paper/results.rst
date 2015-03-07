@@ -43,7 +43,7 @@ Measuring an allocator must be done in conjunction with input data. These are th
 .. [#] http://www.latex-project.org
 .. [#] http://www.phpbb.com - a bulletin-board system
 
-The results are presented in charts and tables. I'll describe what they mean first, then give the resuts.
+The results are presented in charts and tables. I'll describe what they mean first, then give the results.
 
 Keys to drivers:
 

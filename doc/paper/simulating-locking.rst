@@ -3,9 +3,16 @@
     \chapter{Simulating Application Runtime
         \label{chapter-simulating-application-runtime}}
 
-As described in the introduction, it is not a practical solution to rewrite applications to use the new API. If there is
-a way to automatically approximate locking behaviour of applications, it should be investigated.  One way of doing that
-is to simulate an application, which requires at the minimum the application's memory access patterns.
+..
+    As described in the introduction, it is not a practical solution to rewrite applications to use the new API. If there is
+    a way to automatically approximate locking behaviour of applications, it should be investigated.  One way of doing that
+    is to simulate an application, which requires at the minimum the application's memory access patterns.
+
+As described in the introduction, it is not a practical solution to rewrite applications to use the new API. Therefore,
+I automated the task of finding approximate locking behaviour of applications.  One way of doing that is to simulate an
+application, which requires at the minimum the application's memory access patterns, i.e. when the application reads and
+writes to memory.
+
 
 .. raw:: comment-done
 
@@ -33,10 +40,10 @@ This is called *dynamic* linking, where symbols in the application are linked to
 *static* linking, where all symbols must exist in the application binary. This requires the application to use the
 system *malloc* and *free* to work, since calls to a custom allocator within the application cannot be captured.
 
-Unfortunately that is not enough. To get statistics on memory *access* patterns one needs to essentially simulate the
-system the application runs in.  Options considered were TEMU [#]_ from the BitBlaze [#]_ project, but because it would
-not build on my Linux system, I evaluated Valgrind [#]_ and concluded that the support for instrumentation in Valgrind
-was satisfactory to my my requirements.
+Unfortunately is is not enough to simply get the calls to malloc and free. To get statistics on memory *access* patterns
+one needs to essentially simulate the computer system the application runs in.  Options considered were TEMU [#]_ from the
+BitBlaze [#]_ project, but because it would not build on my Linux system, I evaluated Valgrind [#]_ and concluded that
+the support for instrumentation in Valgrind was satisfactory to my my requirements.
 
 Valgrind was originally a tool for detecting memory leaks in applications on the x86 platform
 via emulation and has since evolved to support more hardware platforms and providing tools for doing other
@@ -236,9 +243,11 @@ And conversely, if we want to see the distribution of the short-lived objects on
 
 Lifetime Calculation
 =================================
-Coarsely grained lifetime calculation is done when the raw memtrace is translated into ops, as described above in
+Coarsely grained lifetime calculation is done automatically when the raw memtrace is translated into ops, as described above in
 section :ref:`translating-memory-access-data-to-ops`.  The method I'll describe in the following section is more refined
-but takes more time to calculate.
+but takes more time to calculate. It is also automatic. All steps from measuring memory access patterns, through
+simulating allocator performance for that specific app, down to creating graphs displaying memory and speed performance,
+are automatic.
 
 .. The script takes an ops file, i.e. a list of (block handle, operation type, address, size) tuples.
 
@@ -248,7 +257,7 @@ increases life by 1, and conversely, another block's operation (regardless of ty
 capped in the upper range but has a lower limit of 0. When life is higher than 0, the current operation's lock status is
 set, otherwise reset. 
 
-The value was chosen by testing different input parameters against random data, and the graphs that looked best was verified
+The value was chosen by testing different input parameters against random data, and the graphs that looked best were verified
 against the smaller application memtraces. This is the algorithm used, with different values for percent, float speed
 and sink speed::
 
@@ -300,7 +309,11 @@ implemented.
 The fine grained calculation of this method is slower (*O(m\*n)*, where *m* is the number of handles and *n* is the
 total number of operations), but intersperses lock/unlock instructions throughout the lifetime of an object, instead of forcing
 the object to be locked its entire lifetime. The more fine-grained locking/unlocking, specifically unlocking, the more
-efficient compacting can be performed.
+efficient compacting can be performed. 
+
+Taking a hand-tuned application with lock/unlock inserted at the most appropriate locations, as determined by static
+analysis and knowledge of the application, and comparing it to the approximated lifetime calculation, is not done in
+this report, and would be a good subject for future work.
 
 .. raw:: comment
 

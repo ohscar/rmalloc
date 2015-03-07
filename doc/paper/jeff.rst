@@ -136,12 +136,12 @@ Find free block
 Calculate the index *k* into the free block slots list from :math:`log_2(size)+1`. As previously explained, the free block
 slot list has a stack (implemented as a singly linked list) hanging off each slot, such that finding a suiting block
 will be a fast operation. The exeption is for requests of blocks in the highest slot have to be searched in full, since
-the first block found is not guaranteed to fit the size request, as the slot *k* stores free blocks :math:`2^{k-1} <= n < 2^k`
+the first block found is not guaranteed to fit the size request, as the slot *k* stores free blocks :math:`2^{k-1} \leq n < 2^k`
 and there is no larger :math:`k+1` slot to search in.
 
 In the normal case the free block list is looked up at *k* for a suiting block. If the stack is empty, *k* is increased
 and the free block list again is checked until a block is found.  Finally, if there was no block found, the actual index
-:math:`log_2(size)` is searched for a block that will fit. Remember that the blocks in a specific slot can be :math:`2^{k-1} <= n < 2^k`
+:math:`log_2(size)` is searched for a block that will fit. Remember that the blocks in a specific slot can be :math:`2^{k-1} \leq n < 2^k`
 and therefore there could be free blocks in slot *k* that are large enough for the request. When a block is found, it's
 shrunk into two smaller blocks if large enough, one of the requested size and the remainder. Minimum size for a block to
 be shrunk is having one extra header available and that the found block is ``sizeof(free_memory_block_t)`` bytes larger
@@ -195,77 +195,124 @@ One pass of moving blocks around
     // B * Extend LU
     //   * Link LU to C
 
-#. Get closest range of free headers (or stop if no headers found)
+1. Get closest range of free headers (or stop if no headers found)
 
    #.  If block directly after free header is locked, set a max size on unlocked blocks.
 
-#. Get closest range of unlocked headers (respecting max size if set)
+2. Get closest range of unlocked headers (respecting max size if set)
 
    #. No blocks found and limitation set on max size: if free blocks were passed searching for unlocked blocks, try
       again from the block directly after the free headers, else stop.
    #. Set adjacent flag if last free's next is first unlocked
 
-#. Calculate offset from free area to unlocked area
-#. Squish free headers into one header and associate memory with the header
-#. Move unlocked blocks to free area
+3. Calculate offset from free area to unlocked area
+4. Squish free headers into one header and associate memory with the header
+5. Move unlocked blocks to free area
 
   #. Move data
   #. Adjust used header pointers
 
-#. Adjacent: relink blocks so unlocked headers is placed before what's left of free area, and free area pointing to header
-   directly following previous position of last unlocked header's next header, see Figure :ref:`jeffcompactadj0`, :ref:`jeffcompactadj1` and :ref:`jeffcompactadj2`.
+6. Adjacent: relink blocks so unlocked headers is placed before what's left of free area, and free area pointing to header
+   directly following previous position of last unlocked header's next header:
+   
+   Initial configuration with blocks Unlocked 1-4, Free 1-2, Rest:
 
-#. Non-adjacent: similar to adjacent, except blocks can't just be simply memmov'ed because of the locked blocks. Instead,
-   only the blocks that fit in the free space can be moved. See Figure :ref:`jeffcompactnonadj0`, :ref:`jeffcompactnonadj1`, :ref:`jeffcompactnonadj2a`, :ref:`jeffcompactnonadj2b`, :ref:`jeffcompactnonadj3a` and :ref:`jeffcompactnonadj3b`.
+   .. image:: graphics/compact-adjacent-relink-0.png
+      :scale: 50%
 
-#. Continue to next round, repeating until time limit reached or done (if no time limit set)
+   Move all used blocks back (i.e. to the left), relink free blocks:
 
-.. figure:: graphics/compact-adjacent-relink-0.png
-   :scale: 50%
+   .. image:: graphics/compact-adjacent-relink-1.png
+      :scale: 50%
 
-   :label:`jeffcompactadj0` Initial configuration with blocks Unlocked 1-4, Free 1-4, Rest
+   Squish free blocks:
 
-.. figure:: graphics/compact-adjacent-relink-1.png
-   :scale: 50%
+   .. image:: graphics/compact-adjacent-relink-2.png
+      :scale: 50%
 
-   :label:`jeffcompactadj1` Move all used blocks back (i.e. to the left), relink free blocks.
+7. Non-adjacent: similar to adjacent, except blocks can't just be simply memmov'ed because of the locked blocks. Instead,
+   only the blocks that fit in the free space can be moved:
 
-.. figure:: graphics/compact-adjacent-relink-2.png
-   :scale: 50%
+   Initial configuration with blocks Free 1-3, Locked 1-2, Unlocked 1-3, Rest:
+ 
+   .. image:: graphics/compact-nonadjacent-relink-0.png
+      :scale: 50%
 
-   :label:`jeffcompactadj2` Squish free block.
+   Create free block 6 in the area where the used blocks are now:
 
+   .. image:: graphics/compact-nonadjacent-relink-1.png
+      :scale: 50%
 
-.. figure:: graphics/compact-nonadjacent-relink-0.png
-   :scale: 50%
+   Either: a) Block U3 is too large to fit in the free area:
 
-   :label:`jeffcompactnonadj0` Initial configuration with blocks Free 1-3, Locked 1-2, Unlocked 1-3, Rest
+   .. image:: graphics/compact-nonadjacent-relink-2a.png
+      :scale: 50%
 
-.. figure:: graphics/compact-nonadjacent-relink-1.png
-   :scale: 50%
+   Or: b) Block U3 fits in the free area.
 
-   :label:`jeffcompactnonadj1` Create free block 6 in the area where the used blocks are now.
+   .. image:: graphics/compact-nonadjacent-relink-2b.png
+     :scale: 50%
 
-.. figure:: graphics/compact-nonadjacent-relink-2a.png
-   :scale: 50%
+   Then, Either: a) With a new block Free 5 with left-overs from Free 1-3 and F6 from the space between U1-U3 and Rest:
 
-   :label:`jeffcompactnonadj2a` a): block U3 is too large to fit in the free area.
+   .. image:: graphics/compact-nonadjacent-relink-3a.png
+      :scale: 50%
 
-.. figure:: graphics/compact-nonadjacent-relink-2b.png
-   :scale: 50%
+   Or: b) Unlocked 3 fits, but not enough size to create a full block F5 -- instead extend size of Unlocked 3 with
+   0 < n < sizeof(free_memory_block_t) bytes:
 
-   :label:`jeffcompactnonadj2b` b): block U3 fits in the free area.
+   .. image:: graphics/compact-nonadjacent-relink-3b.png
+      :scale: 50%
 
-.. figure:: graphics/compact-nonadjacent-relink-3a.png
-   :scale: 50%
+8. Continue to next round, repeating until time limit reached or done (if no time limit set)
 
-   :label:`jeffcompactnonadj3a` a): After, with a new block Free 5 with left-overs from Free 1-3 and F6 from the space between U1-U3 and Rest
+.. comment-moved-inline
 
-.. figure:: graphics/compact-nonadjacent-relink-3b.png
-   :scale: 50%
+    .. figure:: graphics/compact-adjacent-relink-0.png
+       :scale: 50%
 
-   :label:`jeffcompactnonadj3b` b): Unlocked 3 fits, but not enough size to create a full block F5 -- instead extend size of Unlocked 3 with
-   0 < n < sizeof(free_memory_block_t) bytes.
+       :label:`jeffcompactadj0` Initial configuration with blocks Unlocked 1-4, Free 1-4, Rest
+
+    .. figure:: graphics/compact-adjacent-relink-1.png
+       :scale: 50%
+
+       :label:`jeffcompactadj1` Move all used blocks back (i.e. to the left), relink free blocks.
+
+    .. figure:: graphics/compact-adjacent-relink-2.png
+       :scale: 50%
+
+       :label:`jeffcompactadj2` Squish free block.
+
+    .. figure:: graphics/compact-nonadjacent-relink-0.png
+       :scale: 50%
+
+       :label:`jeffcompactnonadj0` Initial configuration with blocks Free 1-3, Locked 1-2, Unlocked 1-3, Rest
+
+    .. figure:: graphics/compact-nonadjacent-relink-1.png
+       :scale: 50%
+
+       :label:`jeffcompactnonadj1` Create free block 6 in the area where the used blocks are now.
+
+    .. figure:: graphics/compact-nonadjacent-relink-2a.png
+       :scale: 50%
+
+       :label:`jeffcompactnonadj2a` a): block U3 is too large to fit in the free area.
+
+    .. figure:: graphics/compact-nonadjacent-relink-2b.png
+       :scale: 50%
+
+       :label:`jeffcompactnonadj2b` b): block U3 fits in the free area.
+
+    .. figure:: graphics/compact-nonadjacent-relink-3a.png
+       :scale: 50%
+
+       :label:`jeffcompactnonadj3a` a): After, with a new block Free 5 with left-overs from Free 1-3 and F6 from the space between U1-U3 and Rest
+
+    .. figure:: graphics/compact-nonadjacent-relink-3b.png
+       :scale: 50%
+
+       :label:`jeffcompactnonadj3b` b): Unlocked 3 fits, but not enough size to create a full block F5 -- instead extend size of Unlocked 3 with
+       0 < n < sizeof(free_memory_block_t) bytes.
 
 
 Finishing
