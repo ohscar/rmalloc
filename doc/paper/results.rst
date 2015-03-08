@@ -45,51 +45,69 @@ Measuring an allocator must be done in conjunction with input data. These are th
 
 The results are presented in charts and tables. I'll describe what they mean first, then give the results.
 
-Keys to drivers:
+Keys To Read Charts and Tables
+==================================
+Drivers
+~~~~~~~~
+* **rmmalloc**: Jeff without compacting
+* **rmmalloc-c**: Jeff with compacting
+* **rmmalloc-c-m**: Jeff with compacting and maximum memory tweak
 
-* rmmalloc - Jeff without compacting
-* rmmalloc-c - Jeff with compacting
-* rmmalloc-c-m - Jeff with compacting and maximum memory tweak
+Charts
+~~~~~~~
+There are two types of charts, one of performance in time and one of performance in space.
 
-Speed Chart
-~~~~~~~~~~~~~
+Speed chart.
 
-* **X axis**: shows a counter that is increased by one at each operation of types new, free, unlock and unlock.
+* **X axis**: shows a counter that is increased by one at each new, free, lock and unlock operation.
 * **Y axis**: shows the execution time of the operation, in a *log10*-scale.
 
-Size Chart
-~~~~~~~~~~~~~
+Size chart.
 
 * **X axis**: same as above.
 * **Y axis**: shows the maximum allocatable amount of memory relative to the maximum heap size at each point in time, by
   running the application to that point, trying a maximum allocation and then restarting the app, continuoing to to the
   next point.
 
-Space Table
+Tables
 ~~~~~~~~~~~~
-Sorted in descending order with best first.
+Scoring explained:
 
-* **Driver**: name of the driver
-* **Penalty (c)**: at each op each allocator of N allocators is given a score of 0 points for the best performing
-  allocator and N points for the worst.  The points are summed up for each allocator and divided by the maximum penalty
-  (num points \* N) to get a percentage of how bad an allocator performs.
-* **Penalty (w)**: same as above with the addition that each score is weighted by the distance to the best performing
-  :llocator.
-* **Best**: share of the total amount of times the allocator performed best
-* **Worst**: share of the total amount of times the allocator performed worst
+* Let :math:`A_1..A_n` be all allocators.
+* Let :math:`O_1..O_m` be all operations in the application currently being measured.
+* Let :math:`S_{ij}`` where :math:`i = 1..n, j = 1..m` be the score for the allocator :math:`i` at operation :math:`j`,
+  such that :math:`S_{ij} \in {0..n}`, where 0 is the best result and n is the worst.
+* Let :math:`P_i \in {0..1.0}` be the penalty of any allocator :math:`i \in A_1..A_n`, defined as :math:`P_i = \frac{\sum_{j=1}^{m} S_{ij}}{n * m}`, where 0 is best and 1.0 is worst.
+* Let :math:`B_i \in {A_1..A_n}` be the number of times the allocator :math:`i` has performed best.
+* Let :math:`W_i \in {A_1..A_n}` be the number of times the allocator :math:`i` has performed worst.
 
-Speed Table
-~~~~~~~~~~~
-Sorting the same as space table. In addition to the fields in speed table (applied to size, instead of speed), these fields are defined:
-
-* **Average**: average speed of an operation
-* **Median**: median speed of an operation
+..  comment
+    The performance $P_a$ of any allocator $a$ in the allocators $A_1..A_n$ is ranked such that the best performing allocator is given the score $0$ and the worst
+    is given the score $n$ as $S_am$, for each operation $O_0..O_m$.  Therefore, the best ranking an allocator can get is 0 and the the worst is
+    $n*m$. The final score for allocator is simply the ratio between the sum of score for each operation and the worst
+    possible ranking, i.e. $F_a = \frac{\sum\limits{o=1}^m S_ao}{n*m}$
 
 
+Space table, sorted in descending order with best first.
 
+* **Driver**: Name of the driver
+* **Penalty (c)**: As given above.
+* **Penalty (w)**: Score weighted by the distance to the lowest scoring allocator. Let :math:`b` be the best performing allocator, then :math:`Sw_{ij} = \frac{S_{ij} - S_{bj}}{S_{bj}}` where :math:`b` is the best performing allocator.
+* **Best**: Ratio of :math:`\frac{B_i}{n} \in {0..1.0}`.
+* **Worst**: Ratio of :math:`\frac{W_i}{n} \in {0..1.0}`.
+
+Speed table, same sorting as the space table. In addition to the fields in speed table (applied to size, instead of speed), these fields are defined:
+
+* **Average**: Average speed of all operations for a given allocator.
+* **Median**: Median speed of all operations for a given allocator.
+
+XXX: What does Penalty (w) show?!
+
+Results
+=========
 StarOffice
-=============
-``$ soffice``
+~~~~~~~~~~~~~~~
+Command line used: ``soffice``
 
 Simulated using full lockops.
 
@@ -144,8 +162,8 @@ Results in Figure :ref:`result-soffice`, Table :ref:`table:result-soffice-speed`
    \end{table}
 
 sqlite
-=============
-``$ sqlite < gkk_styrkelyft_se.sql``
+~~~~~~~~~~
+Command line used: ``sqlite < gkk_styrkelyft_se.sql``
 
 Simulated using full lockops.
 
@@ -199,9 +217,9 @@ Results in Figure :ref:`result-sqlite`, Table :ref:`table:result-sqlite-speed` a
    \label{table:result-sqlite-space}
    \end{table}
 
-tar-bzip2
-================
-``$ tar cjf /tmp/valgrind-3.9.0.tar.bz2 /tmp/valgrind-3.9.0``
+tar with bzip2 compression
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Command line used: ``tar cjf /tmp/valgrind-3.9.0.tar.bz2 /tmp/valgrind-3.9.0``
 
 Simulated using full lockops.
 
@@ -255,8 +273,8 @@ Results in Figure :ref:`result-tar`, Table :ref:`table:result-tar-speed` and Tab
 
 
 ls
-===============
-``$ ls /bin``
+~~~~~~~~~~~~
+Command line used: ``ls /bin``
 
 Simulated using full lockops.
 
@@ -320,8 +338,8 @@ Results in Figure :ref:`result-ls`, Table :ref:`table:result-ls-speed` and Table
     Results in Figure :ref:`result-cfrac`, Table :ref:`table:result-cfrac-speed` and Table :ref:`table:result-cfrac-space`.
 
 latex
-======
-``$ latex paper.tex``
+~~~~~~~~~~~~~~~~
+Command line used: ``latex paper.tex``
 
 Simulated using full lockops.
 
@@ -379,8 +397,8 @@ Results in Figure :ref:`result-latex`, Table :ref:`table:result-latex-speed` and
 
 
 opera
-=========
-Command line: ``opera``
+~~~~~~~~~~~~~
+Command line used: ``opera``
 
 Due to memory/CPU constraints, I was not able to perform a locking data calculation. The results are therefore without
 any locking/unlocking, which means that any compacting operations are optimal (no locked blocks).
