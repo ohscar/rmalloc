@@ -77,18 +77,25 @@ allocated block. Summary in Table :ref:`table:memory-positions` below with scori
 Discussion
 ============
 Important to note is that tcmalloc was not able to finish all runs when making a decision on which allocator to use.
-Also, the tested allocators were designed to use ``mmap()`` for memory allocation along with ``sbrk()`` which very
-likely skewed the results.
+Also, the tested allocators were designed to use ``mmap()`` for memory allocation along with ``sbrk()`` which 
+likely skewed the results. In particular jemalloc performs badly, which could be caused by it being optimized for
+``mmap()``.
 
 Noteworthy is that dlmalloc still performs better than Jeff with compacting and specific support for maximum available
 memory.  It is possible that fitting Jeff's interface on top of an existing tested and quick allocator, e.g. dlmalloc,
 would have given better runtime characteristics in both space and time.  Jeff is a very simplistic implementation of a
 buddy-style allocator without any pools for small objects and similar feats found in most modern allocators.
 
+Another conclusion to be drawn from the graphs is that there are cases where a fairly naive allocator, such as Jeff, still
+performs almost as good as a more complex allocator, such as dlmalloc.  There might be cases where the trade-off in code
+size versus memory efficiency and speed might are worth it, e.g. when the amount of code storage media is limited,
+again, common in embedded systems with only kilobytes of code ROM.
+
 Jeff still does perform quite well, which means the idea itself could be expanded on in the future. Due to time
 constraints, larger applications that are more similar to real-life situations could not be tested since the lockops
 calculation took too long time.  Speed and memory characteristics could very well differ for such an application,
 esecially if it was running for a longer time.
+
 
 Limitations and Future Work 
 ================================
@@ -129,6 +136,9 @@ Implementation Optimizations
 Steve: Limitations
 ~~~~~~~~~~~~~~~~~~~~~~~
 As noted in the discussion, the only mechanism for retrieving data from the system for the tested allocators is using ``sbrk()``.
+Moreover, there are no hand-tuned reference applications, where optimal locking/unlocking is manually inserted.  This
+was not done because of time constraints, but would be interesting to do in the future to establish a baseline to which
+other allocators could be compared.
 
 Steve: Future Work
 ~~~~~~~~~~~~~~~~~~~~~

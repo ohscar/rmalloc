@@ -77,7 +77,7 @@ Scoring explained:
 * Let :math:`O_1..O_m` be all operations in the application currently being measured.
 * Let :math:`S_{ij}`` where :math:`i = 1..n, j = 1..m` be the score for the allocator :math:`i` at operation :math:`j`,
   such that :math:`S_{ij} \in {0..n}`, where 0 is the best result and n is the worst.
-* Let :math:`P_i \in {0..1.0}` be the penalty of any allocator :math:`i \in A_1..A_n`, defined as :math:`P_i = \frac{\sum_{j=1}^{m} S_{ij}}{n * m}`, where 0 is best and 1.0 is worst.
+* Let :math:`P_i \in {0..1.0}` be the penalty of any allocator :math:`i \in A_1..A_n`, defined as :math:`P_i = \frac{1}{n * m}\sum_{j=1}^{m} S_{ij}`, where 0 is best and 1.0 is worst.
 * Let :math:`B_i \in {A_1..A_n}` be the number of times the allocator :math:`i` has performed best.
 * Let :math:`W_i \in {A_1..A_n}` be the number of times the allocator :math:`i` has performed worst.
 
@@ -86,7 +86,6 @@ Scoring explained:
     is given the score $n$ as $S_am$, for each operation $O_0..O_m$.  Therefore, the best ranking an allocator can get is 0 and the the worst is
     $n*m$. The final score for allocator is simply the ratio between the sum of score for each operation and the worst
     possible ranking, i.e. $F_a = \frac{\sum\limits{o=1}^m S_ao}{n*m}$
-
 
 Space table, sorted in descending order with best first.
 
@@ -101,22 +100,37 @@ Speed table, same sorting as the space table. In addition to the fields in speed
 * **Average**: Average speed of all operations for a given allocator.
 * **Median**: Median speed of all operations for a given allocator.
 
-XXX: What does Penalty (w) show?!
+Penalty (c) can be considered to be the average internal ranking of an allocator, whereas penalty (w) shows the average internal weighted by the distance to the best allocator. Therefore, penalty (w) gives the reader a clue on the allocator's absolute performance, and it is also less smoothed out by simply averaging. An example of this can be seen in Table :ref:`table:result-soffice-speed` below.
+
+All tables are sorted by penalty (c).
 
 Results
 =========
+The results are very interesting in that there's a variation between the allocators, which of course is expected, but
+also between the different applications tested, each with their unique memory usage patterns.  Two separate patterns can
+be discerned when it comes to speed, with Figures :ref:`result-soffice`, :ref:`result-sqlite`, :ref:`result-ls` in one
+group and :ref:`result-tar`, :ref:`result-latex`, :ref:`result-opera` in the other.
+
+Something else to note is that jemalloc performs badly, very likely because of the limitation to only use *sbrk()* for
+requesting memory from the operating system.
+
 StarOffice
 ~~~~~~~~~~~~~~~
 Command line used: ``soffice``
 
 Simulated using full lockops.
 
-Results in Figure :ref:`result-soffice`, Table :ref:`table:result-soffice-speed` and Table :ref:`table:result-soffice-space`.
-
 .. figure:: allocstats/result-soffice.png
    :scale: 60%
    
-   :label:`result-soffice` LibreOffice results. Poor performance of jemalloc.
+   :label:`result-soffice` Soffice results. Poor performance of jemalloc.
+
+.. raw:: latex
+
+   \FloatBarrier   
+
+The chart in Figure :ref:`result-soffice` clearly shows the space performance of the tested allocators, whereas the
+speed chart is harder to read because of the similar speeds and the number of allocators tested. Tables :ref:`table:result-soffice-speed` and :ref:`table:result-soffice-space` are particularly useful here.
 
 .. raw:: latex
 
@@ -135,10 +149,9 @@ Results in Figure :ref:`result-soffice`, Table :ref:`table:result-soffice-speed`
    rmmalloc-c-m & 75\% / 205.50\% & 0.17\% & 66.78\% & 562 ns & 483 ns \\
    \hline
    \end{tabular}
-   \caption{Speed measurements for result-soffice}
+   \caption{Speed measurements for soffice}
    \label{table:result-soffice-speed}
    \end{table}
-
 
 .. raw:: latex
 
@@ -157,9 +170,27 @@ Results in Figure :ref:`result-soffice`, Table :ref:`table:result-soffice-speed`
    jemalloc & 83\% / 78.88\% & 0.00\% & 100.00\% \\
    \hline
    \end{tabular}
-   \caption{Space measurements for result-soffice}
+   \caption{Space measurements for soffice}
    \label{table:result-soffice-space}
    \end{table}
+
+.. raw:: latex
+
+   \FloatBarrier   
+
+As explained above, the penalty number by itself can be misleading. For example, in Table
+:ref:`table:result-soffice-speed` we see that e.g. both *rmmalloc* and *rmmalloc-c* have the same penalty (c), but they
+differ in other metrics. Which metric is more important depends on the application at hand. For certain applications, it
+might be important that it performs predictably, in which case an allocator that has a high best *and* a high worst is a
+bad choice.
+
+The space metrics in Table :ref:`table:result-soffice-space` paints a clearer picture with two outliers, one in
+*tcmalloc* performing better than all other allocators, and *jemalloc* performing worse than all other allocators.
+
+.. raw:: latex
+
+   \FloatBarrier   
+
 
 sqlite
 ~~~~~~~~~~
@@ -173,6 +204,12 @@ Results in Figure :ref:`result-sqlite`, Table :ref:`table:result-sqlite-speed` a
    :scale: 60%
    
    :label:`result-sqlite` Sqlite results.
+
+.. raw:: latex
+
+   \FloatBarrier   
+
+Again, bad performance of *jemalloc* in both measurements.
 
 .. raw:: latex
 
@@ -217,6 +254,25 @@ Results in Figure :ref:`result-sqlite`, Table :ref:`table:result-sqlite-speed` a
    \label{table:result-sqlite-space}
    \end{table}
 
+.. raw:: latex
+
+   \FloatBarrier   
+
+The speed table :ref:`table:result-sqlite-speed` is slightly confusing with regard to *jemalloc*, but can easily be understood if examined along with the
+corresponding graph. In fact, it performs rather well, up until the point where it fails to work at all.  This also
+skews the other allocator's penalty (w) numbers, which have to be viewed in relation to the base line which is
+*jemalloc*. Adjusting the number, we instead get the following penalty (w) numbers:
+
+* jemalloc 100
+* rmmalloc-c: 120
+* rmmalloc: 183
+* tcmalloc: 292
+* dlmalloc: 232
+* rmmalloc-c-m: 530
+
+As for the space table :ref:`table:result-sqlite-space`, *rmmalloc-c-m* which performed badly in speed instead performs
+best when it comes to space. A better compromise between the two is *rmmalloc-c*, performing well in both space in time.
+
 tar with bzip2 compression
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Command line used: ``tar cjf /tmp/valgrind-3.9.0.tar.bz2 /tmp/valgrind-3.9.0``
@@ -229,6 +285,14 @@ Results in Figure :ref:`result-tar`, Table :ref:`table:result-tar-speed` and Tab
    :scale: 60%
    
    :label:`result-tar` tar cjf results.
+
+.. raw:: latex
+
+   \FloatBarrier   
+
+For the allocation pattern used in tar, linearly growing, *rmalloc-c-m* does not fare well with its exponential
+algorithm. The others are segmented, with *dlmalloc* coming out as the fastest, followed by *rmmalloc*.  As for memory
+efficiency, *dlmalloc* is the clear winner here.
 
 .. raw:: latex
 
@@ -250,7 +314,6 @@ Results in Figure :ref:`result-tar`, Table :ref:`table:result-tar-speed` and Tab
    \label{table:result-tar-speed}
    \end{table}
 
-
 .. raw:: latex
 
    \begin{table}[!ht]
@@ -271,6 +334,15 @@ Results in Figure :ref:`result-tar`, Table :ref:`table:result-tar-speed` and Tab
    \label{table:result-tar-space}
    \end{table}
 
+.. raw:: latex
+
+   \FloatBarrier   
+
+There are no real surprises in speed in Table :ref:`table:result-tar-speed`, since the graphs are easy to interpret
+directly.  Here it's important to note that even though the space numbers in Table :ref:`table:result-tar-space` look
+good enough for the *rmmalloc* allocator (and variants), it's still performs a lot worse than *dlmalloc*. It is not
+sufficient to look only at the numbers.
+
 
 ls
 ~~~~~~~~~~~~
@@ -284,6 +356,12 @@ Results in Figure :ref:`result-ls`, Table :ref:`table:result-ls-speed` and Table
    :scale: 60%
    
    :label:`result-ls` ls results.
+
+.. raw:: latex
+
+   \FloatBarrier   
+
+The chart clearly shows how memory allocation and memory use are split up in *ls*. First, it allocates data (op 0-40), then it operates on the data, does more allocation of "simpler" data sizes (a request that takes less time to serve, possibly by being of a size that can be handed out from a small objects pool or similar), followed by more data operations and finally a small allocation operation, most likely a free.  Again, *jemalloc* did not survive past the initial allocation operations.
 
 .. raw:: latex
 
@@ -328,6 +406,16 @@ Results in Figure :ref:`result-ls`, Table :ref:`table:result-ls-speed` and Table
    \label{table:result-ls-space}
    \end{table}
 
+.. raw:: latex
+
+   \FloatBarrier   
+
+Starting with the speed table, we see similar to previous measurements where *jemalloc* failed early, the absolute results
+are skewed but the internal order is still correct. Good performance of *rmmalloc* but also of *tcmalloc* which has
+differing results. As for memory efficiency, *tcmalloc* stands out after which the results for *rmmalloc* and *dlmalloc*
+are very similar. *rmmalloc-c-m* fares slightly better, but is on the other hand very time consuming. This might not be
+a trade-off the client code can make.
+
 
 .. raw:: foo
 
@@ -354,6 +442,15 @@ Results in Figure :ref:`result-latex`, Table :ref:`table:result-latex-speed` and
 
 .. raw:: latex
 
+   \FloatBarrier   
+
+A very simple linear allocation pattern, where we clearly see the time inefficiency of *rmalloc-c-m* because of its
+exponential search. It does however fare well when it comes to space.  Even *rmalloc-c* which has fairly good
+performance in time still has a exponential tendency whereas *dlmalloc* is mostly linear.  Here's a case where the
+trade-off might not be worth it, especially since *dlmalloc* performs better in both areas. 
+
+.. raw:: latex
+
    \begin{table}[!ht]
    \begin{tabular}{r | l c c r r}
    \hline
@@ -368,7 +465,7 @@ Results in Figure :ref:`result-latex`, Table :ref:`table:result-latex-speed` and
    rmmalloc-c-m & 79\% / 189701.98\% & 0.00\% & 99.97\% & 372546 ns & 268695 ns \\
    \hline
    \end{tabular}
-   \caption{Speed measurements for result-latex}
+   \caption{Speed measurements for latex}
    \label{table:result-latex-speed}
    \end{table}
 
@@ -389,11 +486,17 @@ Results in Figure :ref:`result-latex`, Table :ref:`table:result-latex-speed` and
    jemalloc & 80\% / 80.00\% & 0.00\% & 100.00\% \\
    \hline
    \end{tabular}
-   \caption{Space measurements for result-latex}
+   \caption{Space measurements for latex}
    \label{table:result-latex-space}
    \end{table}
 
 
+
+.. raw:: latex
+
+   \FloatBarrier   
+
+No surprises here since the graphs are easy to read for this test case.
 
 
 opera
@@ -409,6 +512,13 @@ Results in Figure :ref:`result-opera`, Table :ref:`table:result-opera-blank2-spe
    :scale: 60%
 
    :label:`result-opera` Opera results.
+
+.. raw:: latex
+
+   \FloatBarrier   
+
+We see the same characteristics as in the LaTeX test above, except for the ranges where no allocation operations happen.
+*jemalloc* performs well speed-wise but badly in available space. 
 
 .. raw:: latex
 
@@ -450,4 +560,11 @@ Results in Figure :ref:`result-opera`, Table :ref:`table:result-opera-blank2-spe
    \caption{Space measurements for result-opera-blank2}
    \label{table:result-opera-blank2-space}
    \end{table}
+
+.. raw:: latex
+
+   \FloatBarrier   
+
+Again, skewed results because of *jemalloc*. By far fastest and most space-efficient is *dlmalloc* in this type of
+scenario.
 
