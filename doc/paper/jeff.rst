@@ -19,7 +19,7 @@ In order to achieve compacting, memory must be accessed indirectly. This is the 
 
 ``handle_t`` is an opaque type. To get the actual memory pointed to at by the handle, call `lock()` to obtain a regular
 pointer to memory. During the time a block pointed out by a handle is locked, the compact operation is not allowed to
-move it. If it could be moved, the pointer obtained by the client code would no longer be invalid. This also puts
+move it. If it could be moved, the pointer obtained by the client code would no longer be valid. This also puts
 certain limitations on the compactor, since it needs to deal with possibly locked blocks.  This forces client code needs
 to be adapted to this allocator, such that memory is always appropriately locked/unlocked as needd. The compacting
 operation is discussed in more detail in section :ref:`rmcompact`.
@@ -331,7 +331,7 @@ As described in Chapter :ref:`chapter-method`, unit testing is utilized where ap
 
 Real-World Testing
 ~~~~~~~~~~~~~~~~~~~~
-Since the allocator does have the interface of standard allocators client code needs to be rewritten.  The two major
+Since the allocator does not have the interface of standard allocators client code needs to be rewritten.  The two major
 problems with this is that it requires access to source code, and rewriting much of the source code.  This is where
 Steve is useful.
 

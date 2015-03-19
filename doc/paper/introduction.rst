@@ -154,7 +154,7 @@ memory. It is currently in use at TLab West Systems AB on a system with a total 
 
 Efficiency
 ======================================
-The question *Is fragmentation a problem?* is asked by Johnstone & Wilson (1998). At Opera circa 1997, that
+The question *Is fragmentation a problem?* is asked by Johnstone & Wilson (1998). At Opera circa 2007, that
 was indeed the case after repeatedly loading/unloading web pages. Large web pages loading many small resources,
 specifically images, created holes in memory when freed, such that after a few page loads, it was no longer possible to
 load any more pages. It happened frequently on small-memory devices, such as early smart phones/feature phones with 4-8 MB RAM.

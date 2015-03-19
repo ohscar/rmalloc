@@ -3,6 +3,17 @@ Jeff and Steve: A Relocatable Memory Allocator and its Benchmarking Friend
 ===========================================================================
 :author: Mikael Jansson
 :abstract:
+    Jeff is a compacting allocator and Steve is an allocator benchmark tool.  Steve was designed to benchmark Jeff, but
+    turned out to be a useful tool in and of itself, and can be used to benchmark any application with any allocator.
+    Steve records memory traces of the application during execution and uses those traces to benchmark any number of
+    allocators for which there are drivers. Therefore, the performance in actual use cases is measured.  Also, as a
+    consequence, the user does not need access to source code to the application or allocator/-s to be tested. Users can
+    easily write their own allocator drivers to extend Steve with.  Compared to the tested allocators in this report,
+    Jeff performs similar or better in terms of speed, but similar or worse in memory.
+
+
+.. raw:: comment
+
     Memory fragmentation is a problem in computer systems with limited amounts of memory, such as embedded systems. This
     report describes the work and results from designing and implementing a compacting memory allocation system and a
     benchmark suite, that aims to deal with the problem of memory fragmentation.  The benchmark suite is a set of
@@ -11,6 +22,7 @@ Jeff and Steve: A Relocatable Memory Allocator and its Benchmarking Friend
     functions.  Each allocator to be tested in the benchmark suite need only implement a thin wrapper API.  The
     allocator designed in this report performed similar or better in speed but similar or worse in memory, compared to
     the other allocators tested in this report.
+
 
 .. role:: ref
 .. role:: label
