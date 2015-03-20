@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="en">
+
+	<head>
+		<meta charset="utf-8">
+
+		<title>Jeff and Steve by Mikael Jansson</title>
+
+		<meta name="description" content="A framework for easily creating beautiful presentations using HTML">
+		<meta name="author" content="Hakim El Hattab">
+
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
+
+		<link rel="stylesheet" href="css/reveal.css">
+		<link rel="stylesheet" href="css/theme/black.css" id="theme">
+
+		<!-- Code syntax highlighting -->
+		<link rel="stylesheet" href="lib/css/zenburn.css">
+
+		<!-- Printing and PDF exports -->
+		<script>
+			var link = document.createElement( 'link' );
+			link.rel = 'stylesheet';
+			link.type = 'text/css';
+			link.href = window.location.search.match( /print-pdf/gi ) ? 'css/print/pdf.css' : 'css/print/paper.css';
+			document.getElementsByTagName( 'head' )[0].appendChild( link );
+		</script>
+
+		<!--[if lt IE 9]>
+		<script src="lib/js/html5shiv.js"></script>
+		<![endif]-->
+	</head>
+
+
+	<body>
+
+    <!--
+
+    http://airlab.elet.polimi.it/images/a/ae/ThesisPresentation.pdf
+
+    Jeff, The Compacting Allocator and
+    Steve, The Malloc Benchmarking and Analysis Tool
+
+    -----
+
+    Titel
+
+    Intressant beskrivning Jeff
+    Intressant beskrivning Steve
+
+    Vilket problem löser Jeff? (Följ upp problemet med att mäta med nästa mening: )
+    Vilket problem löser Steve?
+
+    Hur bra är Jeff, jämfört med vad som finns?
+
+    När skall Jeff användas?
+
+    Hur bra är Steve?
+
+    När skall Steve användas?
+
+    Resultat.
+
+    Slutsats.
+
+    Frågor?
+    Detaljer finns i rapporten. mikael@jansson.be
+
+    -->
+
+		<div class="reveal">
+
+			<!-- Any section element inside of this container is displayed as a slide -->
+			<div class="slides">
+				<section>
+                    <h1>Welcome!</h1>
+                    <img width="450" src="jonas-liten.jpg"/>
+                    <p>İstanbul Airport, June 2014.</p>
+                    <!-- något om att jag har arbetat på det här väldigt väldigt länge -->
+
+                    <!--
+                    <small>Chalmers University of Technology, Göteborg.</small><br/>
+                    <small>March 19th 2015.</small><br/>
+                    <small><a href="http://mikaelj.se">Mikael Jansson</a> / <a href="http://twitter.com/mikaelj">@mikaelj</a></small>
+                    -->
+					</p>
+				</section>
+
+                <!--
+				<section>
+					<h1>Jeff</h1>
+                    <h3>The Compacting Allocator</h3>
+                    and
+					<h1>Steve</h1>
+                    <h3>The Malloc Benchmark and Analysis Tool</h3>
+					<p>
+                    and
+                    <h2>My friend Jonas</h2>
+                    <p>He collects bits.</p>
+                    <img src="jonas.jpg"/>
+                    <small>Chalmers University of Technology, Göteborg.</small><br/>
+                    <small>March 19th 2015.</small><br/>
+                    <small><a href="http://mikaelj.se">Mikael Jansson</a> / <a href="http://twitter.com/mikaelj">@mikaelj</a></small>
+					</p>
+				</section>
+                -->
+
+				<section>
+					<h2>You wake up in a tiny computer. There's 100 KB RAM in a pile.</h2>
+                    <pre><code data-trim contenteditable>
+const size_t num_images = 100, size = 1024;
+Images *images[num_images];
+
+// request many small images, filling up 100 KB...
+for (int i=0; i&lt;num_images; i++) 
+    images[i] = Image(size);      
+
+process(images);
+
+// ...delete 1/3 (~33 KB) of them...
+for (int i=0; i&lt;num_images; i++)
+    if (i % 3 == 0) delete images[i];
+                    </code></pre>
+                    <pre class="fragment"><code data-trim contenteditable>
+// ...and try request a big one...
+Image thousandpiecepuzzle = Image(20*1024);
+                    </code></pre>
+                    <p class="fragment">You were eaten by a grue.</p>
+				</section>
+
+				<section>
+					<h2>Problems faced</h2>
+                    <ul>
+                        <li class="fragment">Running apps on low-RAM systems</li>
+                        <li class="fragment">Fragmentation an issue</li>
+                   </ul>
+				</section>
+
+				<section>
+					<h2>Possible solution</h2>
+                    <pre class="fragment cpp"><code data-trim>
+const size_t num_images = 100, size = 1024;
+Images *images[num_images];
+
+// request many small images, filling up 100 KB...
+for (int i=0; i&lt;num_images; i++) {
+    images[i] = Image(size);      
+                    </code></pre>
+                    <pre class="fragment cpp"><code>    images[i].lock();  // &lt;-- NEW</code></pre>
+                    <pre class="fragment cpp"><code data-trim>
+}
+process(images);
+                    </code></pre>
+                    <pre class="fragment cpp"><code data-trim>
+// ...delete 1/3 (~33 KB) of them...
+for (int i=0; i&lt;num_images; i++) {
+    if (i % 3 == 0) delete images[i];
+                    </code></pre>
+                    <pre class="fragment cpp"><code>    else images[i].unlock(); // &lt;-- NEW
+} </code></pre>
+                    <pre class="fragment cpp"><code data-trim>
+compact(); // &lt;-- NEW. squish all unlocked images together
+                    </code></pre>
+                    <pre class="fragment cpp"><code data-trim>
+// ...and try request a big one -- success!
+Image thousandpiecepuzzle = Image(20*1024);
+                    </code></pre>
+                    <!--
+                    <pre class="fragment cpp"><code data-trim>
+                    // XXX: proper (but small) application
+handle_t h = rmmalloc(512);  // allocate block of memory
+uint8_t *ptr = rmlock(h);    // lock block in place
+compute(ptr);                // do something with the memory
+rmunlock(ptr); // enable compacting to move block around
+rmcompact();   // move unlocked blocks together
+rmfree(h);     // done with this block
+                    </code></pre>
+                    -->
+				</section>
+
+				<section>
+                    <h2>Jeff to the rescue!</h2>
+                    <ul>
+                        <li>Implements proposed API</li>
+                        <li>Compacting allocator with locking/unlocking</li>
+                        <li>Naive (fast?) implementation</li>
+                        <li>Less/no fragmentation</li>
+                   </ul>
+				</section>
+
+				<section>
+                    <h2>...or?</h2>
+                    <img src="EddieIzzard_Largo_Show.jpg"/>
+                    <ul>
+                        <li class="fragment">Rewriting apps time-consuming, error-prone.</li>
+                   </ul>
+				</section>
+
+				<section>
+					<h2>Enter Steve!</h2>
+                    <ul class="fragment">
+                        <li>Measure memory acces of <em>any</em> application</li>
+                        <li>Automatic benchmarking of any app, any allocator</li>
+                        <li>Gives larger body of tests</li>
+                   </ul>
+				</section>
+
+				<section>
+					<h2>How Steve?</h2>
+                    <img src="steve.png"/>
+                    <ul class="fragment">
+                        <li>Heuristics injects locking/unlocking</li>
+                        <li>Runs application with set of allocators</li>
+                        <li>Charts, animations and scoring tables</li>
+                   </ul>
+				</section>
+
+                    <!--
+                    ************** RESULTAT *********************
+
+                    1.
+                    Test där rmalloc var bäst för speed och minne
+                    Test där rmalloc var sämst för speed och minne.
+
+                    2. Scatterplot för speed och minne, med gröna punkter rmalloc/rmalloc-c och en röd punkt för rmalloc-c-m, resterande svarta.
+                    -->  
+
+                    <!--
+				<section>
+					<h2>Results: LaTeX (bad)</h2>
+                    Linear allocation.
+					<table>
+						<thead>
+							<tr>
+								<th>Allocator</th>
+								<th>Speed Penalty</th>
+								<th>Space Penalty</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr>
+								<td>dlmalloc</td>
+								<td>1%</td>
+								<td>0%</td>
+							</tr>
+							<tr>
+								<td>jemalloc</td>
+								<td>23%</td>
+								<td style='color: #f00'>80%</td>
+							</tr>
+                            <tr>
+								<td>rmmalloc-c</td>
+								<td style='color: #f00'>46%</td>
+								<td style='color: #f00'>59%</td>
+							</tr>
+                            <tr>
+								<td>rmmalloc</td>
+								<td style='color: #f00'>47%</td>
+								<td>39%</td>
+							</tr>
+                            <tr>
+								<td>rmmalloc-c-m</td>
+								<td style='color: #f00'>79%</td>
+								<td>19%</td>
+							</tr>
+                            <tr>
+								<td>tcmalloc</td>
+                                <td>DNF</td>
+								<td>DNF</td>
+							</tr>
+						</tbody>
+					</table>
+				</section>
+                -->
+
+				<section>
+					<h2>Results: LaTeX (bad)</h2>
+                    Linear allocations.
+					<table>
+						<thead>
+							<tr>
+								<th>Ranking</th>
+								<th>Speed</th>
+								<th>Space</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr>
+								<td>1</td>
+								<td>dlmalloc</td>
+								<td>dlmalloc</td>
+							</tr>
+							<tr>
+								<td>2</td>
+								<td>jemalloc</td>
+								<td style='color: #0f0'>jeff-c-m</td>
+							</tr>
+                            <tr>
+								<td>3</td>
+								<td style='color: #0f0'>jeff-c</td>
+								<td style='color: #0f0'>jeff</td>
+							</tr>
+                            <tr>
+								<td>4</td>
+								<td style='color: #f00'>jeff</td>
+                                <td style='color: #f00'>jeff-c <!-- ??? XXX--></td>
+							</tr>
+                            <tr>
+								<td>5</td>
+								<td style='color: #f00'>jeff-c-m</td>
+								<td>jemalloc</td>
+							</tr>
+                            <tr>
+								<td>6</td>
+                                <td>tcmalloc (DNF)</td>
+								<td>tcmalloc (DNF)</td>
+							</tr>
+						</tbody>
+					</table>
+                <p>Note: Jeff-c includes left-over bytes in compacted blocks, leading to memory "loss", hence worse ranking than Jeff.</p>
+				</section>
+
+
+                    <!--
+				<section>
+					<h2>Results: sqlite (ok)</h2>
+                    Chunked allocations.
+					<table>
+						<thead>
+							<tr>
+								<th>Allocator</th>
+								<th>Speed Penalty</th>
+								<th>Space Penalty</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr>
+								<td>dlmalloc</td>
+								<td>48%</td>
+								<td>42%</td>
+							</tr>
+							<tr>
+								<td>jemalloc</td>
+								<td>14%</td>
+								<td>83%</td>
+							</tr>
+                            <tr>
+								<td>rmmalloc-c</td>
+								<td style='color: #f00'>30%</td>
+								<td style='color: #f00'>58%</td>
+							</tr>
+                            <tr>
+								<td>rmmalloc</td>
+								<td style='color: #f00'>38%</td>
+								<td>41%</td>
+							</tr>
+                            <tr>
+								<td>rmmalloc-c-m</td>
+								<td style='color: #f00'>75%</td>
+								<td>24%</td>
+							</tr>
+                            <tr>
+								<td>tcmalloc</td>
+                                <td>42%</td>
+								<td>DNF</td>
+							</tr>
+						</tbody>
+					</table>
+				</section>
+                -->
+
+				<section>
+					<h2>Results: sqlite (ok)</h2>
+                    Chunked allocations.
+					<table>
+						<thead>
+							<tr>
+								<th>Ranking</th>
+								<th>Speed</th>
+								<th>Space</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr>
+								<td>1</td>
+								<td>jemalloc</td>
+								<td style='color: #0f0'>jeff-c-m</td>
+							</tr>
+							<tr>
+								<td>2</td>
+								<td style='color: #0f0'>jeff-c</td>
+								<td style='color: #0f0'>jeff</td>
+							</tr>
+                            <tr>
+								<td>3</td>
+								<td style='color: #0f0'>jeff</td>
+								<td>dlmalloc</td>
+							</tr>
+                            <tr>
+								<td>4</td>
+								<td>tcmalloc</td>
+								<td style='color: #f00'>jeff-c</td>
+							</tr>
+                            <tr>
+								<td>5</td>
+								<td>dlmalloc</td>
+								<td>jemalloc</td>
+							</tr>
+                            <tr>
+								<td>6</td>
+                                <td style='color: #f00'>jeff-c-m</td>
+								<td>tcmalloc (DNF)</td>
+							</tr>
+						</tbody>
+					</table>
+				</section>
+
+
+                <section>
+                    <h1>"Mostly harmless"</h1>
+                    <img src="goodness.png"/>
+                    <!--
+                    <p> Scatterplot för speed och minne, med gröna punkter rmalloc/rmalloc-c och en röd punkt för rmalloc-c-m, resterande svarta.  </p>-->
+                </section>
+
+
+
+				<section>
+					<h2>Conclusions & Future Work</h2>
+                    <!--
+                    0. 
+                    indirektion lägger till 4 extra byte per minnesblock, eller antalet objekt man vill kunna använda.
+                    t ex 3 bytes ger 2^24 objekt.  hårdare begränsning av adresserbart minne skulle kunna ge fler optimeringar - 
+
+                    1.
+                    rmmalloc var inte snabbast, eller mest minneseffektivast.
+                    Men ibland var det nästan lika bra som dlmalloc - gammal är
+                    äldst.
+
+                    2.
+                    det hade kanske varit mer effektivt att hacka in interfacet på dlmalloc
+
+                    3.
+                    mer analys av allokeringar för en ännu snabbare "simple path"
+
+                    4.
+                    finputsning av existerande kod för att göra småoptimeringar.
+                    -->
+
+                    <p>Know your problem! Adapt allocator to your needs.</p>
+                    <p>Steve: Useful testing tool.</p>
+                    <p>Jeff: Shows simple can be good enough.</p>
+
+				</section>
+
+				<section>
+					<h2>The End</h2>
+                    <img src="steamboat-jonas-liten.jpg"/>
+                    <ul>
+                        <li><a href="http://github.com/mikaelj/rmalloc">http://github.com/mikaelj/rmalloc</a></li>
+                        <li><a href="mailto:mikael@jansson.be">mikael@jansson.be</a></li>
+                    </ul>
+				</section>
+
+                <!--
+
+				<section>
+					<h2>Tabular Tables</h2>
+					<table>
+						<thead>
+							<tr>
+								<th>Item</th>
+								<th>Value</th>
+								<th>Quantity</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr>
+								<td>Apples</td>
+								<td>$1</td>
+								<td>7</td>
+							<tr>
+							<tr>
+								<td>Lemonade</td>
+								<td>$2</td>
+								<td>18</td>
+							<tr>
+							<tr>
+								<td>Bread</td>
+								<td>$3</td>
+								<td>2</td>
+							<tr>
+						</tbody>
+					</table>
+				</section>
+                -->
+
+                <!--
+				<section>
+					<h2>Export to PDF</h2>
+					<p>Presentations can be <a href="https://github.com/hakimel/reveal.js#pdf-export">exported to PDF</a>, here's an example:</p>
+					<iframe src="//www.slideshare.net/slideshow/embed_code/42840540" width="445" height="355" frameborder="0" marginwidth="0" marginheight="0" scrolling="no" style="border:3px solid #666; margin-bottom:5px; max-width: 100%;" allowfullscreen> </iframe>
+				</section>
+                -->
+
+			</div>
+
+		</div>
+
+		<script src="lib/js/head.min.js"></script>
+		<script src="js/reveal.js"></script>
+
+		<script>
+
+			// Full list of configuration options available at:
+			// https://github.com/hakimel/reveal.js#configuration
+			Reveal.initialize({
+				controls: true,
+				progress: true,
+				history: true,
+				center: true,
+
+				transition: 'slide', // none/fade/slide/convex/concave/zoom
+
+				// Optional reveal.js plugins
+				dependencies: [
+					{ src: 'lib/js/classList.js', condition: function() { return !document.body.classList; } },
+					{ src: 'plugin/markdown/marked.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+					{ src: 'plugin/markdown/markdown.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+					{ src: 'plugin/highlight/highlight.js', async: true, condition: function() { return !!document.querySelector( 'pre code' ); }, callback: function() { hljs.initHighlightingOnLoad(); } },
+					{ src: 'plugin/zoom-js/zoom.js', async: true },
+					{ src: 'plugin/notes/notes.js', async: true }
+				]
+			});
+
+		</script>
+
+	</body>
+</html>
