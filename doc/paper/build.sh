@@ -14,6 +14,7 @@ for file in frontpage.aux main.aux paper.aux main.aux main.dvi main.latex main.l
 done
 
 rst2latex.py $options main.rst > main.latex
+[[ "$?" != "0" ]] && rst2latex $options main.rst > main.latex
 
 #latex main.latex 
 #latex main.latex 
