@@ -20,8 +20,8 @@ In order to achieve compacting, memory must be accessed indirectly. This is the 
 ``handle_t`` is an opaque type. To get the actual memory pointed to at by the handle, call `lock()` to obtain a regular
 pointer to memory. During the time a block pointed out by a handle is locked, the compact operation is not allowed to
 move it. If it could be moved, the pointer obtained by the client code would no longer be valid. This also puts
-certain limitations on the compactor, since it needs to deal with possibly locked blocks.  This forces client code needs
-to be adapted to this allocator, such that memory is always appropriately locked/unlocked as needd. The compacting
+certain limitations on the compactor, since it needs to deal with possibly locked blocks.  Client code needs 
+to be adapted to this allocator, such that memory is always appropriately locked/unlocked as needed. The compacting
 operation is discussed in more detail in section :ref:`rmcompact`.
 
 Implementation
@@ -81,13 +81,13 @@ compact step, since the handles themselves cannot be moved as they're used (in d
 A weakly locked block can be treated as unlocked in the compacting phase so it can be reclaimed. Care needs to be taken
 by the client code since compacting invalidates the pointer to memory.
 
-The array of header items grows down from the top of the client-supplied heap. New handles searched for starting at
+The array of header items grows down from the top of the client-supplied heap. New handles are searched for starting at
 ``g_memory_top`` and down until ``g_memory_bottom``. If there is no free header when requested and there is no overlap
 between existing memory (including the newly requested size in case of a malloc), ``g_memory_bottom`` is decreased and a
 fresh handle is returned. 
 
 The optional member ``next_unused`` is a compile-time optimization for speeding up the *O(n)* find header operation to
-*O(1)* at the expense of an extra memory. ``g_unused_header_root`` is set to header newly marked unused and the next
+*O(1)* at the expense of an extra memory. ``g_unused_header_root`` is set to the header that is newly marked as unused and the next
 pointer is set to the old unused header root.  Setting ``memory`` to ``NULL`` indicates an unused header. 
 
 ``g_header_root`` points to the latest used header. At compact time, it's sorted in memory order.
@@ -107,7 +107,7 @@ When a block is freed, a ``free_memory_block_t`` is stored in the first bytes. T
 ``header->memory`` against the block, we know it's a valid free memory block. The next field points to the next block in the
 same size range (explained next).
 
-There are :math:`log_2(heap_size)` (rounded up) slots. Freeing a block of size 472 bytes means placing it at the start of the
+There are :math:`log_2(heap\_size)` (rounded up) slots. Freeing a block of size 472 bytes means placing it at the start of the
 linked list at index 9 and hanging the previous list off the new block's next pointer, i.e. a stack, and is rebuilt at
 compact time. Adding a free block takes constant time.
 
@@ -120,13 +120,13 @@ There are two cases: either there is space left after top of the memory for a he
 case the fast path is taken where a header is allocated, ``g_memory_top`` is bumped and the header is associated with
 the newly created memory and returned to the client. Allocating a header means searching the header array for an unused
 block, or if the optimization described above, following ``g_unused_header_root``. If none is found, ``g_header_bottom``
-grows downward if there is space, but there is always two headers left for compacting (more on that in the section on
+grows downward if there is space, but there are always two headers left for compacting (more on that in the section on
 compacting).
 
 In the other case, there is no space left after ``g_memory_top`` and the free block list must be scanned for an appropriate
 block. This is the most complex part of alloc/free.
 
-The time complexity of the simple case with the aferementioned optimization is *O(1)*, or *O(n)* (in terms of number of
+The time complexity of the simple case with the aforementioned optimization is *O(1)*, or *O(n)* (in terms of number of
 handles in the system) in the unoptimized case. In the case where memory can't grow up (see Section
 :ref:`find-free-block` below), the time complexity is worst case  *O(n)* (in terms of the number of blocks of the
 specific size) and best case *O(1)*.
@@ -212,7 +212,7 @@ One pass of moving blocks around
   #. Move data
   #. Adjust used header pointers
 
-6. Adjacent: relink blocks so unlocked headers is placed before what's left of free area, and free area pointing to header
+6. Adjacent: relink blocks so unlocked headers are placed before what's left of free area, and free area pointing to header
    directly following previous position of last unlocked header's next header:
    
    Initial configuration with blocks Unlocked 1-4, Free 1-2, Rest:
@@ -352,11 +352,12 @@ for ``header_find_free()``. As described above, there's a compile-time optimizat
 
 More details and benchmarks in Chapter :ref:`chapter-steve`.
 
-Testing Verification
+Automatic Testing
 =====================
 I've introduced bugs in the functions called from the allocation interface to see if the testing framework would pick them
-up. Focus is to introduce small changes, so-called *off-by-one errors*, where (as the name suggest) a value or code path
-is changed only slightly but causes errors.
+up. The idea is to introduce small changes, so-called *off-by-one errors*, where (as the name suggest) a value or code path
+is changed only slightly but causes errors. Below is a list of example bugs that the automatic tests found, and could
+later be fixed. Indeed, automatic testing is useful.
 
 |  ``free_memory_block_t *block_from_header(header_t *header)``:
 |

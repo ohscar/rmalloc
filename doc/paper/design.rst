@@ -35,10 +35,10 @@ Allocator Design
 
     ----
 
-I assume that there will be idle time when the application is not doing any other processing. Since malloc and free must
-be interactive, i.e. return immediately with a block of memory that the client code can use, anything that can be
-off-loaded to for batch processing at a later point in time when there is idle time in the application. Moreover, since
-I have the freedom to move objects around in memory transparently for client code, any logic in free/malloc that handles
+I assume that there will be idle time when the application is not doing any other processing.  The functions malloc()
+and free() should perform their work as quickly as possible. If possible, any processing that doesn't have to be done
+immediately, should be done in the application's idle time. An example of such a task is compacting.  Moreover, since I
+have the freedom to move objects around in memory transparently for client code, any logic in free/malloc that handles
 memory layout, e.g. for optimization purposes (either space or time efficiency) should be handled in the idle time to as
 a high extent as possible..
 
@@ -65,7 +65,7 @@ searched for a block that fits.
 
 Freeing a block marks it as unused and adds it to the free list, for malloc to find later as needed.  The free list is
 an index array of :math:`2^{3..k}`-sized blocks with a linked list at each slot. All free blocks are guaranteed to be at least
-:math:`2^n`, but smaller than :math:`2^{n-1}`, bytes in size. The blocks can then be reused in malloc directly, or
+:math:`2^n`, but smaller than :math:`2^{n+1}`, bytes in size. The blocks can then be reused in malloc directly, or
 merged together all at once in the compacting operation. This is unlike the buddy allocator where blocks are merged
 directly on free. (See future work in section :ref:`jeff-future-work` for a brief discusson on merging directly on free.)
 
@@ -85,7 +85,7 @@ for a step-by-step version and section :ref:`rmcompact` for
 an explanation with figures. In short, blocks are moved closer to bottom of the heap (if possible), otherwise the first
 block (or blocks) to fit in the unused space is moved there. The first case happens if there are no locked blocks
 between the unused space and next used (but not locked) block, simply moving the memory blocks and updating pointers is
-enough. A quick operation that leaves no remainding holes. If however there are any locked blocks between the unused
+enough. A quick operation that leaves no remaining holes. If however there are any locked blocks between the unused
 space and the next used block, obviously only blocks with a total length of less than or equal the size of the unused
 space can be moved there. The algorithm is greedy and takes the first block that fits. More than one adjacent block that
 fits within the unused space will be moved together. In the case that there are no blocks that fit the unused space and
@@ -138,7 +138,7 @@ Compact Heap
 #. Rebuild the free block slots by scanning the free header blocks and inserting them at the appropriate locations in
    the list.
 
-.. [#] Only unlocked memory blocks can be moved. Clients have references to locked blocks and therefore cannot be
+.. [#] Only unlocked memory blocks can be moved. Clients have references to locked blocks which therefore cannot be
    changed.
 
 Benchmark Tool Design
@@ -150,7 +150,7 @@ of requests could be small and the total memory usage could be low.
 Measuring Jeff requires a rewrite of the application needing to be tested, to use the new malloc interface. The simple
 solution to do so is to emulate a regular malloc, i.e. directly lock after malloc. But that would make the compact
 operation no-op since no blocks can be moved. On the other hand, adapting existing code to benefit from Jeff's interface
-is error-prone. It is also not obvious which application would make good candidates. Automating the modifications, if
+is error-prone. It is also not obvious which applications would make good candidates. Automating the modifications, if
 possible, would save much time.  Finally, source code to the applications would be required for manual adaptions, which
 is not always available. I have therefore not done any manual adaptions of an application.
 

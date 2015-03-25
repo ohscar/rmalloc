@@ -17,21 +17,21 @@
 The method I used for designing and implementing the allocator (Jeff) is an iterative design process based on experimental designs
 and verification thereof, along with theoretical calculations using pen and paper. In particular, the compact operation
 went through several iterations in my sketch book before I arrived at the final version. For other parts, I used
-the profiling tools found in *GCC* to measure bottlenecks and gradually improving the code until there were no
+the profiling tools found in *GCC* to measure bottlenecks and gradually improve the code until there were no
 obvious bottlenecks left. A bottleneck in this case is a piece of code that gets called many times and is slow. I've
 aimed to write the code to execute reasonably quick, given the algorithm in use.
 
 Thanks to the rigorous testing framework in place, I could readily modify code without fearing malfunction since the
-tests would pick up any errors. Limitations of testing is that it can never prove correctness, only absence of the bugs
+tests would pick up any errors. A limitation of testing is that it can never prove correctness, only absence of the bugs
 the testing framework was designed to find.  The testing framework is described in more detail in Chapter
 :ref:`chapter-jeff`.
 
-Steve is the name of the benchmark tool that I designed to test algorithms for Jeff and comparing Jeff to other allocators. In Steve, I've
+Steve is the name of the benchmark tool that I designed to test algorithms for Jeff and to compare Jeff to other allocators. In Steve, I've
 developed heuristics for calculating locking/unlocking based on runtime data of unmodified applications. The tool for doing so grew
 from a small script into a larger collection of tools related to data collection, analysis and benchmarking. It does not
 test for correctness.
 
-Data for use by Jeff, and other calculators, is collected by various tools in the benchmark tool. The types of data
+Data for use by Jeff, and other allocators, is collected by various parts of the benchmark tool. The types of data
 used are:
 
 * raw memtrace, from running unmodified applications in my modified Valgrind tool
@@ -62,8 +62,8 @@ Hypothesis
 What are the space and time requirements of Jeff compared to other popular allocators? Is Jeff a viable alternative to other
 popular allocators in real-world situations?
 
-I aim to answer these questions in the report in chapter :ref:`chapter-results` where I display both graphs and runtime
-numbers, and in chapter :ref:`chapter-conclusions` where I assemble the results from the allocators I've measured.
+I aim to answer these questions in the report in Chapter :ref:`chapter-results` where I display both graphs and runtime
+numbers, and in Chapter :ref:`chapter-conclusion` where I assemble the results from the allocators I've measured.
 
 Development Environment
 =========================
@@ -94,10 +94,10 @@ would completely destroy the data without the user knowing an error had occured.
 Luckily, an allocator has a small interface for which tests can be easily written. In particular, randomized unit
 testing is easy, which gives a good coverage.
 
-I decided to use googletest since it was easy to setup, use and the results are easy to read. It's
+I decided to use googletest since it was easy to set up and use, and the results are easy to read. It's
 similar in style to the original Smalltalk testing framework SUnit [#]_ (later popularized by Java's JUnit [#]_).  During the
-development of the allocator I wrote tests and code in parallell, similar to test-driven development in order to verify
-that each change did not introduce a regression. Of the approximately 2500 lines of code in the allocator and tests,
+development of the allocator I wrote tests and code in parallel, similar to test-driven development in order to verify
+that each change did not introduce a regression. Of the approximately 2500 lines of code in the allocator,
 about half are tests. In addition to randomized unit testing there are consistency checks and asserts that can be turned
 on at compile-time, to make sure that e.g. (especially) the compact operation is non-destructive.
 

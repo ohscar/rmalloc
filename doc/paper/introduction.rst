@@ -57,7 +57,7 @@ run out of memory.
 
 Therefore, an allocator needs to be more clever about managing memory. At the very minimum it needs to associate
 metadata with each allocated block in order to later free the blocks.  The metadata is there in order for
-*free(pointer)* to know where from the memory chunk was allocated from. Moreover, the allocators I've tested keep one or
+*free(pointer)* to know where the memory chunk was allocated from. Moreover, the allocators I've tested keep one or
 more pools of memory split up in different size ranges, such as "small blocks", "medium-sized blocks" and "large
 blocks". By analyzing the runtime requirements of various applications, the most common case (i.e., block size) can be
 optimized for speed, space or both. The pool(s) are used because of the fact that applications often allocate data in
@@ -93,8 +93,8 @@ I show that randomized testing in large volume is a useful technique for finding
 complex data structures, such as an allocator. This is done in Chapter :ref:`chapter-jeff`.
 
 I have collected a variety of applications that can be modified to use the different allocation interface for benchmarking
-purposes. This is done Chapter :ref:`chapter-steve`. The results from benchmarking my, and others', allocators, can be
-found in :ref:`chapter-results` which is finally discussed in Chapter :ref:`chapter-conclusion`. 
+purposes. This is done Chapter :ref:`chapter-steve`. The results from benchmarking the allocators, can be
+found in Chapter :ref:`chapter-results` which is finally discussed in Chapter :ref:`chapter-conclusion`. 
 
 .. raw:: comment-done 
 
@@ -144,9 +144,9 @@ information about freed blocks in a list, there would be little wasting of memor
 efficiency requirement, pages would only be requested when there were no blocks of the correct size and therefore the
 entire free list must be searched for a suiting block before giving up and requesting a page.
 
-Multi-threaded applications that allocate memory need to work without the allocator crashing or currupting
+Multi-threaded applications that allocate memory need to work without the allocator crashing or corrupting
 data. As in all concurrency situations, care needs to be taken to do proper locking of sensitive data structures, while
-not being too coarse such that performance suffers. I do not address the issue of locking.
+not being so coarse such that performance suffers. I do not address the issue of locking.
 
 Another challenge is to make the allocator work efficiently for various memory sizes. I focus on small-memory systems,
 where space-efficiency is important, and I've made the trade-off (where applicable) that slower is better if it saves
@@ -160,7 +160,7 @@ specifically images, created holes in memory when freed, such that after a few p
 load any more pages. It happened frequently on small-memory devices, such as early smart phones/feature phones with 4-8 MB RAM.
 
 Because of fragmentation, large enough blocks can eventually not be allocated, even though the total amount of free
-memory is greater than the requested block size.  This goes against the the authors findings', where in the average case,
+memory is greater than the requested block size.  This goes against the the author's findings, where in the average case,
 fragmentation level is good enough. However, for Opera, that was insufficient.  By making a custom allocator with the
 signature outlined in the hypothesis, they hoped to solve the fragmentation problem in the specific situations that
 occur in a web browser. It was also to be used as the allocator of an in-house virtual machine. This did not happen,
@@ -175,10 +175,10 @@ that should be picked depending on the type of application written. Each GC flav
 Configuration settings, including setting GC flavor, can be done at runtime via command line parameters to the JVM.
 
 All JVM GCs use *generations*, in which objects are allocated and later moved if they survive a garbage collection. This
-is mainly done as a optimization to execution time since different collection strategies can be used for "young" objects
+is mainly done as an optimization to execution time since different collection strategies can be used for "young" objects
 and "old" objects (i.e. the ones that have survived a set number of collections).  A generation is implemented as
-separate memory areas, and therefore, areas that are not full, waste memory.  Also, application code is unaware of when
-collection occurs, generations is also a means of reduce the time the application is paused, if the collection cannot
+separate memory areas, and therefore, areas that are not full waste memory.  Also, application code is unaware of when
+collection occurs, generations is also a means of reducing the time the application is paused, if the collection cannot
 happen simultaneously with application execution.  Pausing in general is a problem GCs try to solve.
 
 In my thesis, I give control over pausing to the application that can decide at its own discretion when the most

@@ -4,13 +4,13 @@
         \label{chapter-appendix}}
 
 
-The report and the source code in its entity can be found on GitHub, http://github.com/mikaelj/rmalloc
+The report and the source code in its entirety can be found on GitHub, http://github.com/mikaelj/rmalloc
 
 Tools
 ======
 memtrace-run.sh and translate-memtrace-to-ops.py
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Generates memtrace data from an application run, and translate memtrace data to ops file, respectively, as described in
+Generates memtrace data from an application run, and translates memtrace data to ops file, respectively, as described in
 section :ref:`translating-memory-access-data-to-ops`.
 
 translate-ops-to-histogram.py
@@ -41,7 +41,7 @@ Output::
 
     result.soffice-ops-animation.avi
 
-The toolcalls the *memplot* mode described above and calls *ffmpeg* to generate an animation of the heap image sequence
+The tool calls the *memplot* mode described above and calls *ffmpeg* to generate an animation of the heap image sequence
 produced by the alloc drver for the given ops file.
 
 
@@ -56,7 +56,7 @@ Generates::
 
     result.soffice-ops.allocstats
 
-Heap size in allocstats mode is set te this value, increased by 5% until there is no OOM on the last
+Heap size in allocstats mode is set to this value, increased by 5% until there is no OOM on the last
 operation, to make sure that the entire program can be run in full at least once.
 
 
@@ -118,7 +118,7 @@ of the allocator and linking to a library. The functions to implement are::
     void user_unlock(void *handle);
     void *user_highest_address(bool full_calculation);
 
-All functions to be implemented by the driver has a ``user_`` prefix and the driver code is linked together with
+All functions to be implemented by the driver have a ``user_`` prefix and the driver code is linked together with
 ``plot.cpp`` to form the binary.  An alternative would be to create a library and register callbacks instead.
 
 user_init(heap_size, heap, name)
@@ -186,7 +186,7 @@ user_lock(ptr)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ``void *user_lock(void *)``
 
-This locks a block of memory, i.e. maps a handle to a pointer in memory, and marking it as in use. It can no longer be
+This locks a block of memory, i.e. maps a handle to a pointer in memory, and marks it as in use. It can no longer be
 moved since the client code now has a reference to the memory referred to by this handle, until ``user_unlock()`` or
 ``user_free()`` is called on the handle. Its input value is the return value of ``user_malloc()``. 
 
@@ -195,11 +195,11 @@ user_unlock(ptr)
 ``void user_unlock(void *)``
 
 This unlocks a block of memory, i.e. marking the block of memory as no longer being in use. Any memory operation is free
-to move this block around in memory.. Its input value is the return value of ``user_malloc()``. 
+to move this block around in memory. Its input value is the return value of ``user_malloc()``. 
 
 user_highest_address(fullcalc)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ``void *user_highest_address(bool full_calculation)``
 What is the highest address allocated at this time? ``NULL`` if not available.
-If ``full_calculation`` is false a less exakt calculation is acceptable if it's quicker.
+If ``full_calculation`` is false a less exact calculation is acceptable if it's quicker.
 

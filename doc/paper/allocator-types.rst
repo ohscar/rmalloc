@@ -46,13 +46,13 @@ Pool Allocator
 Certain applications use a large amount of objects of the same size that are allocated and freed continuously. This
 information can be used to create specialized pool allocators for different object sizes, where each pool can be easily
 stored in an array of :math:`N*sizeof(object)` bytes, allowing for fast lookup by alloc and free. For example, in an action
-computer game where both the player and the enemies shoot projectiles with arms, said projectiles must be kept track of by means
-of a object in memory. In a game where there could potentially exist a very large amount of projectiles in action at the
+computer game where both the player and the enemies shoot projectiles with weapons, said projectiles must be kept track of by means
+of an object in memory. In a game where there could potentially exist a very large amount of projectiles in action at the
 same time, an equal amount of allocation and freeing is done, often randomly. In order to optimize usage of system
 memory, all allocation of bullet objects would be contained to the same  *pool* of memory.  A very simple such allocator
 would be a simple list of objects and the allocator would more or less just return the index to the next unused block,
 leading to malloc and free that both have :math:`O(1)` in time complexity with very little overhead and fragmentation.  The
-usual strategies for growing the list apply, such as double the size of the list when all items in the list are used.
+usual strategies for growing the list apply, such as doubling the size of the list when all items in the list are used.
 
 Arena Allocator
 ==================
@@ -67,14 +67,14 @@ benefit to be had from making the free operation faster.
 
 Garbage Collector
 ==================
-A garbage collector is an allocator that automatically provides memory for data as-needed. There is no need to
+A garbage collector is an allocator that automatically provides memory for data as needed. There is no need to
 explicitly ask for memory from the allocator, nor to free it when done. Instead, the garbage collector periodically
 checks for which objects are still in use by the application (*alive*). An object is is anything that uses heap memory: a number,
 a string, a collection, a class instance, and so on. There are several techniques for finding alive objects and
 categorizing objects depending on their lifetime in order to more efficiently find alive objects at next pass.
 This is described in detail by Jones & Lins (1987).
 
-At any point in time, a garbage collector can move around the object if necessary, therefore any object access is done
+At any point in time, a garbage collector can move the object around if necessary, therefore any object access is done
 indirectly via a translation. User code does not keep a pointer to the block of memory that the object is located in,
 but instead this is done with support in the programming language runtime.
 

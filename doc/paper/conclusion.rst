@@ -7,8 +7,8 @@
 Speed
 ==========
 Calculate the penalty for the fields *penalty*, *best*, *worst* and *average* per application gives each allocator a sum
-of penalties for each field.  By taking the avage of these penalties, we can tell the position of each allocator.
-Allocators that did not finish is given the maximum penalty 5.
+of penalties for each field.  By taking the average of these penalties, we can tell the position of each allocator.
+Allocators that did not finish are given the maximum penalty 5.
 
 This is summarized in Table :ref:`table:speed-positions` below, and we can make a final scoring of the allocators:
 
@@ -43,7 +43,7 @@ This is summarized in Table :ref:`table:speed-positions` below, and we can make 
 
 Memory
 ==========
-Calculated the same way as speed. Because of the extra indirection layour, there will always be more memory used per
+Calculated the same way as speed. Because of the extra indirection layer, there will always be more memory used per
 allocated block. Summary in Table :ref:`table:memory-positions` below with scoring of the allocators:
 
 #. dlmalloc
@@ -84,17 +84,17 @@ likely skewed the results. In particular jemalloc performs badly, which could be
 Noteworthy is that dlmalloc still performs better than Jeff with compacting and specific support for maximum available
 memory.  It is possible that fitting Jeff's interface on top of an existing tested and quick allocator, e.g. dlmalloc,
 would have given better runtime characteristics in both space and time.  Jeff is a very simplistic implementation of a
-buddy-style allocator without any pools for small objects and similar feats found in most modern allocators.
+buddy-style allocator without any pools for small objects and similar techniques found in most modern allocators.
 
 Another conclusion to be drawn from the graphs is that there are cases where a fairly naive allocator, such as Jeff, still
-performs almost as good as a more complex allocator, such as dlmalloc.  There might be cases where the trade-off in code
-size versus memory efficiency and speed might are worth it, e.g. when the amount of code storage media is limited,
+performs almost as well as a more complex allocator, such as dlmalloc.  There might be cases where the trade-off in code
+size versus memory efficiency and speed might be worth it, e.g. when the amount of code storage media is limited,
 again, common in embedded systems with only kilobytes of code ROM.
 
 Jeff still does perform quite well, which means the idea itself could be expanded on in the future. Due to time
 constraints, larger applications that are more similar to real-life situations could not be tested since the lockops
 calculation took too long time.  Speed and memory characteristics could very well differ for such an application,
-esecially if it was running for a longer time.
+especially if it was running for a longer time.
 
 
 Limitations and Future Work 
@@ -112,7 +112,7 @@ Jeff: Future Work
 ~~~~~~~~~~~~~~~~~~~~~~
 Features
 -------------------------
-* Have a callback for when moving a locked block, for simpler compact operation and easier client code where memory does
+* Add a callback when moving a locked block, for simpler compact operation and easier client code where memory does
   not have to be locked/unlocked. Instead, they could be locked during their entire lifetime. On the other hand, there
   is a risk that it would lead to the lookup table being on the client side instead of in the allocator. Depends on
   use case.

@@ -84,7 +84,7 @@ All alloc drivers are linked to the same main program and have the same command 
     - opsfile: Operations file created by ``translate-memtrace-to-ops.py``.
     - resultfile: Statistics output file, convention is to use file stem of opsfile (without "-ops") and append
       "-allocstats"
-    - killpercent: Optionally rewind and randomly free *killpercent* (0-100) of all headers at EOF, to simulate an application that destroys and creates new documents. The value 100'000 means no rewinding or killing takes place, i.e. just one round of the data gathered by running the application to be benchmarked.
+    - killpercent: Optionally rewind and randomly free *killpercent* (0-100) of all headers at EOF, to simulate an application that destroys and creates new documents. The value 100000 means no rewinding or killing takes place, i.e. just one round of the data gathered by running the application to be benchmarked.
     - oplimit: Which operation ID (*0..total ops count*) to write alloctaion stats for. The special value 0 is for writing the original header.
       Typically the driver application is called in a for loop from 0 to the number of operations, i.e. number of lines
       in the opsfile.
@@ -163,7 +163,7 @@ Also adds non-optional rewinding to run until OOM. At each operation, a *colorma
 order to retrieve the physical memory address they are locked (throuh ``user_lock``) and the pointer is registered.
 
 Colormap is 25% of the heap size, such that each 4-byte word maps onto a byte. The colormap is initially filled with
-white (for overhead), with a new operation painted as red and free painted as green. The heap is corresondingly filled
+white (for overhead), with a new operation painted as red and free painted as green. The heap is correspondingly filled
 with ``HEAP_INITIAL`` (``0xDEADBEEF``) initially, and newly created blocks are filled with ``HEAP_ALLOC`` (``0xBEEFBABE``) and
 blocks that are just about to be freed are filled with ``HEAP_FREE`` (``0xDEADBABE``).
 
@@ -182,9 +182,6 @@ level, not blocking other threads trying to use the allocator at the same time.
 
 In fact, at Opera, *dlmalloc* was used internally to better tune allocator characteristics for memory-constrained
 devices, where all available memory was requested at startup and then used by the internal malloc.
-
-The allocators tested are drop-in replacements for malloc and free. Including garbage collectors in this test is left
-for future work.
 
 rmmalloc (Jeff)
 ~~~~~~~~~~~~~~~~~~~~~

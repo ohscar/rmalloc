@@ -35,7 +35,7 @@ Simply getting malloc/free calls is trivially done by writing a malloc wrapper a
 technique for preloading a shared library, to make the applications use our own allocator that can do logging, instead
 of the system allocator.  By pointing a special environment variable (``LD_PRELOAD``) to the location of a shared
 library prior to executing the application, any symbols missing from the main application (which in the normal case is,
-among others, *malloc* and *free*) are searched for in that library, and only after the system libraries are searched.
+among others, *malloc* and *free*) are searched for in that library, and only afterwards are the system libraries are searched.
 This is called *dynamic* linking, where symbols in the application are linked together at runtime, as opposed to
 *static* linking, where all symbols must exist in the application binary. This requires the application to use the
 system *malloc* and *free* to work, since calls to a custom allocator within the application cannot be captured.
@@ -45,17 +45,16 @@ one needs to essentially simulate the computer system the application runs in.  
 BitBlaze [#]_ project, but because it would not build on my Linux system, I evaluated Valgrind [#]_ and concluded that
 the support for instrumentation in Valgrind was satisfactory to my my requirements.
 
-Valgrind was originally a tool for detecting memory leaks in applications on the x86 platform
-via emulation and has since evolved to support more hardware platforms and providing tools for doing other
-instrumentation tasks. Provided with Valgrind an example tool *Lackey* does parts of what I was looking for but missing
-other parts. I instead ended up patching the *memcheck* tool [#]_ to capture load/store/access operations and logging
-them to file, if they were in the boundaries of lowest address allocated to highest address allocated. This will still
-give false positives when there are holes (lowest is only decreased and highest is only increased, i.e. only keeping a
-range of *lowest..highest* of used memor) but reduces complexity of tracking memory. It does not affect the end result,
-except for taking longer time to filter out false positives. Memory access is then analyzed
-offline. Note that it will only work for applications that use the system-malloc/free. Any applications using custom
-allocators must be modified to use the system allocator, which generally means changing a setting in the source code and
-recompiling.
+Valgrind was originally a tool for detecting memory leaks in applications on the x86 platform via emulation and has
+since evolved to support more hardware platforms and providing tools for doing other instrumentation tasks. Provided
+with Valgrind an example tool, *Lackey*, that does parts of what I was looking for but lacks other parts.  I instead
+ended up patching the *memcheck* tool [#]_ to capture load/store/access operations and log them to file, if they
+were in the boundaries of lowest address allocated to highest address allocated. This will still give false positives
+when there are holes (lowest is only decreased and highest is only increased, i.e. only keeping a range of
+*lowest..highest* of used memory) but reduces complexity of tracking memory. It does not affect the end result, except
+for taking longer time to filter out false positives. Memory access is then analyzed offline. Note that it will only
+work for applications that use the system-malloc/free. Any applications using custom allocators must be modified to use
+the system allocator, which generally means changing a setting in the source code and recompiling.
 
 .. [#] http://bitblaze.cs.berkeley.edu/temu.html
 .. [#] http://bitblaze.cs.berkeley.edu/ 
@@ -122,7 +121,7 @@ Save CPU at the Expense of Memory
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 I eventually tried a mapping on the start and end addresses, where each access address would be decremented towards
 start and incremented towards end. Each address was checked against against a mapping from address to handle. If the
-value (i.e. the memory handle) of the mapping are the same, I know that memory access belonged to a specific handle.
+value (i.e. the memory handle) of the mapping is the same, I know that memory access belonged to a specific handle.
 That was even slower than iterating through 2000 elements, because the hash has to be checked on average one lookup per
 allocated byte in the memory area, even though the time complexity is similar: *O(n*m + c)* - the constant makes it
 slower, assuming hash lookup is *O(1)* i.e. *c*.
@@ -132,8 +131,8 @@ mapping each address to the corresponding memory handle.  The complexity was *O(
 about 2 GB data read (out of 12 GB in total) My server with 8 GB RAM has swap enabled, but by default Ubuntu 10.04 LTS
 doesn't over-commit memory. Setting ``/proc/sys/vm/overcommit_memory`` to 1 effectively enables swap for application memory
 allocation.  So, what I realized is that the problem is, of course, that using a 32-bit system to allocate data larger
-than 4GB doesn't work very well.  Installed a 64-bit Ubuntu LiveCD on a USB stick and did post-processing from that end.
-Now I could successfully translate a memory trace run to a ops file, given a computer with a large amount of RAM.
+than 4GB doesn't work very well.  I installed a 64-bit Ubuntu LiveCD on a USB stick and did post-processing from that end.
+Now I could successfully translate a memory trace run to an ops file, given a computer with a large amount of RAM.
 
 .. raw:: foobar
 
@@ -211,7 +210,7 @@ translation time, as described in section :ref:`translating-memory-access-data-t
 chosen from the assumption that any object that has more than half of all memory accesses in one iteration of a loop is
 the primary object on which the loop operates.
 
-Depnding on the relation between ops accessing the block in question and ops accessing other objects the access pattern
+Depending on the relation between ops accessing the block in question and ops accessing other objects the access pattern
 of the object can be modeled.  For example, if an object has 100 ops within its lifetime and 10 of them are its own
 and 90 are others', the object would probably be locked at each access, whereas if it was the other way around, it is
 more likely that the object is locked throughout its entire lifetime. Calculating lifetime requires a full opsfile,
@@ -224,7 +223,7 @@ described in section :ref:`lifetime-calculation` below and visualised here.
 .. figure:: graphics/result-soffice-macro-histogram-0-1000.png
    :scale: 50%
 
-   :label:`appendixhistogram01000` This shows the number of objects within a specific lifetime. Short-lived objects dominates.
+   :label:`appendixhistogram01000` This shows the number of objects within a specific lifetime. Short-lived objects dominate.
 
 By removing the short-lived objects, we can get a better understanding of the distribution of the other objects in
 Figure :ref:`appendixhistogram10100`.
@@ -293,14 +292,12 @@ detailed locking information. Since the number of objects is large and the calcu
 the process can be broken down into smaller tasks. This is done using the Python ``multiprocessing`` module, and by
 recording start and stop indices (based on the New or Free ops, respectively) into the input list, the list of start
 indices can be broken down into smaller parts to maximize usage of multi-core systems making processing the entire input
-file faster on the order of the number of available cores.  The tools automatically picks the number of cores plus two
-for the number of worker threads to saturate the CPU.
+file faster on the order of the number of available cores.  To saturate the CPU, the tools automatically pick the number of cores plus two as the number of worker threads.
 
-In the case of no corresponding Free operation for the block, no lifetime calculation is done, i.e. it is assumed to
-be unlocked. This is a limitation of the calculation based on the observation of applications that has a large
-amount of objects that are never explicitly freed, and assuming a lifetime of the entire application would be
-incorrect.  An implicit free could be inserted at the point of the last memory access, however it is not
-implemented.
+In the case of no corresponding Free operation for the block, no lifetime calculation is done, i.e. it is assumed to be
+unlocked. This is a limitation of the calculation based on the observation of applications that have a large amount of
+objects that are never explicitly freed, and assuming a lifetime of the entire application would be incorrect.  An
+implicit free could be inserted at the point of the last memory access, however it is not implemented.
 
 .. raw:: comment-todo
 
