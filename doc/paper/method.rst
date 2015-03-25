@@ -42,8 +42,8 @@ used are:
 The benchmark output is used to both produce graphs of allocator performance and can together produce internal rankings
 between the allocators.
 
-This is described in greater detail in chapters :ref:`chapter-simulating-application-runtime`, :ref:`chapter-steve` and
-section :ref:`input-data`.
+This is described in greater detail in Chapters :ref:`chapter-simulating-application-runtime`, :ref:`chapter-steve` and
+Section :ref:`input-data`.
 
 Assumptions
 ==============

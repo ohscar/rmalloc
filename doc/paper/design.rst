@@ -67,7 +67,7 @@ Freeing a block marks it as unused and adds it to the free list, for malloc to f
 an index array of :math:`2^{3..k}`-sized blocks with a linked list at each slot. All free blocks are guaranteed to be at least
 :math:`2^n`, but smaller than :math:`2^{n+1}`, bytes in size. The blocks can then be reused in malloc directly, or
 merged together all at once in the compacting operation. This is unlike the buddy allocator where blocks are merged
-directly on free. (See future work in section :ref:`jeff-future-work` for a brief discusson on merging directly on free.)
+directly on free. (See future work in Section :ref:`jeff-future-work` for a brief discusson on merging directly on free.)
 
 .. figure:: graphics/jeff-free-blockslots.png
    :scale: 50%
@@ -80,8 +80,8 @@ Compacting
 ~~~~~~~~~~~~
 .. X X X (gres, DONE): jag har ju algoritm-adhd, så det kanske bara är jag, men fundera över om en bild hade varit bra här.
 
-Compacting uses a greedy Lisp-2-style compacting algorithm Jones & Lins (1997), see section :ref:`compact-heap`
-for a step-by-step version and section :ref:`rmcompact` for
+Compacting uses a greedy Lisp-2-style compacting algorithm Jones & Lins (1997), see Section :ref:`compact-heap`
+for a step-by-step version and Section :ref:`rmcompact` for
 an explanation with figures. In short, blocks are moved closer to bottom of the heap (if possible), otherwise the first
 block (or blocks) to fit in the unused space is moved there. The first case happens if there are no locked blocks
 between the unused space and next used (but not locked) block, simply moving the memory blocks and updating pointers is
@@ -154,5 +154,5 @@ is error-prone. It is also not obvious which applications would make good candid
 possible, would save much time.  Finally, source code to the applications would be required for manual adaptions, which
 is not always available. I have therefore not done any manual adaptions of an application.
 
-The specifics of how data is collected can be found in chapters :ref:`chapter-simulating-application-runtime` and :ref:`chapter-steve`.
+The specifics of how data is collected can be found in Chapters :ref:`chapter-simulating-application-runtime` and :ref:`chapter-steve`.
 

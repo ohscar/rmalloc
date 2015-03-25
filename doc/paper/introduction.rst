@@ -83,7 +83,7 @@ move data blocks around when not in use (*unlocked* state), specifically to cope
 compacting the heap. 
 
 In Chapter :ref:`chapter-allocator-types` I present an overview of the allocator I compare my work with.  Method and
-Design are in chapters :ref:`chapter-method` and :ref:`chapter-design`. 
+Design are in Chapters :ref:`chapter-method` and :ref:`chapter-design`. 
 
 I have developed a method of simulating runtime behaviour of application using heuristics and show that it is possible
 to test performance of locking/unlocking allocators without access to source code. This is done in Chapter

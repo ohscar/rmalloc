@@ -17,7 +17,7 @@ translate-ops-to-histogram.py
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 To visualize and experiment with different ways of calculating lifetime I have a small application that takes as input
 an ops file (created by ``translate-memtrace-to-ops.py``), in particular to look at macro lifetimes in different
-intervals. This is described in section :ref:`lifetime-visualization`.
+intervals. This is described in Section :ref:`lifetime-visualization`.
 
 translate-ops-to-locking-lifetime.py
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

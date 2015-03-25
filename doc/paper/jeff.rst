@@ -22,7 +22,7 @@ pointer to memory. During the time a block pointed out by a handle is locked, th
 move it. If it could be moved, the pointer obtained by the client code would no longer be valid. This also puts
 certain limitations on the compactor, since it needs to deal with possibly locked blocks.  Client code needs 
 to be adapted to this allocator, such that memory is always appropriately locked/unlocked as needed. The compacting
-operation is discussed in more detail in section :ref:`rmcompact`.
+operation is discussed in more detail in Section :ref:`rmcompact`.
 
 Implementation
 ==============
