@@ -109,6 +109,12 @@ found in Chapter :ref:`chapter-results` which is finally discussed in Chapter :r
 
 Definitions
 ============
+* **Valgrind**: A debugging toolused to detect memory leaks and memory overwriting in applications, by emulating the
+  target CPU.
+* **mmap()**: An system call for applications to ask the operating system for one or more memory page (often 4KB) and
+  map it into the application's virtual address space.
+* **sbrk()**: Similar to *mmap()*, by extending the application's data segment size instead of asking for virtual
+  memory, and is limited by the maximum data size of the application.
 * **Internal fragmentation**: The amount of memory wasted inside a block.
 * **External fragmentation**: The amount of memory wasted by allocator metadata.
 * **Op**: Any memory operation: new, free, load, store, modify, lock, unlock. Generally, load, store and modify is generalized to
@@ -154,17 +160,19 @@ memory. It is currently in use at TLab West Systems AB on a system with a total 
 
 Efficiency
 ======================================
-The question *Is fragmentation a problem?* is asked by Johnstone & Wilson (1998). At Opera circa 2007, that
-was indeed the case after repeatedly loading/unloading web pages. Large web pages loading many small resources,
-specifically images, created holes in memory when freed, such that after a few page loads, it was no longer possible to
-load any more pages. It happened frequently on small-memory devices, such as early smart phones/feature phones with 4-8 MB RAM.
+Around 2007 at Opera, a company that produces a web browser for desktop computers, embedded computer systems and
+phones, memory fragmentation became a problem after repeatedly loading and unloading web pages. Large web pages load many
+small resources, specifically images, that create holes in memory when freed. After a few page loads, it is no longer
+possible to load any more pages because there are no continuous blocks of memory large enough to fit a web page in.  It
+happened frequently on small-memory devices, such as early smart phones and feature phones with 4-8 MB RAM.
 
-Because of fragmentation, large enough blocks can eventually not be allocated, even though the total amount of free
-memory is greater than the requested block size.  This goes against the the author's findings, where in the average case,
-fragmentation level is good enough. However, for Opera, that was insufficient.  By making a custom allocator with the
-signature outlined in the hypothesis, they hoped to solve the fragmentation problem in the specific situations that
-occur in a web browser. It was also to be used as the allocator of an in-house virtual machine. This did not happen,
-however, because of delays in writing the thesis.
+Because of said fragmentation, large enough blocks can eventually not be allocated, even though the total amount of free
+memory is greater than the requested block size.  This goes against the findings by Johnstone & Wilson (1998), where in
+the average case, the level of fragmentation is good enough. However, for Opera, "good enough" was insufficient.  By
+making a custom allocator with the signature outlined in the hypothesis, they hoped to solve the fragmentation problem
+in the specific situations that occur in a web browser. Another use case for the allocator was for an in-house custom
+programming language, where the allocator's purpose was to be used as a garbage collector. This did not happen, however,
+because of delays in finishing the thesis.
 
 Related Work 
 ==================
