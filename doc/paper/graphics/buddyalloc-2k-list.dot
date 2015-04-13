@@ -3,7 +3,7 @@ digraph before {
 
     rankdir=TB;
     
-    free [label="...|<s4> k=4|<s5> k=5|<s6> k=6)|<sdot>...|<s12> k=12"];
+    free [label="...|<s4> n=4|<s5> n=5|<s6> n=6|<sdot>...|<s12> n=12"];
     s4s [label="{<s40> 16|<s41> 16|<s42> 16|...}"];
     s5s [label="{<s50> 32|<s51> 32|<s52> 32|...}"];
     s6s [label="{<s60> 64|<s61> 64|<s62> 64|...}"];

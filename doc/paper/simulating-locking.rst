@@ -10,8 +10,8 @@
 
 As described in the introduction, it is not a practical solution to rewrite applications to use the new API. Therefore,
 I automated the task of finding approximate locking behaviour of applications.  One way of doing that is to simulate an
-application, which requires at the minimum the application's memory access patterns, i.e. when the application reads and
-writes to memory.
+application, which requires at the minimum the application's memory access patterns, i.e. when the application reads
+from and writes to memory.
 
 
 .. raw:: comment-done
@@ -32,28 +32,28 @@ Gathering Memory Access Data
     * (ang. Valgrind) man får bonuspoäng om amn gör en tabell som visar skillnaderna mellan verktygen
 
 Simply getting malloc/free calls is trivially done by writing a malloc wrapper and make use of Linux' *LD_PRELOAD*
-technique for preloading a shared library, to make the applications use our own allocator that can do logging, instead
-of the system allocator.  By pointing a special environment variable (``LD_PRELOAD``) to the location of a shared
-library prior to executing the application, any symbols missing from the main application (which in the normal case is,
-among others, *malloc* and *free*) are searched for in that library, and only afterwards are the system libraries are searched.
-This is called *dynamic* linking, where symbols in the application are linked together at runtime, as opposed to
-*static* linking, where all symbols must exist in the application binary. This requires the application to use the
-system *malloc* and *free* to work, since calls to a custom allocator within the application cannot be captured.
+technique for preloading a shared library, to make the applications use a custom allocator that can do logging, instead
+of the system allocator. This requires the application to use the system *malloc* and *free* to work, since calls to a
+custom allocator within the application cannot be captured.  By pointing a special environment variable (``LD_PRELOAD``)
+to the location of a shared library prior to executing the application, any symbols missing from the main application
+(which in the normal case is, among others, *malloc* and *free*) are searched for in that library, and only afterwards
+are the system libraries are searched.  This is called *dynamic* linking, where symbols in the application are linked
+together at runtime, as opposed to *static* linking, where all symbols must exist in the application binary. 
 
 Unfortunately is is not enough to simply get the calls to malloc and free. To get statistics on memory *access* patterns
 one needs to essentially simulate the computer system the application runs in.  Options considered were TEMU [#]_ from the
 BitBlaze [#]_ project, but because it would not build on my Linux system, I evaluated Valgrind [#]_ and concluded that
-the support for instrumentation in Valgrind was satisfactory to my my requirements.
+the support for instrumentation in Valgrind met my requirements.
 
 Valgrind was originally a tool for detecting memory leaks in applications on the x86 platform via emulation and has
 since evolved to support more hardware platforms and providing tools for doing other instrumentation tasks. Provided
-with Valgrind an example tool, *Lackey*, that does parts of what I was looking for but lacks other parts.  I instead
+with Valgrind an example tool, *Lackey*, that does parts of what I was looking for but lacks other parts.  Instead I
 ended up patching the *memcheck* tool [#]_ to capture load/store/access operations and log them to file, if they
 were in the boundaries of lowest address allocated to highest address allocated. This will still give false positives
 when there are holes (lowest is only decreased and highest is only increased, i.e. only keeping a range of
 *lowest..highest* of used memory) but reduces complexity of tracking memory. It does not affect the end result, except
 for taking longer time to filter out false positives. Memory access is then analyzed offline. Note that it will only
-work for applications that use the system-malloc/free. Any applications using custom allocators must be modified to use
+work for applications that use the system malloc/free. Any applications using custom allocators must be modified to use
 the system allocator, which generally means changing a setting in the source code and recompiling.
 
 .. [#] http://bitblaze.cs.berkeley.edu/temu.html
@@ -61,8 +61,7 @@ the system allocator, which generally means changing a setting in the source cod
 .. [#] http://valgrind.org
 .. [#] https://github.com/mikaelj/rmalloc/commit/a64ab55d9277492a936d7d7acfb0a3416c098e81 (2014-02-09: "valgrind-3.9.0: memcheck patches")
 
-This is how the modified Valgrind, memtrace translation and locking calculation fits together, example given running
-StarOffice (``soffice /tmp/path/to/document.ods``)::
+This is how the modified Valgrind that produces memtraces files, memtrace translation and locking calculation fits together::
 
     #!/bin/bash
 
@@ -83,6 +82,8 @@ StarOffice (``soffice /tmp/path/to/document.ods``)::
         ../steve/memtrace-to-ops/translate-ops-to-locking-lifetime.py \
         ${theapp}/${theapp}
 
+See also Figure :ref:`steve-overview`.
+
 Beware that running larger applications through the memory access-logging Valgrind takes very long time, about 30
 minutes on an Intel Core i3-based system to load http://www.google.com in the web browser Opera [#]_.
 
@@ -90,14 +91,14 @@ minutes on an Intel Core i3-based system to load http://www.google.com in the we
 
 Translating Memory Access Data to Ops
 ======================================
-The basis of all further data analysis is a *memtrace*, a file with the output produced my the patched memcheck tool in
+The basis of all further data analysis is a *memtrace*, a file with the output produced by the patched memcheck tool in
 the following format::
 
     >>> op address size
 
 where op is one of N, F, L, S, M for New, Free, Load, Store and Modify, respectively and size is how many bytes are
 affected by the operation (always 0 for F).  The operation New has an address and size associated, and it's therefore
-possible to map memory access <L, S, M> to a specific pointer. This is done by creating a unique integer and mapping all
+possible to map memory access (L, S, M) to a specific pointer. This is done by creating a unique identifier and mapping all
 keys from *address* to *address+size* to that identifier. On free, conversely, all mappings in that address range are
 removed. At each access a list of tuples <id, access type, address, size> is recorded. 
 
@@ -114,24 +115,24 @@ My initial attempt was to scan through the entire list each time for each operat
 slow and uses too much memory, which my laptop with 4 GB of RAM and an intel Core i3 CPU can't handle - this only works
 for small-ish outputs. This because the list of handles is checked for each memory access, i.e. a :math:`\sim` 2000
 entries list for each memory access (:math:`\sim` 500 MB), quickly becomes unusable.   I tried various approaches, such as moving
-out the code to Cython (formerly known as Pyrex), which translates the Python code into C and builds it as a Python
+the code to Cython (formerly known as Pyrex), which translates Python code into C and builds it as a Python
 extension module (a regular shared library), but only doing that did not markedly speed things up.
 
 Save CPU at the Expense of Memory
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 I eventually tried a mapping on the start and end addresses, where each access address would be decremented towards
-start and incremented towards end. Each address was checked against against a mapping from address to handle. If the
-value (i.e. the memory handle) of the mapping is the same, I know that memory access belonged to a specific handle.
-That was even slower than iterating through 2000 elements, because the hash has to be checked on average one lookup per
+start and incremented towards end. Each address is checked against against a mapping from address to handle. If the
+value (i.e. the memory handle) of the mapping is the same, I know that memory access belongs to a specific handle.
+That is even slower than iterating through 2000 elements, because the hash has to be checked on average one lookup per
 allocated byte in the memory area, even though the time complexity is similar: *O(n*m + c)* - the constant makes it
 slower, assuming hash lookup is *O(1)* i.e. *c*.
 
-Finally, I came up with a brute-force solution: hash all addresses within the requested memory area - from start to end,
-mapping each address to the corresponding memory handle.  The complexity was *O(m)*, but blew up with a MemoryError at
+Finally, I came up with a brute-force solution: hash all addresses within the requested memory area, from start to end,
+mapping each address to the corresponding memory handle.  The complexity is *O(m)*, but blows up with a MemoryError at
 about 2 GB data read (out of 12 GB in total) My server with 8 GB RAM has swap enabled, but by default Ubuntu 10.04 LTS
 doesn't over-commit memory. Setting ``/proc/sys/vm/overcommit_memory`` to 1 effectively enables swap for application memory
-allocation.  So, what I realized is that the problem is, of course, that using a 32-bit system to allocate data larger
-than 4GB doesn't work very well.  I installed a 64-bit Ubuntu LiveCD on a USB stick and did post-processing from that end.
+allocation.  Using a 32-bit system to allocate data larger
+than 4GB doesn't work.  I installed a 64-bit Ubuntu LiveCD on a USB stick and did post-processing from that end.
 Now I could successfully translate a memory trace run to an ops file, given a computer with a large amount of RAM.
 
 .. raw:: foobar
@@ -149,13 +150,13 @@ Now I could successfully translate a memory trace run to an ops file, given a co
 
 More on Lifetime
 ~~~~~~~~~~~~~~~~~~~~~
-The lifetime calculation could be more elaborate, for now the calculation is fairly naive in that it only checks for really
-long-lived areas, but it could also be setup to scan for "sub-lifetimes", i.e. module-global.  My guess is that it would
-look like the histogram data below in section :ref:`lifetime-visualization` (spikes), but located in the middle.
+The lifetime calculation could be more elaborate. For now the calculation is fairly naive in that it only checks for 
+long-lived object lifetime ranges, but it could also be setup to scan for "sub-lifetimes", i.e. module-global.  My guess is that it would
+look like the histogram data in Figure :ref:`appendixhistogram01000` below, but located in the middle.
 Calculating that would mean that start and end points for calculating lifetime would be sliding, such that end is fixed
 and start moves towards end, or the other way around, where start is fixed and end moves towards start.  Storing each
 value takes up lots of memory and analyzing the end-result by hand takes a very long time since one'd have to look at
-each histogram.  I've implemented a simpler version of this, described below in section :ref:`lifetime-calculation`.
+each histogram.  I've implemented a simpler version of this, described below in Section :ref:`lifetime-calculation`.
 
 .. raw:: comment
 
@@ -166,18 +167,25 @@ each histogram.  I've implemented a simpler version of this, described below in 
 
 Performance Optimization of Lifetime Calculation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Recall from definitions, section :ref:`definitions`, lifetime is defined as number of ops on own handle divided by ops
-for all other handles, the given handle's lifetime.  Each handle is mapped to a tuple <own, others>, and for each
+Recall from definitions, Section :ref:`definitions`, that lifetime is defined as number of ops on own handle divided by ops
+for all other handles, for the given handle's lifetime. For example, let's say handle A is created at time 0, handle B is created at time 10 and handle C is created at time 20. They all live until time 100 and each have 100 ops, evenly divided throughout their lifetimes. The lifetimes of the handles are:
+
+* A: 100 / (100 + 100) = 50%
+* B: 100 / (90 + 100) = 53%
+* C: 100 / (80 + 89) = 59%
+
+Each handle is mapped to a tuple <own, others>, and for each
 operation either own or others is incremented, until the handle is freed, at which point it's moved to the set of
 inactive handles. This means going through all handles for each operation, which for smaller datasets is OK.
-Even removing duplicates (two successive ops on the same handle) this quadratic *O(m\*n)* (m = ops, n = live handles)
+Even removing duplicates (two successive ops on the same handle) is quadratic *O(m\*n)* (m = ops, n = live handles)
 takes too long time.
 
 .. Again, we don't have that luck, and for the Opera data set it's about 8GB data. Even removing duplicates (two successive ops on the same handle) this quadratic *O(m\*n)* (m = ops, n = live handles) takes too long time.
 
-Instead, keep a counter of ops so far (ops_counter) and for each handle, store the tuple <own, value of ops_counter at
-New>, and only increase the *own* value for ops mapping to a handle. Then, at death (free), calculate the "others"
-value: *others_ops = ops_counter - own - cached_ops_counter*. Example, with ops counter, set of alive, set of dead::
+Instead, keep a counter of ops so far (ops_counter) and for each handle, store the triple (handle id, # own ops, ops_counter at
+handle new) and increase the number of own ops correspondingly. When the handle is freed, calculate the "other ops"
+value as *others_ops = current ops_counter - own - saved ops_counter*
+An example example with each line defined as ops counter | set of alive | set of dead, action::
 
     20 | {(a 5 0) (b 2 5) (c 10 7) (d 3 17)} | {}, (death b) =>
     20 | {(a 5 0) (c 10 7) (d 3 17)} | {(b 2 20-5-2=13)}, (death a) =>
@@ -191,34 +199,35 @@ value: *others_ops = ops_counter - own - cached_ops_counter*. Example, with ops 
     28 | {(c 10 7) (d 3 17) (e 5 20) (f 3 25)} |
          {(b 2 13) (a 5 15) (d 3 0) (e 5 28-20-5=3}
 
-At end, any remaining live handles (due to missing frees) are moved to the dead set.
+At the end, any remaining live handles (due to missing frees) are moved to the dead set.
 
-This algorithm is *O(m) + O(n)*. 
+This algorithm is *O(m) + O(n)*, down from *(Om*n)*.
 
 .. XXX - is it O(m) + O(n)?
 
 Lifetime Visualization
 ========================
-A block with a lifetime close to the total number of operations is considered to be a long lifetime and therefore
-created in the beginning of the application's lifetime.  The *macro* lifetime of a block is the relation between all ops
-within its lifetime through the total ops count of the application.  A block with a small macro lifetime therefore is an
+A block with a lifetime close to the total number of operations is considered to have a long lifetime and therefore
+created in the start of the application.  The *macro* lifetime of a block is the relation between all ops
+within its lifetime and the total ops count of the application.  A block with a small macro lifetime therefore is an
 object that has a short life span, whereas a block with a large macro lifetime is an object with a large life span.
 Typically a large value for macro lifetime means it's a global object and can be modelled as such.
 
 A coarse locking lifetime based on the macro lifetime, with a threshold of 50%, is calculated at memtrace-to-ops
-translation time, as described in section :ref:`translating-memory-access-data-to-ops` above. The threshold value 50% is
-chosen from the assumption that any object that has more than half of all memory accesses in one iteration of a loop is
+translation time, as described in Section :ref:`translating-memory-access-data-to-ops` above. The threshold value 50% is
+based on the assumption that any object that has more than half of all memory accesses in one iteration of a loop is
 the primary object on which the loop operates.
 
-Depending on the relation between ops accessing the block in question and ops accessing other objects the access pattern
-of the object can be modeled.  For example, if an object has 100 ops within its lifetime and 10 of them are its own
-and 90 are others', the object would probably be locked at each access, whereas if it was the other way around, it is
-more likely that the object is locked throughout its entire lifetime. Calculating lifetime requires a full opsfile,
-including all access ops.
+Based on the relation between ops accessing the block in question and ops accessing other objects the access pattern
+of the object can be modeled. 
+For example, if an object has 100 ops within its lifetime, 90 of them its own and 10 others, chances are it's an inner
+loop where the object is locked from its creation to its destruction. Similarly, an object that is accessed few times
+during its lifetime, compared to all others, would be locked as-needed.
+Calculating lifetime requires a full opsfile, including all access ops.
 
-It turns out that for some (larger) applications, lifetimes are highly clustered for the short-lived objects,
+It turns out that for some (larger) applications, lifetimes of short-lived objects are highly clustered,
 as seen in Figure :ref:`appendixhistogram01000`. This is calculated by the tool ``translate-ops-to-histogram.py`` as
-described in section :ref:`lifetime-calculation` below and visualised here.
+described in Section :ref:`lifetime-calculation` below and visualised here.
 
 .. figure:: graphics/result-soffice-macro-histogram-0-1000.png
    :scale: 50%
@@ -233,7 +242,7 @@ Figure :ref:`appendixhistogram10100`.
 
    :label:`appendixhistogram10100` Limited to blocks with a lifetime between 1% and 100%
 
-And conversely, if we want to see the distribution of the short-lived objects only, as in :ref:`appendixhistogram020`.
+And conversely, if we want to see the distribution of the short-lived objects only, as in Figure :ref:`appendixhistogram020`.
 
 .. figure:: graphics/result-soffice-macro-histogram-0-20.png
    :scale: 50%
@@ -243,18 +252,18 @@ And conversely, if we want to see the distribution of the short-lived objects on
 Lifetime Calculation
 =================================
 Coarsely grained lifetime calculation is done automatically when the raw memtrace is translated into ops, as described above in
-section :ref:`translating-memory-access-data-to-ops`.  The method I'll describe in the following section is more refined
-but takes more time to calculate. It is also automatic. All steps from measuring memory access patterns, through
+Section :ref:`translating-memory-access-data-to-ops`.  The method I'll describe in the following section is more refined
+but takes more time to calculate. Like the coarse calculation, it is also automatic. All steps from measuring memory access patterns, through
 simulating allocator performance for that specific app, down to creating graphs displaying memory and speed performance,
 are automatic.
 
 .. The script takes an ops file, i.e. a list of (block handle, operation type, address, size) tuples.
 
-When a block is initially created, a threshold value, life, is set to zero and will either increase or decrease depending
+The algorithm works as follows: when a block is initially created, a threshold value (*life*), is set to zero and will either increase or decrease depending
 on the operations that come between the new operation and the free operation. A memory access op for the current block
 increases life by 1, and conversely, another block's operation (regardless of type) decreases life by 0.5. Life is not
 capped in the upper range but has a lower limit of 0. When life is higher than 0, the current operation's lock status is
-set, otherwise reset. 
+set, otherwise cleared. 
 
 The value was chosen by testing different input parameters against random data, and the graphs that looked best were verified
 against the smaller application memtraces. This is the algorithm used, with different values for percent, float speed
@@ -280,24 +289,24 @@ The results are shown in Figure :ref:`appendixlockinglifetime`.
 
    :label:`appendixlockinglifetime` Simulated lifetime calculations by varying the values of input parameters.
 
-Clockwise from upper left corner, we see that lock status (i.e. lifetime > 0) varies if the current handle is less than
+Clockwise from upper left corner, we see that lock status (i.e. life > 0) varies if the current handle is less than
 30% of the ops, and if it's less than 50%, it'll diverge towards always being locked -- which is sound, since any object
-that is accessed so often is likely to be locked during its lifetime.  With sink equal to or larger than float, a very
-jagged graph is produced where the current object is locked/unlocked continously. A real-world application would want to
+that is accessed so often is likely to be locked during its lifetime.  With sink equal to or larger than float, a 
+jagged graph is produced where the current object is constantly locked/unlocked. A real-world application would want to
 lock the object once per tight loop and keep it locked until done, instead of continuously locking/unlocking the handle
 inside the loop. The time under the graph where lifetime is non-zero is one iteration of the loop.
 
-When all ops have been processed they are written out to a new file that in addition to the regular ops also contains
+When all ops have been processed, they are written out to a new file that in addition to the regular ops also contains
 detailed locking information. Since the number of objects is large and the calculation is independent of other objects,
-the process can be broken down into smaller tasks. This is done using the Python ``multiprocessing`` module, and by
+the process can be broken down into smaller tasks. This is done using the Python ``multiprocessing`` module. By
 recording start and stop indices (based on the New or Free ops, respectively) into the input list, the list of start
-indices can be broken down into smaller parts to maximize usage of multi-core systems making processing the entire input
-file faster on the order of the number of available cores.  To saturate the CPU, the tools automatically pick the number of cores plus two as the number of worker threads.
+indices can be broken down into smaller parts to maximize usage of multi-core systems. 
+To saturate the CPU, the tools automatically pick the number of cores plus two as the number of worker threads.
 
 In the case of no corresponding Free operation for the block, no lifetime calculation is done, i.e. it is assumed to be
 unlocked. This is a limitation of the calculation based on the observation of applications that have a large amount of
-objects that are never explicitly freed, and assuming a lifetime of the entire application would be incorrect.  An
-implicit free could be inserted at the point of the last memory access, however it is not implemented.
+objects that are never explicitly freed. An implicit free could be inserted at the point of the last memory access,
+but it is not implemented.
 
 .. raw:: comment-todo
 
@@ -306,10 +315,10 @@ implicit free could be inserted at the point of the last memory access, however 
 The fine grained calculation of this method is slower (*O(m\*n)*, where *m* is the number of handles and *n* is the
 total number of operations), but intersperses lock/unlock instructions throughout the lifetime of an object, instead of forcing
 the object to be locked its entire lifetime. The more fine-grained locking/unlocking, specifically unlocking, the more
-efficient compacting can be performed. 
+efficiently compacting can be performed. 
 
-Taking a hand-tuned application with lock/unlock inserted at the most appropriate locations, as determined by static
-analysis and knowledge of the application, and comparing it to the approximated lifetime calculation, is not done in
+Hand tuning an application with lock/unlock inserted at the most appropriate locations as determined by manual static
+analysis and knowledge of the application and comparing it to the approximated lifetime calculation, is not done in
 this report, and would be a good subject for future work.
 
 .. raw:: comment

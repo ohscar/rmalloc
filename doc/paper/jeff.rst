@@ -17,12 +17,12 @@ In order to achieve compacting, memory must be accessed indirectly. This is the 
 
     void compact(uint32_t compact_time_max_ms);
 
-``handle_t`` is an opaque type. To get the actual memory pointed to at by the handle, call `lock()` to obtain a regular
-pointer to memory. During the time a block pointed out by a handle is locked, the compact operation is not allowed to
-move it. If it could be moved, the pointer obtained by the client code would no longer be valid. This also puts
-certain limitations on the compactor, since it needs to deal with possibly locked blocks.  Client code needs 
-to be adapted to this allocator, such that memory is always appropriately locked/unlocked as needed. The compacting
-operation is discussed in more detail in Section :ref:`rmcompact`.
+``handle_t`` is an opaque type. To get the actual memory pointed to at by the handle, call `lock()` on it to obtain a
+normal pointer to memory. During the time a block pointed out by a handle is locked, the compact operation is not
+allowed to move it. If it could be moved, the pointer obtained by the client code would no longer be valid. This also
+puts certain limitations on the compactor, since it needs to deal with possibly locked blocks.  Client code needs to be
+adapted to this allocator, such that memory is always appropriately locked/unlocked as needed. The compacting operation
+is discussed in more detail in Section :ref:`rmcompact`.
 
 Implementation
 ==============
@@ -37,7 +37,7 @@ Recall the signature::
 
     void rminit(void *heap, size_t heap_size);
 
-``heap`` and ``heap_size`` is the client-supplied heap. Jeff is self-contained within the heap and requires no
+``heap`` is the client-supplied heap of size ``heap_size``. Jeff is self-contained within the heap and requires no
 additional storage except for stack space.
 
 Internal structures are initialized:
@@ -56,6 +56,8 @@ highest used memory address.
 
 Header blocks (g_header_root and g_unused_header_root)
 --------------------------------------------------------------
+Linked lists of all headers and the root of all unused headers.
+
 The opaque type ``handle_t`` is a pointer to a ``header_t`` structure::
 
     typedef struct header_t {
@@ -76,25 +78,26 @@ compact step, since the handles themselves cannot be moved as they're used (in d
 * Free (0)
 * Unlocked (1)
 * Locked (2)
-* Weakly locked (4) (currently unused)
+* Weakly locked (4) (not implemented)
 
 A weakly locked block can be treated as unlocked in the compacting phase so it can be reclaimed. Care needs to be taken
 by the client code since compacting invalidates the pointer to memory.
 
 The array of header items grows down from the top of the client-supplied heap. New handles are searched for starting at
-``g_memory_top`` and down until ``g_memory_bottom``. If there is no free header when requested and there is no overlap
-between existing memory (including the newly requested size in case of a malloc), ``g_memory_bottom`` is decreased and a
-fresh handle is returned. 
+``g_header_top`` and down until ``g_header_bottom``. If there is no free header when requested and there is no overlap
+between existing memory (including the newly requested size in case of a malloc), ``g_header_bottom`` is decreased and a
+fresh handle is returned. If ``g_header_bottom`` and ``g_memory_top`` are the same, ``NULL`` is returned to signal an
+error.
 
 The optional member ``next_unused`` is a compile-time optimization for speeding up the *O(n)* find header operation to
-*O(1)* at the expense of an extra memory. ``g_unused_header_root`` is set to the header that is newly marked as unused and the next
+*O(1)* at the expense of memory. ``g_unused_header_root`` is set to the header that is newly marked as unused and the next
 pointer is set to the old unused header root.  Setting ``memory`` to ``NULL`` indicates an unused header. 
 
 ``g_header_root`` points to the latest used header. At compact time, it's sorted in memory order.
 
 Free block slots (g_free_block_slots)
 -------------------------------------
-As touched upon previously, this contains the memory blocks that have been freed and not yet merged into unused space
+As touched upon earlier, this contains the memory blocks that have been freed and not yet merged into unused space
 by a compact operation::
 
     typedef struct free_memory_block_t {
@@ -103,9 +106,9 @@ by a compact operation::
     } free_memory_block_t;
 
 When a block is freed, a ``free_memory_block_t`` is stored in the first bytes. Therefore, the minimum block size is
-(again, 32-bit system) 8 bytes. The header member stores the actual information about the block. By checking
-``header->memory`` against the block, we know it's a valid free memory block. The next field points to the next block in the
-same size range (explained next).
+8 bytes, assuming a 32-bit system. The ``header`` field stores the actual information about the block. By checking
+``header->memory`` against the address of the ``free_memory_block_t`` instance, we know if it's a valid free memory
+block. The ``next`` field points to the next block in the same size range.
 
 There are :math:`log_2(heap\_size)` (rounded up) slots. Freeing a block of size 472 bytes means placing it at the start of the
 linked list at index 9 and hanging the previous list off the new block's next pointer, i.e. a stack, and is rebuilt at
@@ -119,21 +122,20 @@ I'll go through the process of allocation step by step.
 There are two cases: either there is space left after top of the memory for a header and the requested memory, in which
 case the fast path is taken where a header is allocated, ``g_memory_top`` is bumped and the header is associated with
 the newly created memory and returned to the client. Allocating a header means searching the header array for an unused
-block, or if the optimization described above, following ``g_unused_header_root``. If none is found, ``g_header_bottom``
+block, or if the optimization described above is enabled, following ``g_unused_header_root``. If no header is found, ``g_header_bottom``
 grows downward if there is space, but there are always two headers left for compacting (more on that in the section on
 compacting).
 
 In the other case, there is no space left after ``g_memory_top`` and the free block list must be scanned for an appropriate
 block. This is the most complex part of alloc/free.
 
-The time complexity of the simple case with the aforementioned optimization is *O(1)*, or *O(n)* (in terms of number of
-handles in the system) in the unoptimized case. In the case where memory can't grow up (see Section
-:ref:`find-free-block` below), the time complexity is worst case  *O(n)* (in terms of the number of blocks of the
-specific size) and best case *O(1)*.
+The time complexity of the first case with the aforementioned optimization is *O(1)*, or *O(n)* (in terms of number of
+handles in the system) in the unoptimized case. In the second case where memory can't grow up, the time complexity is worst
+case  *O(n)* (in terms of the number of blocks of the specific size) and best case *O(1)*.
 
 Find free block
 ----------------
-Calculate the index *k* into the free block slots list from :math:`log_2(size)+1`. As previously explained, the free block
+Calculate the index :math:`k = log_2(size)+1` into the free block slots list. As explained earlier, the free block
 slot list has a stack (implemented as a singly linked list) hanging off each slot, such that finding a suiting block
 will be a fast operation. The exeption is for requests of blocks in the highest slot have to be searched in full, since
 the first block found is not guaranteed to fit the size request, as the slot *k* stores free blocks :math:`2^{k-1} \leq n < 2^k`
@@ -143,7 +145,7 @@ In the normal case the free block list is looked up at *k* for a suiting block. 
 and the free block list again is checked until a block is found.  Finally, if there was no block found, the actual index
 :math:`log_2(size)` is searched for a block that will fit. Remember that the blocks in a specific slot can be :math:`2^{k-1} \leq n < 2^k`
 and therefore there could be free blocks in slot *k* that are large enough for the request. When a block is found, it's
-shrunk into two smaller blocks if large enough, one of the requested size and the remainder. Minimum size for a block to
+shrunk into two smaller blocks if large enough, one of the requested size and the remainder. Minimum required size for a block to
 be shrunk is having one extra header available and that the found block is ``sizeof(free_memory_block_t)`` bytes larger
 than the requested size. Otherwise, the block is used as-is causing a small amount of internal fragmentation. The
 remainder of the shrunk block is then inserted into the tree at the proper location.
@@ -333,7 +335,7 @@ Real-World Testing
 ~~~~~~~~~~~~~~~~~~~~
 Since the allocator does not have the interface of standard allocators client code needs to be rewritten.  The two major
 problems with this is that it requires access to source code, and rewriting much of the source code.  This is where
-Steve is useful.
+Steve (Chapter :ref:`chapter-steve`) is useful.
 
 
 Profiling
@@ -343,23 +345,23 @@ The GNU profiling tool *gprof* [#]_ was used to find code hotspots, where the tw
 * ``log2()``
 * ``header_find_free()``
 
-In the spirit of first getting things to work, then optimize, the original ``log2()`` implementation was a naive bitsift
-loop. Fortunately, there's a GCC extension ``__builtin_clz()`` (Count Leading Zeroes) that is translated into
+In the spirit of first getting things to work, then optimize, the original ``log2()`` implementation was a naive
+bitshift loop. Fortunately, there's a GCC extension ``__builtin_clz()`` (Count Leading Zeroes) that is translated into
 efficient machine code on at least x86 that can be used to write a fast ``log2(n)`` as ``sizeof(n)*8 - 1 - clz(n)``. The
 hotspots in the rest of the code were evenly distributed and no single point was more CPU-intense than another, except
-for ``header_find_free()``. As described above, there's a compile-time optimization that cuts down time from *O(n)* to
+in ``header_find_free()``. As described above, there's a compile-time optimization that cuts down time from *O(n)* to
 *O(1)*, which helped cut down execution time even more at the expense of higher memory usage per block.
 
 More details and benchmarks in Chapter :ref:`chapter-steve`.
 
 Automatic Testing
 =====================
-I've introduced bugs in the functions called from the allocation interface to see if the testing framework would pick them
+I've introduced bugs in the functions called from the allocator interface to see if the testing framework would pick them
 up. The idea is to introduce small changes, so-called *off-by-one errors*, where (as the name suggest) a value or code path
 is changed only slightly but causes errors. Below is a list of example bugs that the automatic tests found, and could
-later be fixed. Indeed, automatic testing is useful.
+later be fixed. Automatic testing is useful.
 
-|  ``free_memory_block_t *block_from_header(header_t *header)``:
+|  Function ``free_memory_block_t *block_from_header(header_t *header)``:
 |
 |     ``return (free_memory_block_t *)((uint8_t *)header->memory + header->size) - 1;``
 
@@ -368,7 +370,7 @@ later be fixed. Indeed, automatic testing is useful.
 |    ``return (free_memory_block_t *)((uint8_t *)header->memory + header->size);``
 
 
-|  ``uint32_t log2_(uint32_t n)``:
+|  Function ``uint32_t log2_(uint32_t n)``:
 |
 |    ``return sizeof(n)*8 - 1 - __builtin_clz(n);``
 
@@ -376,7 +378,7 @@ later be fixed. Indeed, automatic testing is useful.
 | 
 |    ``return sizeof(n)*8 - __builtin_clz(n);``
 
-|  ``inline bool header_is_unused(header_t *header)``:
+|  Function ``inline bool header_is_unused(header_t *header)``:
 |
 |    ``return header && header->memory == NULL;``
 
@@ -384,7 +386,7 @@ later be fixed. Indeed, automatic testing is useful.
 |
 |    ``return header && header->memory != NULL;``
 
-|  ``inline void header_clear(header_t *h)``:
+|  Function ``inline void header_clear(header_t *h)``:
 |
 |    ``h->memory = NULL;``
 |    ``h->next = NULL;``
@@ -399,7 +401,7 @@ later be fixed. Indeed, automatic testing is useful.
 |    ``h->memory = NULL;``
 |    ``//h->next = NULL;``
 
-|  ``header_t *header_new(bool insert_in_list, bool spare_two_for_compact)``
+|  Function ``header_t *header_new(bool insert_in_list, bool spare_two_for_compact)``
 |
 |    ``...``
 |    ``header->flags = HEADER_UNLOCKED;``
@@ -429,7 +431,7 @@ later be fixed. Indeed, automatic testing is useful.
 |    ``...``
 
 
-|  ``header_t *block_free(header_t *header)``
+|  Function ``header_t *block_free(header_t *header)``
 |
 |    ``block->next = g_free_block_slots[index];``
 |    ``g_free_block_slots[index] = block;``
@@ -439,7 +441,7 @@ later be fixed. Indeed, automatic testing is useful.
 |    ``g_free_block_slots[index] = block;``
 |    ``block->next = g_free_block_slots[index];``
 
-|  ``free_memory_block_t *freeblock_shrink_with_header(free_memory_block_t, header_t *, uint32_t)``
+|  Function ``free_memory_block_t *freeblock_shrink_with_header(free_memory_block_t, header_t *, uint32_t)``
 |
 |    ``h = header_new(/*insert_in_list*/true, /*force*/false);``
 
@@ -451,7 +453,7 @@ later be fixed. Indeed, automatic testing is useful.
 |
 |    ``h = header_new(/*insert_in_list*/true, /*force*/true);``
 
-|  ``header_t *freeblock_find(uint32_t size)``
+|  Function ``header_t *freeblock_find(uint32_t size)``
 |
 |    ``int target_k = log2_(size)+1;``
 
@@ -459,7 +461,7 @@ later be fixed. Indeed, automatic testing is useful.
 |
 |    ``int target_k = log2_(size);``
 
-|  ``rmcompact(int maxtime)``
+|  Function ``rmcompact(int maxtime)``
 |
 |    ``uint32_t used_offset = header_memory_offset(free_first, unlocked_first);``
 |    ``...``

@@ -3,14 +3,14 @@
     \chapter{Allocator Types
         \label{chapter-allocator-types}}
 
-In this chapter I'll describe the most common style of allocator implementation strategies.
+In this chapter I'll describe the most common styles of allocator implementation strategies.
 
 Buddy Allocator
 ================
 The most common allocator type is the buddy allocator [#]_, and many allocators are built on its principles, or at least
 incorporate them in some way: start with a single block and see if the requested chunk fits in half of the block. If it
 does, split the block into two and repeat, until no smaller block size would fit the request. The allocator described in
-this paper does away with merging blocks directly on free, by moving free blocks together and coalescing them.
+this paper does away with merging blocks directly on free, by moving free blocks together and coalescing them in the compacting step.
 
 .. figure:: graphics/buddyalloc-2k-list.png
    :scale: 50%
@@ -21,9 +21,9 @@ this paper does away with merging blocks directly on free, by moving free blocks
 
 Over time, there will be more and more items of size :math:`2^n`, stored on a free list for that block size, as shown in Figure :ref:`buddyalloc2klist` Each pair
 of split-up blocks is said to be two buddies. When two buddy blocks are free, they can be joined. A block of the next
-larger size (:math:`n+1`) can be created from these two blocks. This is repeated until the largest block, i.e. :math:`2^k`. In the worst
+larger size (:math:`n+1`) can be created from these two blocks. The merge repeated until the largest block, i.e. :math:`2^k`. In the worst
 case, this causes :math:`2^n - 1` bytes of overhead per block, also known as *internal fragmentation.* Still, this commonly
-used algorithm has shown to be good enough and is often incorporated as one strategy of an allocator.
+used algorithm has shown to be good enough in many cases and is often incorporated as one strategy of an allocator.
 
 .. XXX (gres)
 .. ~~~~~~~~~~
@@ -45,18 +45,18 @@ Pool Allocator
 ==================
 Certain applications use a large amount of objects of the same size that are allocated and freed continuously. This
 information can be used to create specialized pool allocators for different object sizes, where each pool can be easily
-stored in an array of :math:`N*sizeof(object)` bytes, allowing for fast lookup by alloc and free. For example, in an action
+stored in an array of :math:`N*sizeof(object)` bytes, allowing for fast lookup by malloc and free. For example, in an action
 computer game where both the player and the enemies shoot projectiles with weapons, said projectiles must be kept track of by means
 of an object in memory. In a game where there could potentially exist a very large amount of projectiles in action at the
 same time, an equal amount of allocation and freeing is done, often randomly. In order to optimize usage of system
-memory, all allocation of bullet objects would be contained to the same  *pool* of memory.  A very simple such allocator
-would be a simple list of objects and the allocator would more or less just return the index to the next unused block,
+memory, all allocation of projectile objects would be contained to the same  *pool* of memory.  A very simple such allocator
+would be a simple list of objects and the allocator could just return the index to the next unused block,
 leading to malloc and free that both have :math:`O(1)` in time complexity with very little overhead and fragmentation.  The
 usual strategies for growing the list apply, such as doubling the size of the list when all items in the list are used.
 
 Arena Allocator
 ==================
-Code with data structures that are related to each other can be allocated from the same arena, or region, of memory, for
+Code with data structures that are related to each other can be allocated from the same arena, or memory region, for
 example a document in a word processor. Instead of allocating memory from the system, the allocator requests data from a
 pre-allocated larger chunk of data (allocated earlier from the system). The main point of this type of allocator is
 quick destruction of all memory related to the working data (i.e. the document), without having to traverse each

@@ -7,10 +7,11 @@
 
 Limitations
 =======================================================
-Both tcmalloc and jemalloc perform poorly without ``mmap()`` enabled, and in some cases they did not manage to finish allocation
-simulation. In those cases the allocators are omitted from the results table. The first thing Steve does is to calculate the maximum heap size used by the application and allocator
-combination, by starting from the theoretical heap size for an ideal allocator and increasing that value until no OOMs
-occur. If the limit on that increase is reached, the allocator is marked as not finishing.
+Both tcmalloc and jemalloc perform poorly with ``mmap()`` disabled, and in some cases they did not manage to finish allocation
+simulation. In those cases the allocators are omitted from the results table. The first thing Steve does is to calculate
+the maximum heap size used by the allocator for an application, by starting from the theoretical heap size for an ideal allocator and
+increasing that value until no OOMs occur. If the limit on that increase is reached, the allocator is marked as *did not
+finish*.
 
 .. XXX: Wht is the _real_ purpose of the maximum heap size? Is there a point at all?
 
@@ -24,24 +25,31 @@ Input Data
     är att data är hemligt, och ju mer öppet data som går att få tag i, desto enklare är det att göra jämförande forskning
     eller replikeringar. (lägg till URL:er -micke)
 
-Measuring an allocator must be done in conjunction with input data. These are the applications I've used:
+Measuring an allocator must be done in conjunction with input data. These are the applications tested
 
-* Opera v12.0 [#]_: loading http://www.google.com and exit.
+* Opera v12.0 [#]_: load http://www.google.com and exit.
 * StarOffice (LibreOffice) 4.0.2.2 [#]_: open a blank word processor document and exit.
-* sqlite 2.8.17 (Ubuntu 13.04's default version) [#]_: loading 17 MB phpBB3 [#]_ SQL data.
-* zip 3.0 (Ubuntu 13.04's default version) [#]_: compressing the contents of gperftools-2.1 [#]_ (6.2 MB).
-* ls 8.20 (Ubuntu 13.04's default version) [#]_: displaying the ``/bin`` directory.
-* cfrac 3.5.1 - just running it.
+* sqlite 2.8.17 (Ubuntu 13.04's default version) [#]_: load 17 MB phpBB3 [#]_ SQL data.
+* ls 8.20 (Ubuntu 13.04's default version) [#]_: display the ``/bin`` directory.
 * latex 3.1415926-2.4-1.40.13 [#]_: paper.tex (96 lines, 2.6 KB).
+* GNU tar 1.27.1 (Ubuntu 13.04's default version) [#]_: compressing the contents of the Valgrind 3.9.0 source
+  distribution (87 MB).
+
+.. raw:: comment
+
+    zip 3.0 (Ubuntu 13.04's default version) [#]_: compressing the contents of gperftools-2.1 [#]_ (6.2 MB).
+    cfrac 3.5.1 - just running it.
+    .. [#] http://www.info-zip.org
+    .. [#] http://gperftools
 
 .. [#] http://www.opera.com
 .. [#] http://www.libreoffice.org
 .. [#] http://www.sqlite.org
-.. [#] http://www.info-zip.org
-.. [#] http://gperftools
+.. [#] http://www.phpbb.com - a bulletin-board system
 .. [#] http://www.gnu.org/software/coreutils/
 .. [#] http://www.latex-project.org
-.. [#] http://www.phpbb.com - a bulletin-board system
+.. [#] https://www.gnu.org/software/tar/
+
 
 The results are presented in charts and tables. I'll describe what they mean first, then give the results.
 
@@ -59,14 +67,14 @@ There are two types of charts, one of performance in time and one of performance
 
 Speed chart.
 
-* **X axis**: shows a counter that is increased by one at each new, free, lock and unlock operation.
-* **Y axis**: shows the execution time of the operation, in a *log10*-scale.
+* **X axis**: A counter that is increased by one at each new, free, lock and unlock operation.
+* **Y axis**: The execution time of the operation, on a *log10*-scale.
 
 Size chart.
 
-* **X axis**: same as above.
-* **Y axis**: shows the maximum allocatable amount of memory relative to the maximum heap size at each point in time, by
-  running the application to that point, trying a maximum allocation and then restarting the app, continuoing to to the
+* **X axis**: Same as above.
+* **Y axis**: The maximum allocatable amount of memory relative to the maximum heap size at each point in time, by
+  running the application to that point, trying a maximum allocation and then restarting the application, continuing to to the
   next point.
 
 Tables
@@ -76,7 +84,7 @@ Scoring explained:
 * Let :math:`A_1..A_n` be all allocators.
 * Let :math:`O_1..O_m` be all operations in the application currently being measured.
 * Let :math:`S_{ij}`` where :math:`i = 1..n, j = 1..m` be the score for the allocator :math:`i` at operation :math:`j`,
-  such that :math:`S_{ij} \in {0..n}`, where 0 is the best result and n is the worst.
+  such that :math:`S_{ij} \in {0..n}`, where 0 is the best result and *n* is the worst.
 * Let :math:`P_i \in {0..1.0}` be the penalty of any allocator :math:`i \in A_1..A_n`, defined as :math:`P_i = \frac{1}{n * m}\sum_{j=1}^{m} S_{ij}`, where 0 is best and 1.0 is worst.
 * Let :math:`B_i \in {A_1..A_n}` be the number of times the allocator :math:`i` has performed best.
 * Let :math:`W_i \in {A_1..A_n}` be the number of times the allocator :math:`i` has performed worst.
@@ -107,7 +115,7 @@ All tables are sorted by penalty (c).
 Results
 =========
 The results are very interesting in that there's a variation between the allocators, which of course is expected, but
-also between the different applications tested, each with their unique memory usage patterns.  Two separate patterns can
+also between the different applications tested, each with a unique memory usage patterns.  Two separate patterns can
 be discerned when it comes to speed, with Figures :ref:`result-soffice`, :ref:`result-sqlite`, :ref:`result-ls` in one
 group and :ref:`result-tar`, :ref:`result-latex`, :ref:`result-opera` in the other.
 
@@ -191,6 +199,9 @@ The space metrics in Table :ref:`table:result-soffice-space` paints a clearer pi
 
    \FloatBarrier   
 
+.. raw:: latex
+
+   \newpage{}
 
 sqlite
 ~~~~~~~~~~
@@ -228,7 +239,7 @@ Again, bad performance of *jemalloc* in both measurements.
    rmmalloc-c-m & 75\% / 25289.42\% & 0.80\% & 62.20\% & 464 ns & 442 ns \\
    \hline
    \end{tabular}
-   \caption{Speed measurements for result-sqlite}
+   \caption{Speed measurements for sqlite}
    \label{table:result-sqlite-speed}
    \end{table}
 
@@ -250,7 +261,7 @@ Again, bad performance of *jemalloc* in both measurements.
    jemalloc & 83\% / 82.16\% & 0.00\% & 100.00\% \\
    \hline
    \end{tabular}
-   \caption{Space measurements for result-sqlite}
+   \caption{Space measurements for sqlite}
    \label{table:result-sqlite-space}
    \end{table}
 
@@ -273,76 +284,9 @@ skews the other allocator's penalty (w) numbers, which have to be viewed in rela
 As for the space table :ref:`table:result-sqlite-space`, *rmmalloc-c-m* which performed badly in speed instead performs
 best when it comes to space. A better compromise between the two is *rmmalloc-c*, performing well in both space in time.
 
-tar with bzip2 compression
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Command line used: ``tar cjf /tmp/valgrind-3.9.0.tar.bz2 /tmp/valgrind-3.9.0``
-
-Simulated using full lockops.
-
-Results in Figure :ref:`result-tar`, Table :ref:`table:result-tar-speed` and Table :ref:`table:result-tar-space`.
-
-.. figure:: allocstats/result-tar.png
-   :scale: 60%
-   
-   :label:`result-tar` tar cjf results.
-
 .. raw:: latex
 
-   \FloatBarrier   
-
-For the allocation pattern used in tar, linearly growing, *rmalloc-c-m* does not fare well with its exponential
-algorithm. The others are segmented, with *dlmalloc* coming out as the fastest, followed by *rmmalloc*.  As for memory
-efficiency, *dlmalloc* is the clear winner here.
-
-.. raw:: latex
-
-   \begin{table}[!ht]
-   \begin{tabular}{r | l c c r r}
-   \hline
-   \multicolumn{6}{c}{\bf Speed} \\
-   \hline
-   {\bf Driver} & {\bf Penalty (\textit{c}/\textit{w})} & {\bf Best} & {\bf Worst} & {\bf Average} & {\bf Median} \\
-   \hline
-   dlmalloc & 15\% / 5.73\% & 50.96\% & 0.00\% & 233 ns & 235 ns \\
-   rmmalloc-c & 26\% / 12.71\% & 23.06\% & 0.00\% & 257 ns & 258 ns \\
-   rmmalloc & 26\% / 12.06\% & 23.19\% & 0.00\% & 256 ns & 256 ns \\
-   jemalloc & 50\% / 100.08\% & 2.79\% & 0.37\% & 1228 ns & 365 ns \\
-   rmmalloc-c-m & 79\% / 15087.61\% & 0.00\% & 99.63\% & 36592 ns & 34975 ns \\
-   \hline
-   \end{tabular}
-   \caption{Speed measurements for result-tar}
-   \label{table:result-tar-speed}
-   \end{table}
-
-.. raw:: latex
-
-   \begin{table}[!ht]
-   \begin{tabular}{r | l c c}
-   \hline
-   \multicolumn{4}{c}{\bf Space} \\
-   \hline
-   {\bf Driver} & {\bf Penalty (\textit{c}/\textit{w})} & {\bf Best} & {\bf Worst} \\
-   \hline
-   dlmalloc & 0\% / 0.00\% & 99.93\% & 0.00\% \\
-   rmmalloc-c-m & 19\% / 5.15\% & 0.07\% & 0.00\% \\
-   rmmalloc & 39\% / 10.49\% & 0.00\% & 0.00\% \\
-   rmmalloc-c & 59\% / 15.74\% & 0.00\% & 0.00\% \\
-   jemalloc & 80\% / 79.89\% & 0.00\% & 100.00\% \\
-   \hline
-   \end{tabular}
-   \caption{Space measurements for result-tar}
-   \label{table:result-tar-space}
-   \end{table}
-
-.. raw:: latex
-
-   \FloatBarrier   
-
-There are no real surprises in speed in Table :ref:`table:result-tar-speed`, since the graphs are easy to interpret
-directly.  Here it's important to note that even though the space numbers in Table :ref:`table:result-tar-space` look
-good enough for the *rmmalloc* allocator (and variants), it's still performs a lot worse than *dlmalloc*. It is not
-sufficient to look only at the numbers.
-
+   \newpage{}
 
 ls
 ~~~~~~~~~~~~
@@ -361,7 +305,7 @@ Results in Figure :ref:`result-ls`, Table :ref:`table:result-ls-speed` and Table
 
    \FloatBarrier   
 
-The chart clearly shows how memory allocation and memory use are split up in *ls*. First, it allocates data (op 0-40), then it operates on the data, does more allocation of "simpler" data sizes (a request that takes less time to serve, possibly by being of a size that can be handed out from a small objects pool or similar), followed by more data operations and finally a small allocation operation, most likely a free.  Again, *jemalloc* did not survive past the initial allocation operations.
+The memory chart shows how memory allocation and memory use are split up in *ls*. First, it allocates data (op 0-40), then it operates on the data, does more allocation of "simpler" data sizes (a request that takes less time to serve, possibly by being of a size that can be handed out from a small objects pool or similar), followed by more data operations and finally a small allocation operation, most likely a free.  Again, *jemalloc* did not survive past the initial allocation operations.
 
 .. raw:: latex
 
@@ -380,7 +324,7 @@ The chart clearly shows how memory allocation and memory use are split up in *ls
    rmmalloc-c-m & 68\% / 56677.64\% & 0.00\% & 60.00\% & 982 ns & 1022 ns \\
    \hline
    \end{tabular}
-   \caption{Speed measurements for result-ls}
+   \caption{Speed measurements for ls}
    \label{table:result-ls-speed}
    \end{table}
 
@@ -402,7 +346,7 @@ The chart clearly shows how memory allocation and memory use are split up in *ls
    jemalloc & 83\% / 82.75\% & 0.00\% & 100.00\% \\
    \hline
    \end{tabular}
-   \caption{Space measurements for result-ls}
+   \caption{Space measurements for ls}
    \label{table:result-ls-space}
    \end{table}
 
@@ -410,7 +354,7 @@ The chart clearly shows how memory allocation and memory use are split up in *ls
 
    \FloatBarrier   
 
-Starting with the speed table, we see similar to previous measurements where *jemalloc* failed early, the absolute results
+Starting with the speed table we see similarly to previous measurements where *jemalloc* failed early, that the absolute results
 are skewed but the internal order is still correct. Good performance of *rmmalloc* but also of *tcmalloc* which has
 differing results. As for memory efficiency, *tcmalloc* stands out after which the results for *rmmalloc* and *dlmalloc*
 are very similar. *rmmalloc-c-m* fares slightly better, but is on the other hand very time consuming. This might not be
@@ -424,6 +368,83 @@ a trade-off the client code can make.
     ``$ cfrac 4758260277435811572216740001``
 
     Results in Figure :ref:`result-cfrac`, Table :ref:`table:result-cfrac-speed` and Table :ref:`table:result-cfrac-space`.
+
+
+
+tar with bzip2 compression
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Command line used: ``tar cjf /tmp/valgrind-3.9.0.tar.bz2 /tmp/valgrind-3.9.0``
+
+Simulated using full lockops.
+
+Results in Figure :ref:`result-tar`, Table :ref:`table:result-tar-speed` and Table :ref:`table:result-tar-space`.
+
+.. figure:: allocstats/result-tar.png
+   :scale: 60%
+   
+   :label:`result-tar` tar cjf results.
+
+.. raw:: latex
+
+   \FloatBarrier   
+
+For the linearly growing allocation pattern used in tar,  *rmalloc-c-m* does not fare well with its exponential
+algorithm. The others are segmented, with *dlmalloc* coming out as the fastest, followed by *rmmalloc*.  As for memory
+efficiency, *dlmalloc* is the clear winner here.
+
+.. raw:: latex
+
+   \begin{table}[!ht]
+   \begin{tabular}{r | l c c r r}
+   \hline
+   \multicolumn{6}{c}{\bf Speed} \\
+   \hline
+   {\bf Driver} & {\bf Penalty (\textit{c}/\textit{w})} & {\bf Best} & {\bf Worst} & {\bf Average} & {\bf Median} \\
+   \hline
+   dlmalloc & 15\% / 5.73\% & 50.96\% & 0.00\% & 233 ns & 235 ns \\
+   rmmalloc-c & 26\% / 12.71\% & 23.06\% & 0.00\% & 257 ns & 258 ns \\
+   rmmalloc & 26\% / 12.06\% & 23.19\% & 0.00\% & 256 ns & 256 ns \\
+   jemalloc & 50\% / 100.08\% & 2.79\% & 0.37\% & 1228 ns & 365 ns \\
+   rmmalloc-c-m & 79\% / 15087.61\% & 0.00\% & 99.63\% & 36592 ns & 34975 ns \\
+   \hline
+   \end{tabular}
+   \caption{Speed measurements for tar}
+   \label{table:result-tar-speed}
+   \end{table}
+
+.. raw:: latex
+
+   \begin{table}[!ht]
+   \begin{tabular}{r | l c c}
+   \hline
+   \multicolumn{4}{c}{\bf Space} \\
+   \hline
+   {\bf Driver} & {\bf Penalty (\textit{c}/\textit{w})} & {\bf Best} & {\bf Worst} \\
+   \hline
+   dlmalloc & 0\% / 0.00\% & 99.93\% & 0.00\% \\
+   rmmalloc-c-m & 19\% / 5.15\% & 0.07\% & 0.00\% \\
+   rmmalloc & 39\% / 10.49\% & 0.00\% & 0.00\% \\
+   rmmalloc-c & 59\% / 15.74\% & 0.00\% & 0.00\% \\
+   jemalloc & 80\% / 79.89\% & 0.00\% & 100.00\% \\
+   \hline
+   \end{tabular}
+   \caption{Space measurements for tar}
+   \label{table:result-tar-space}
+   \end{table}
+
+.. raw:: latex
+
+   \FloatBarrier   
+
+There are no real surprises in speed in Table :ref:`table:result-tar-speed`, since the graphs are easy to interpret
+directly.  Here it's important to note that even though the space numbers in Table :ref:`table:result-tar-space` look
+good enough for the *rmmalloc* allocator (and variants), it's still performs a lot worse than *dlmalloc*. It is not
+sufficient to look only at the numbers.
+
+.. raw:: latex
+
+   \newpage{}
+
 
 latex
 ~~~~~~~~~~~~~~~~
@@ -498,6 +519,9 @@ trade-off might not be worth it, especially since *dlmalloc* performs better in 
 
 No surprises here since the graphs are easy to read for this test case.
 
+.. raw:: latex
+
+   \newpage{}
 
 opera
 ~~~~~~~~~~~~~
@@ -536,7 +560,7 @@ We see the same characteristics as in the LaTeX test above, except for the range
    rmmalloc-c-m & 79\% / 310598.14\% & 0.00\% & 99.97\% & 861988 ns & 687897 ns \\
    \hline
    \end{tabular}
-   \caption{Speed measurements for result-opera-blank2}
+   \caption{Speed measurements for opera}
    \label{table:result-opera-blank2-speed}
    \end{table}
 
@@ -557,7 +581,7 @@ We see the same characteristics as in the LaTeX test above, except for the range
    jemalloc & 80\% / 78.51\% & 0.00\% & 100.00\% \\
    \hline
    \end{tabular}
-   \caption{Space measurements for result-opera-blank2}
+   \caption{Space measurements for opera}
    \label{table:result-opera-blank2-space}
    \end{table}
 
@@ -567,4 +591,8 @@ We see the same characteristics as in the LaTeX test above, except for the range
 
 Again, skewed results because of *jemalloc*. By far fastest and most space-efficient is *dlmalloc* in this type of
 scenario.
+
+.. raw:: latex
+
+   \newpage{}
 

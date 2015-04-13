@@ -28,8 +28,7 @@ the testing framework was designed to find.  The testing framework is described 
 
 Steve is the name of the benchmark tool that I designed to test algorithms for Jeff and to compare Jeff to other allocators. In Steve, I've
 developed heuristics for calculating locking/unlocking based on runtime data of unmodified applications. The tool for doing so grew
-from a small script into a larger collection of tools related to data collection, analysis and benchmarking. It does not
-test for correctness.
+from a small script into a larger collection of tools related to data collection, analysis and benchmarking. 
 
 Data for use by Jeff, and other allocators, is collected by various parts of the benchmark tool. The types of data
 used are:
@@ -49,12 +48,12 @@ Assumptions
 ==============
 * A1: An allocator with little extra increase in memory usage compared to the requested memory by the client application
   is efficient in space.
-* A2: An allocator that has a low and constant execution time is efficient in time.
+* A2: An allocator that has a small and preferably constant execution time is efficient in time.
 
 Hypothesis
 ==========
 * H1: An allocator that performs heap compaction can be efficient in both time and space, compared to other commonly
-  used allocators. By making the malloc and free operations fast and the compact operation relatively slow and and
+  used allocators. By making the malloc and free operations fast and the compact operation relatively slow and
   calling it when the system is idle it is possible to achieve this. On memory-restrained and slow computer systems,
   such as embedded systems with as little as 512 KB RAM and a 50 MHz CPU, it is important to be efficient in both time
   and space.
@@ -89,22 +88,22 @@ All applications should be bug-free, but for an allocator it is extra important 
 allocator that does not work properly could cause data corruption. In the best case, this causes the application using
 the allocator to malfunction by crashing on execution. In the worst case, an application doing data processing by
 reading data into buffers allocated on the heap, doing one or more computations and then writing the data back to disk,
-would completely destroy the data without the user knowing an error had occured.
+would completely destroy the data without the user knowing an error had occurred.
 
 Luckily, an allocator has a small interface for which tests can be easily written. In particular, randomized unit
-testing is easy, which gives a good coverage.
+testing is easy, which gives good coverage.
 
 I decided to use googletest since it was easy to set up and use, and the results are easy to read. It's
 similar in style to the original Smalltalk testing framework SUnit [#]_ (later popularized by Java's JUnit [#]_).  During the
 development of the allocator I wrote tests and code in parallel, similar to test-driven development in order to verify
 that each change did not introduce a regression. Of the approximately 2500 lines of code in the allocator,
 about half are tests. In addition to randomized unit testing there are consistency checks and asserts that can be turned
-on at compile-time, to make sure that e.g. (especially) the compact operation is non-destructive.
+on at compile-time.
 
-In the unit tests, the basic style of testing was to initialize the allocator with a randomly selected heap size and
+In the unit tests, the basic style of testing is to initialize the allocator with a randomly selected heap size and
 then run several tens of thousands of allocations/frees and make sure no other data was touched.  This is done by
-filling the allocated data with a constant byte value determined by the address of the returned handle.  Many
-bugs were found this way, many of them not happening until thousands of allocations.  
+filling the allocated data with a constant byte value based on the address of the returned handle.  Many
+bugs were found this way, many of them not happening before thousands of allocations were made.
 
 
 

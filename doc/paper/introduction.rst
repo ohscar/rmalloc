@@ -8,10 +8,10 @@
     \chapter{Introduction}
 
 Computer systems can be generalized to be composed of two things: data, and code operating on said data.  In order to
-perform useful calculations, real-world applications accept user data which often varies in size.  To accomodate the
-differences, memory is requested dynamically, at runtime, using a memory allocator.  The basic interface to the
+perform useful calculations, real-world applications accept user data which often varies in size.  To accommodate the
+differences, memory is requested dynamically (at runtime) using a memory allocator.  The basic interface to the
 allocator consists of the two functions *malloc(size)* and *free(pointer)*: the application gives malloc a size and retrieves a
-pointer to a chunk of memory guaranteed to be at least *size* bytes. The operation *free(pointer)*, on the other hand
+pointer to a chunk of memory guaranteed to be at least *size* bytes. The operation *free(pointer)*, on the other hand,
 gives the memory back to the system.
 
 The allocator in turn calls out to the operating system-provided memory mapping function, providing the allocator with
@@ -21,19 +21,19 @@ the default size is 4 KB, and can on some architectures be increased.
 
 .. <REF: list of page sizes>.
 
-On operating systems where programs' memory are protected from each other, meaning no application can overwrite any
-other application's memory, the page addresses are virtual and therefore a kernel-space -- the operating mode of the
-operating system where the kernel and hardware drivers run -- look-up table mapping virtual (page) address to physical
-memory is required, such that each process has its own look-up table.  Since the processor needs to keep track of each
-page and to which part of memory it is mapped, the resulting look-up table will be very large if a small page size is
-used. These can then be written to disk (*swapped out*) when system memory becomes full and the pages are not in use by
-the application owning the page, based on a recent-used algorithm.  The algorithm varies depeding on operating system
-and use case.  In the worst case, the last page in a series of requested pages is largely unused, causing 4096-1 bytes
-to go to waste. Keeping the page size small lowers waste and therefore internal fragmentation.  Increasing the page size
-can be tempting to reduce the size of the look-up table, but this comes at the cost of fragmentation.  In some
-architectures, the operating system can increase the page size (so-called "huge pages" in Linux terminology, other
-operating systems use different names).  
+On operating systems where application memory is protected from other applications' memory, meaning no application can
+overwrite any other application's memory, the page addresses are virtual and therefore a kernel-space [#]_ look-up table
+mapping virtual (page) address to physical memory is required, such that each process has its own look-up table.  Since
+the processor needs to keep track of each page and to which part of memory it is mapped, the resulting look-up table
+will be very large if a small page size is used. These can then be written to disk (*swapped out*) when system memory
+becomes full and the pages are not in use by the application owning the page, based on a recently-used algorithm.  The
+algorithm varies depending on operating system and use case.  In the worst case, the last page in a series of requested
+pages is largely unused, causing 4096-1 bytes to go to waste. Keeping the page size small lowers this waste, which is
+also known as *internal fragmentation*.  Increasing the page size can be tempting to speed up the lookup
+table, but this comes at the cost of fragmentation.  In some architectures, the operating system can increase the page
+size (so-called "huge pages" in Linux terminology, other operating systems use different names).  
 
+.. [#] The operating mode of the operating system where the kernel and hardware drivers run.
 
 .. raw:: comment-reference
 
@@ -50,37 +50,36 @@ operating systems use different names).
 
 
 
-A very simple user-space -- the operating mode of the operating system where normal applications run -- allocator would
+A very simple user-space [#]_ allocator would
 do little more than *malloc()* returning the pages and have *free()* do nothing at all.  Clearly this causes large
-amount of memory to be wasted, since no memory would actually be released to the system.  Eventually, the system would
+amounts of memory to be wasted, since no memory would actually be released to the system.  Eventually, the system would
 run out of memory. 
 
 Therefore, an allocator needs to be more clever about managing memory. At the very minimum it needs to associate
 metadata with each allocated block in order to later free the blocks.  The metadata is there in order for
-*free(pointer)* to know where the memory chunk was allocated from. Moreover, the allocators I've tested keep one or
+*free()* to know where the memory chunk was allocated from. Moreover, the allocators I've tested keep one or
 more pools of memory split up in different size ranges, such as "small blocks", "medium-sized blocks" and "large
-blocks". By analyzing the runtime requirements of various applications, the most common case (i.e., block size) can be
-optimized for speed, space or both. The pool(s) are used because of the fact that applications often allocate data in
-common sizes.
+blocks". By analyzing the runtime requirements of various applications, the most commonly use cases, such as a specific
+block size dominating all other requests, can be optimized for speed, space or both. The pool(s) are used because of the
+fact that applications often allocate data of particular sizes.
 
 If the allocator can group together all e.g. 8-byte chunks into one or more pages, it will be easier to return the page
-to the operating system when done.  Lookup can also be more efficient, since the allocator can use offsets to find a
+to the operating system when all blocks are freed.  Lookup can also be more efficient, since the allocator can use offsets to find a
 suitable free block, instead of iterating through a list of free blocks.
 
+.. [#] The operating mode of the operating system where normal applications run.
 
 Thesis Statement and Contributions
 =======================================================
-The purpose of this thesis is to design and implement an allocator that can move around allocated blocks of memory, with
-the following interface::
+The purpose of this thesis is to design and implement an allocator with the following interface that can move around allocated blocks of memory::
 
     handle_t malloc(size_t n);
     void *lock(handle_t h);
     void unlock(handle_t h);
     void free(handle_t h);
 
-The purpose of the lock/unlock operations is to introduce an indirection for memory access that gives the ability to
-move data blocks around when not in use (*unlocked* state), specifically to cope with fragmentation problems by
-compacting the heap. 
+The purpose of the lock/unlock operations is to introduce indirection for memory access that gives the allocator the ability to
+move data blocks around when not in use (*unlocked* state), specifically by compacting the heap cope with fragmentation problems.
 
 In Chapter :ref:`chapter-allocator-types` I present an overview of the allocator I compare my work with.  Method and
 Design are in Chapters :ref:`chapter-method` and :ref:`chapter-design`. 
@@ -109,43 +108,42 @@ found in Chapter :ref:`chapter-results` which is finally discussed in Chapter :r
 
 Definitions
 ============
-* **Valgrind**: A debugging toolused to detect memory leaks and memory overwriting in applications, by emulating the
-  target CPU.
-* **mmap()**: An system call for applications to ask the operating system for one or more memory page (often 4KB) and
-  map it into the application's virtual address space.
-* **sbrk()**: Similar to *mmap()*, by extending the application's data segment size instead of asking for virtual
-  memory, and is limited by the maximum data size of the application.
-* **Internal fragmentation**: The amount of memory wasted inside a block.
-* **External fragmentation**: The amount of memory wasted by allocator metadata.
-* **Op**: Any memory operation: new, free, load, store, modify, lock, unlock. Generally, load, store and modify is generalized to
-  access. These are sometimes abbreviated to N for new, F for free, A for access, L for load, U for unlock.
-* **Memtrace**: File created by Valgrind's *memcheck* tool (see Chapter :ref:`chapter-steve`) that contains triplets of *(op, address, size)*.
-  See the appendix for the full definition.
-* **Opsfile**: File created by ``translate-memtrace-to-ops.py``, contains one operation per line. See the appendix for the full
-  definition.
-* **Lifetime**: The number of total operations, thus indirectly the time, between a New and a Free op for a specific block.
-* **Block**: A chunk of allocated memory.
-* **Header**: An internal data structure containing the metadata about a block. It is also used as an opaque handle for
-  use by the client code.
-* **EOF**: End of file.
 * **Opaque type**: A way of hiding the contents of an object (data structure) from application code, by only providing a
   pointer to the object without giving its definition. Commonly used where the object is only meant to be modified from
   the library.
+* **Valgrind**: A debugging tool used to detect memory leaks and memory overwriting in applications, by emulating the
+  target CPU.
+* **mmap()**: A system call for applications to ask the operating system for one or more memory pages (often 4KB) and
+  map it into the application's virtual address space.
+* **sbrk()**: Similar to *mmap()*, but works by extending the application's data segment size instead of asking for virtual
+  memory, and is limited by the maximum data size of the application.
+* **Internal fragmentation**: The amount of memory wasted inside a block.
+* **External fragmentation**: The amount of memory wasted by allocator metadata.
+* **Memtrace**: File created by Valgrind's *memcheck* tool (see Chapter :ref:`chapter-steve`) that contains triplets of *(op, address, size)*.
+  See the appendix for the full definition.
+* **Op**: Any memory operation: new, free, load, store, modify, lock, unlock. Generally, load, store and modify is generalized to
+  access. These are sometimes abbreviated to N for new, F for free, A for access, L for load, U for unlock.
+* **Opsfile**: File created by ``translate-memtrace-to-ops.py`` (part of Steve, see Chapter :ref:`chapter-steve`), contains one operation per line. See the appendix for the full
+  definition.
+* **Block**: A chunk of allocated memory.
+* **Lifetime**: The number of total operations, thus indirectly the time, between a New and a Free op for a specific block.
+* **Header**: An internal data structure containing the metadata about a block. It is also used as an opaque handle for
+  use by the client code.
   
 Challenges
 ============================================
 There are many trade-offs when writing an allocator, which I'll describe in the following section.
 
-Allocators are often written to solve a specific goal, while still performing well in the average case. In fact, some
+Allocators are often optimized for a specific use-case or task, while still performing well in the average case. In fact, some
 allocators are designed with the explicit goal of being best on average. 
 
 .. Furthermore, speed often hinders efficiency and vice versa.
 
-A very simple allocator would simply request a page from the operating system and return in to the user. It would be
+A very simple allocator would simply request one or more pages from the operating system and return in to the user. It would be
 very fast, but not very efficient since a large part of the page would be unused for any allocation requests smaller
 than the page size.
 
-By splitting up allocations in smaller pieces exactly the size of the requested block (plus metadata) and storing
+By splitting up allocations in parts exactly the size of the requested block (plus metadata) and storing
 information about freed blocks in a list, there would be little wasting of memory. On the other hand, because of the
 efficiency requirement, pages would only be requested when there were no blocks of the correct size and therefore the
 entire free list must be searched for a suiting block before giving up and requesting a page.
@@ -156,7 +154,7 @@ not being so coarse such that performance suffers. I do not address the issue of
 
 Another challenge is to make the allocator work efficiently for various memory sizes. I focus on small-memory systems,
 where space-efficiency is important, and I've made the trade-off (where applicable) that slower is better if it saves
-memory. It is currently in use at TLab West Systems AB on a system with a total of 512 KB RAM.
+memory. It is currently in use at TLab West Systems AB on an embedded computer with a total of 512 KB RAM.
 
 Efficiency
 ======================================
@@ -176,10 +174,10 @@ because of delays in finishing the thesis.
 
 Related Work 
 ==================
-Closely related to a compacting allocator is the garbage collector, which are popular in managed languages that do not
+Closely related to a compacting allocator is the garbage collector, which is popular in managed languages that do not
 run directly on hardware. In particular, the Java Virtual Machine (JVM) includes different garbage collector (GC) flavors depending
 on the task at hand. As of version 5, there are four variants (Sun Microsystems, 2006) with different characteristics
-that should be picked depending on the type of application written. Each GC flavor can be configured.
+that can be picked depending on the type of application written. Each GC flavor can be configured.
 Configuration settings, including setting GC flavor, can be done at runtime via command line parameters to the JVM.
 
 All JVM GCs use *generations*, in which objects are allocated and later moved if they survive a garbage collection. This
@@ -187,7 +185,8 @@ is mainly done as an optimization to execution time since different collection s
 and "old" objects (i.e. the ones that have survived a set number of collections).  A generation is implemented as
 separate memory areas, and therefore, areas that are not full waste memory.  Also, application code is unaware of when
 collection occurs, generations is also a means of reducing the time the application is paused, if the collection cannot
-happen simultaneously with application execution.  Pausing in general is a problem GCs try to solve.
+happen simultaneously with application execution.  Pausing in general is a problem GCs try to solve, see Jones & Lins
+(1997).
 
 In my thesis, I give control over pausing to the application that can decide at its own discretion when the most
 appropriate time is for heap compacting. In the optimal case, where a simple *bump-the-pointer* technique can be used,

@@ -16,13 +16,13 @@ section :ref:`translating-memory-access-data-to-ops`.
 translate-ops-to-histogram.py
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 To visualize and experiment with different ways of calculating lifetime I have a small application that takes as input
-an ops file (created by ``translate-memtrace-to-ops.py``), in particular to look at macro lifetimes in different
+an ops file (created by ``translate-memtrace-to-ops.py``), to visualize macro lifetime in different
 intervals. This is described in Section :ref:`lifetime-visualization`.
 
 translate-ops-to-locking-lifetime.py
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ``translate-memtrace-to-ops.py`` produces coarse locking that is quick to calculate, since it simply looks at the macro
-lifetime of an object and keeps it locked during its entire lifetime.  It's an either-or situation, instead of locking
+lifetime of an object and keeps it locked during its entire lifetime.  This is done instead of locking
 and unlocking throughout the object lifetime. 
 
 run_memory_frag_animation.sh
@@ -42,7 +42,7 @@ Output::
     result.soffice-ops-animation.avi
 
 The tool calls the *memplot* mode described above and calls *ffmpeg* to generate an animation of the heap image sequence
-produced by the alloc drver for the given ops file.
+produced by the alloc driver for the given ops file.
 
 
 run_allocator_stats.sh
@@ -56,8 +56,10 @@ Generates::
 
     result.soffice-ops.allocstats
 
-Heap size in allocstats mode is set to this value, increased by 5% until there is no OOM on the last
-operation, to make sure that the entire program can be run in full at least once.
+.. raw:: TODO! This belogns to maxmem calculation
+
+    Heap size in allocstats mode is set to this value, increased by 5% until there is no OOM on the last
+    operation, to make sure that the entire program can be run in full at least once.
 
 
 .. raw:: comment-na
@@ -119,17 +121,17 @@ of the allocator and linking to a library. The functions to implement are::
     void *user_highest_address(bool full_calculation);
 
 All functions to be implemented by the driver have a ``user_`` prefix and the driver code is linked together with
-``plot.cpp`` to form the binary.  An alternative would be to create a library and register callbacks instead.
+``plot.cpp`` to form the binary. 
 
 user_init(heap_size, heap, name)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ``bool user_init(uint32_t heap_size, void *heap, char *name)``
 
 Initialize the allocator with the given parameters.  Since the heap is passed onto the driver, any *mmap* functionality
-must beO disabled and only *sbrk*-style allocation is possible. The driver must fill ``name`` with a name that can be
+must be disabled and only *sbrk*-style allocation is possible. The driver must set ``name`` to a string that can be
 used as a part of a filename, e.g. an alphanumeric string like "dlmalloc".
 
-A driver would store *heap_size*, initialize its own sbrk-equivalent with *heap* and initialize the allocator itself if
+A driver initializes its own sbrk-equivalent with *heap* and  *heap_size* and initializes the allocator itself if
 needed. As large amount as possible of the allocator's runtime data structures should be stored in this heap space.
 
 user_destroy()
@@ -144,7 +146,7 @@ user_handle_oom(size, op_time)
 
 Handle an out-of-memory situation. ``size`` is the number of bytes requested at the time of OOM.
 ``op_time`` is an out variable storing the time of the actual OOM-handling code (such as a compact operation), not
-considering the code before or after. For convenience, Steve pre-defines macros for time measuring.  A typical
+considering the code before or after. For convenience, Steve defines macros for time measuring.  A typical
 implementation where OOM is actually handled looks like this::
     
     bool user_handle_oom(int size, uint32_t *op_time)
@@ -167,7 +169,7 @@ user_malloc(size, handle, op_time, memaddress)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ``void *user_malloc(int size, uint32_t handle, uint32_t *op_time, void **memaddress)``
 
-Perform a memory allocation and return it or ``NULL`` on error. ``op_time`` is the same as above.
+Perform a memory allocation and return a pointer to the allocated memory, or ``NULL`` on error. ``op_time`` is the same as above.
 ``handle`` is an identifier for this allocation request as translated from the memtrace, unique for this block for the
 lifetime of the application being benchmarked. It can be used as an index to a map in case the driver wants to store
 information associated with this particular block. Finally, ``*memaddress`` can be used to store the memory address at
@@ -186,7 +188,7 @@ user_lock(ptr)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ``void *user_lock(void *)``
 
-This locks a block of memory, i.e. maps a handle to a pointer in memory, and marks it as in use. It can no longer be
+This locks a block of memory: map a handle to a pointer in memory, and mark the block as in use. It can no longer be
 moved since the client code now has a reference to the memory referred to by this handle, until ``user_unlock()`` or
 ``user_free()`` is called on the handle. Its input value is the return value of ``user_malloc()``. 
 
@@ -200,6 +202,7 @@ to move this block around in memory. Its input value is the return value of ``us
 user_highest_address(fullcalc)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ``void *user_highest_address(bool full_calculation)``
+
 What is the highest address allocated at this time? ``NULL`` if not available.
 If ``full_calculation`` is false a less exact calculation is acceptable if it's quicker.
 

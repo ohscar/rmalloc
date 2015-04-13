@@ -6,7 +6,7 @@
 
 Speed
 ==========
-Calculate the penalty for the fields *penalty*, *best*, *worst* and *average* per application gives each allocator a sum
+Calculate the penalty for the fields *penalty*, *best*, *worst* and *average* per application, which gives each allocator a sum
 of penalties for each field.  By taking the average of these penalties, we can tell the position of each allocator.
 Allocators that did not finish are given the maximum penalty 5.
 
@@ -76,8 +76,8 @@ allocated block. Summary in Table :ref:`table:memory-positions` below with scori
 
 Discussion
 ============
-Important to note is that tcmalloc was not able to finish all runs when making a decision on which allocator to use.
-Also, the tested allocators were designed to use ``mmap()`` for memory allocation along with ``sbrk()`` which 
+Important to note when making a decision on which allocator to use.is that tcmalloc was not able to finish all tests. 
+Most of the tested allocators were designed to use ``mmap()`` for memory allocation along with ``sbrk()`` which 
 likely skewed the results. In particular jemalloc performs badly, which could be caused by it being optimized for
 ``mmap()``.
 
@@ -94,7 +94,7 @@ again, common in embedded systems with only kilobytes of code ROM.
 Jeff still does perform quite well, which means the idea itself could be expanded on in the future. Due to time
 constraints, larger applications that are more similar to real-life situations could not be tested since the lockops
 calculation took too long time.  Speed and memory characteristics could very well differ for such an application,
-especially if it was running for a longer time.
+especially if it were to run for a longer time.
 
 
 Limitations and Future Work 
@@ -112,8 +112,8 @@ Jeff: Future Work
 ~~~~~~~~~~~~~~~~~~~~~~
 Features
 -------------------------
-* Add a callback when moving a locked block, for simpler compact operation and easier client code where memory does
-  not have to be locked/unlocked. Instead, they could be locked during their entire lifetime. On the other hand, there
+* Add a callback when moving a locked block, for simpler compact operation and client code so that memory does
+  not have to be locked/unlocked manually. Instead, they could be locked during their entire lifetime. On the other hand, there
   is a risk that it would lead to the lookup table being on the client side instead of in the allocator. Depends on
   use case.
 * Use bits of pointer to memory block, if size is limited. In practice, a special-purpose allocator such as Jeff will
@@ -124,9 +124,9 @@ Features
 
 Implementation Optimizations
 --------------------------------------------
-* Similar to the earlier point, reduce next_unused store offset into heap array. This would limit the maximum number of
+* Similar to the earlier point, reduce ``next_unused`` to store offset into a heap array. This limits the maximum number of
   live blocks to :math:`2^{sizeof(next\_unused\_offset)}`, which might not be an issue. It could be a compile-time setting.
-* Automatic merge with adjacent prev/next block in free/new. This would cause the free list slots contain too large
+* Automatic merge with adjacent previous/next block in ``free``/``new``. This would however cause the free list slots contain too large
   blocks for its index.
 * Quick free block find overwrites itself, issue #1 in the Github rmalloc issue tracker. 
 
@@ -149,10 +149,10 @@ Simplification
 * Restart simulation
 * Don't use part files, if possible.
 
-Possible Features
+Features
 --------------------
 * Reintroduce colormap for calculating theoretical free size from overhead marked in the colormap.
-* Measure how high part of the total number of blocks are locked at compacting time.
+* Measure how large part of the total number of blocks are locked at compacting time.
 * Investigate stack-based behaviour of computation (and thus allocation) for a possibly more realistic heuristic for
   calculating locking.
 
