@@ -3,7 +3,7 @@ Jeff and Steve: A Relocatable Memory Allocator and its Benchmarking Friend
 ===========================================================================
 :author: Mikael Jansson
 :abstract:
-    Jeff is a compacting allocator and Steve is an allocator benchmark tool.  Steve can be used to benchmark any
+    Jeff is a compacting allocator and Steve is an allocator benchmarking tool.  Steve can be used to benchmark any
     application with any allocator.  Steve records memory traces of an application during execution and uses those
     traces to benchmark any number of allocators for which there are drivers. Therefore, the performance in actual use
     cases is measured.  Also, as a consequence, the user does not need access to source code to the application or
