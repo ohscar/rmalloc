@@ -5,6 +5,7 @@
 \usepackage{fixltx2e} % LaTeX patches, \textsubscript
 \usepackage{cmap} % fix search and cut-and-paste in Acrobat
 \usepackage{placeins}
+\usepackage{pdfpages}
 
 \pagestyle{headings}
 %\usepackage[latin1]{inputenc}
@@ -52,7 +53,9 @@ $titledata
 
 % \author{Mikael Jansson}
 
-\include{frontpage-original}
+% \include{frontpage-original}
+\includepdf[pages={-}]{Cover_page_Chalmers.pdf}
+
 
 \section*{Abstract}
 
